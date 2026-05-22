@@ -1,12 +1,34 @@
 #!/bin/bash
 
-# DEV-Agent 全部服务启动脚本（Hermes 集成版）
+# DEV-Agent-Teams 全部服务启动脚本
 # 使用方法: ./start-all.sh
 
 set -e
 
-echo "🚀 DEV-Agent 多服务启动（Hermes 集成版）"
-echo "=========================================="
+echo "🚀 DEV-Agent-Teams 多服务启动"
+echo "=============================="
+
+# 加载环境变量
+if [ -f .env ]; then
+    export $(cat .env | grep -v '^#' | xargs)
+    echo "✅ 已加载 .env 配置"
+fi
+
+# 检查必要的环境变量
+if [ -z "$MODEL_PROVIDER" ]; then
+    echo "⚠️  MODEL_PROVIDER 未设置，使用默认值"
+    MODEL_PROVIDER="your_provider"
+fi
+
+if [ -z "$MODEL_NAME" ]; then
+    echo "⚠️  MODEL_NAME 未设置，使用默认值"
+    MODEL_NAME="your_model_name"
+fi
+
+if [ -z "$MODEL_BASE_URL" ]; then
+    echo "⚠️  MODEL_BASE_URL 未设置，使用默认值"
+    MODEL_BASE_URL="your_api_base_url"
+fi
 
 # 检查依赖
 if ! command -v node &> /dev/null; then
@@ -21,13 +43,14 @@ fi
 
 echo "✅ Node.js 已安装: $(node --version)"
 echo "✅ Hermes 已安装"
+echo "✅ 模型配置: $MODEL_PROVIDER / $MODEL_NAME"
 
 # 定义 Agent 配置
 declare -A AGENTS=(
-    ["frontend"]="8201:packages/agents/frontend:前端开发 Agent"
-    ["backend"]="8202:packages/agents/backend:后端开发 Agent"
-    ["testing"]="8203:packages/agents/testing:测试开发 Agent"
-    ["devops"]="8204:packages/agents/devops:DevOps Agent"
+    ["frontend"]="${FRONTEND_AGENT_PORT:-8201}:packages/agents/frontend:前端开发 Agent"
+    ["backend"]="${BACKEND_AGENT_PORT:-8202}:packages/agents/backend:后端开发 Agent"
+    ["testing"]="${TESTING_AGENT_PORT:-8203}:packages/agents/testing:测试开发 Agent"
+    ["devops"]="${DEVOPS_AGENT_PORT:-8204}:packages/agents/devops:DevOps Agent"
 )
 
 # 步骤 1: 启动 Hermes 实例
@@ -43,12 +66,12 @@ for agent in "${!AGENTS[@]}"; do
     HOME_DIR="$HOME/.hermes-dev-$agent"
     mkdir -p "$HOME_DIR"
     
-    # 创建配置文件
+    # 创建配置文件（使用环境变量）
     cat > "$HOME_DIR/config.yaml" << EOF
 model:
-  default: mimo-v2.5
-  provider: xiaomi
-  base_url: https://token-plan-sgp.xiaomimimo.com/v1
+  default: $MODEL_NAME
+  provider: $MODEL_PROVIDER
+  base_url: $MODEL_BASE_URL
 
 platforms:
   api_server:
