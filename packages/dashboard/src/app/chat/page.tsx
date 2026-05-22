@@ -1,6 +1,9 @@
 'use client'
 
 import { useState, useRef, useEffect } from 'react'
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Button } from "@/components/ui/button"
+import { Badge } from "@/components/ui/badge"
 
 interface Message {
   id: string
@@ -15,8 +18,8 @@ export default function ChatPage() {
     {
       id: '1',
       role: 'assistant',
-      content: 'Hello! I\'m DEV-Agent-Teams. I can help you with:\n\n- Frontend development (React, Vue, TypeScript)\n- Backend development (Python, Node.js, Go)\n- Testing (pytest, Jest, Playwright)\n- DevOps (Docker, Kubernetes, CI/CD)\n\nWhat would you like to work on?',
-      agent: 'system',
+      content: 'Hello! I\'m DEV-Agent-Teams. I can help you with:\n\n• 🎨 Frontend development (React, Vue, TypeScript)\n• ⚙️ Backend development (Python, Node.js, Go)\n• 🧪 Testing (pytest, Jest, Playwright)\n• 🚀 DevOps (Docker, Kubernetes, CI/CD)\n\nWhat would you like to work on?',
+      agent: 'System',
       timestamp: new Date(Date.now() - 60000),
     },
   ])
@@ -46,7 +49,6 @@ export default function ChatPage() {
     setInput('')
     setIsTyping(true)
 
-    // Simulate agent response
     setTimeout(() => {
       const agentMessage: Message = {
         id: (Date.now() + 1).toString(),
@@ -97,98 +99,125 @@ export default function ChatPage() {
 
   return (
     <div className="flex flex-col h-[calc(100vh-200px)]">
-      {/* Messages */}
-      <div className="flex-1 overflow-y-auto p-4 space-y-4">
-        {messages.map((message) => (
-          <div
-            key={message.id}
-            className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}
-          >
+      <Card className="flex-1 flex flex-col overflow-hidden">
+        <CardHeader className="border-b">
+          <div className="flex items-center justify-between">
+            <CardTitle>💬 Chat with Agents</CardTitle>
+            <div className="flex space-x-2">
+              <Badge variant="outline">Frontend</Badge>
+              <Badge variant="outline">Backend</Badge>
+              <Badge variant="outline">Testing</Badge>
+              <Badge variant="outline">DevOps</Badge>
+            </div>
+          </div>
+        </CardHeader>
+        
+        {/* Messages */}
+        <CardContent className="flex-1 overflow-y-auto p-4 space-y-4">
+          {messages.map((message) => (
             <div
-              className={`max-w-3xl rounded-lg p-4 ${
-                message.role === 'user'
-                  ? 'bg-blue-500 text-white'
-                  : 'bg-white border text-gray-900'
-              }`}
+              key={message.id}
+              className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}
             >
-              {message.agent && (
-                <div className={`text-xs font-medium mb-2 ${
-                  message.role === 'user' ? 'text-blue-100' : 'text-gray-500'
+              <div
+                className={`max-w-3xl rounded-2xl p-4 ${
+                  message.role === 'user'
+                    ? 'bg-gradient-to-r from-blue-500 to-blue-600 text-white shadow-lg'
+                    : 'bg-white border border-slate-200 text-gray-900 shadow-sm'
+                }`}
+              >
+                {message.agent && (
+                  <div className={`text-xs font-medium mb-2 flex items-center space-x-2 ${
+                    message.role === 'user' ? 'text-blue-100' : 'text-gray-500'
+                  }`}>
+                    <span className="w-5 h-5 bg-white/20 rounded-full flex items-center justify-center text-xs">
+                      {message.agent === 'Frontend Agent' ? '🎨' :
+                       message.agent === 'Backend Agent' ? '⚙️' :
+                       message.agent === 'Testing Agent' ? '🧪' :
+                       message.agent === 'DevOps Agent' ? '🚀' : '🤖'}
+                    </span>
+                    <span>{message.agent}</span>
+                  </div>
+                )}
+                <div className="whitespace-pre-wrap">{message.content}</div>
+                <div className={`text-xs mt-2 ${
+                  message.role === 'user' ? 'text-blue-100' : 'text-gray-400'
                 }`}>
-                  {message.agent}
+                  {message.timestamp.toLocaleTimeString()}
                 </div>
-              )}
-              <div className="whitespace-pre-wrap">{message.content}</div>
-              <div className={`text-xs mt-2 ${
-                message.role === 'user' ? 'text-blue-100' : 'text-gray-400'
-              }`}>
-                {message.timestamp.toLocaleTimeString()}
               </div>
             </div>
-          </div>
-        ))}
-        
-        {isTyping && (
-          <div className="flex justify-start">
-            <div className="bg-white border rounded-lg p-4">
-              <div className="flex items-center space-x-2">
-                <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce"></div>
-                <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0.1s' }}></div>
-                <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0.2s' }}></div>
+          ))}
+          
+          {isTyping && (
+            <div className="flex justify-start">
+              <div className="bg-white border border-slate-200 rounded-2xl p-4 shadow-sm">
+                <div className="flex items-center space-x-2">
+                  <div className="flex space-x-1">
+                    <div className="w-2 h-2 bg-blue-400 rounded-full animate-bounce"></div>
+                    <div className="w-2 h-2 bg-blue-400 rounded-full animate-bounce" style={{ animationDelay: '0.1s' }}></div>
+                    <div className="w-2 h-2 bg-blue-400 rounded-full animate-bounce" style={{ animationDelay: '0.2s' }}></div>
+                  </div>
+                  <span className="text-sm text-gray-500">Thinking...</span>
+                </div>
               </div>
             </div>
-          </div>
-        )}
-        
-        <div ref={messagesEndRef} />
-      </div>
+          )}
+          
+          <div ref={messagesEndRef} />
+        </CardContent>
 
-      {/* Input */}
-      <div className="border-t p-4">
-        <div className="flex space-x-4">
-          <input
-            type="text"
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            onKeyPress={(e) => e.key === 'Enter' && handleSend()}
-            placeholder="Type your message... (e.g., 'Create a React login component')"
-            className="flex-1 border rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
-          />
-          <button
-            onClick={handleSend}
-            disabled={!input.trim() || isTyping}
-            className="bg-blue-500 hover:bg-blue-600 text-white px-6 py-2 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            Send
-          </button>
+        {/* Input */}
+        <div className="border-t p-4 bg-slate-50">
+          <div className="flex space-x-3">
+            <input
+              type="text"
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              onKeyPress={(e) => e.key === 'Enter' && handleSend()}
+              placeholder="Type your message... (e.g., 'Create a React login component')"
+              className="flex-1 border border-slate-300 rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white shadow-sm"
+            />
+            <Button onClick={handleSend} disabled={!input.trim() || isTyping} size="lg">
+              Send →
+            </Button>
+          </div>
+          <div className="mt-3 flex flex-wrap gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setInput('Create a React login component')}
+              className="text-xs"
+            >
+              💡 React component
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setInput('Design a user API endpoint')}
+              className="text-xs"
+            >
+              💡 Design API
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setInput('Write unit tests for auth module')}
+              className="text-xs"
+            >
+              💡 Write tests
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setInput('Create a Dockerfile for deployment')}
+              className="text-xs"
+            >
+              💡 Create Dockerfile
+            </Button>
+          </div>
         </div>
-        <div className="mt-2 flex space-x-2">
-          <button
-            onClick={() => setInput('Create a React login component')}
-            className="text-sm text-blue-500 hover:text-blue-600"
-          >
-            💡 Create React component
-          </button>
-          <button
-            onClick={() => setInput('Design a user API endpoint')}
-            className="text-sm text-blue-500 hover:text-blue-600"
-          >
-            💡 Design API
-          </button>
-          <button
-            onClick={() => setInput('Write unit tests for auth module')}
-            className="text-sm text-blue-500 hover:text-blue-600"
-          >
-            💡 Write tests
-          </button>
-          <button
-            onClick={() => setInput('Create a Dockerfile for deployment')}
-            className="text-sm text-blue-500 hover:text-blue-600"
-          >
-            💡 Create Dockerfile
-          </button>
-        </div>
-      </div>
+      </Card>
     </div>
   )
 }

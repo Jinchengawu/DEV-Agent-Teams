@@ -1,6 +1,9 @@
 'use client'
 
 import { useState } from 'react'
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Button } from "@/components/ui/button"
+import { Badge } from "@/components/ui/badge"
 
 interface Agent {
   id: string
@@ -11,6 +14,7 @@ interface Agent {
   skills: string[]
   requests: number
   uptime: string
+  icon: string
 }
 
 const agents: Agent[] = [
@@ -23,6 +27,7 @@ const agents: Agent[] = [
     skills: ['react-development', 'vue-development', 'nextjs-development', 'css-tailwind', 'typescript-best-practices'],
     requests: 127,
     uptime: '2h 34m',
+    icon: '🎨',
   },
   {
     id: 'backend',
@@ -33,6 +38,7 @@ const agents: Agent[] = [
     skills: ['python-development', 'nodejs-development', 'go-development', 'api-design', 'database-design'],
     requests: 89,
     uptime: '2h 34m',
+    icon: '⚙️',
   },
   {
     id: 'testing',
@@ -43,6 +49,7 @@ const agents: Agent[] = [
     skills: ['pytest-development', 'jest-development', 'vitest', 'playwright', 'e2e-testing'],
     requests: 45,
     uptime: '2h 34m',
+    icon: '🧪',
   },
   {
     id: 'devops',
@@ -53,6 +60,7 @@ const agents: Agent[] = [
     skills: ['docker-management', 'kubernetes-deployment', 'ci-cd-pipeline', 'monitoring-setup', 'terraform-iac'],
     requests: 23,
     uptime: '2h 34m',
+    icon: '🚀',
   },
 ]
 
@@ -62,113 +70,122 @@ export default function AgentsPage() {
   return (
     <div className="space-y-6">
       <div className="flex justify-between items-center">
-        <h1 className="text-2xl font-bold text-gray-900">Agents</h1>
-        <button className="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-lg">
-          + Add Agent
-        </button>
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900">Agents</h1>
+          <p className="text-gray-500 mt-1">Manage and monitor your AI agents</p>
+        </div>
+        <Button>+ Add Agent</Button>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Agent List */}
         <div className="lg:col-span-2 space-y-4">
           {agents.map((agent) => (
-            <div
+            <Card
               key={agent.id}
-              className={`bg-white rounded-lg shadow p-6 cursor-pointer hover:shadow-md transition-shadow ${
-                selectedAgent?.id === agent.id ? 'ring-2 ring-blue-500' : ''
+              className={`cursor-pointer transition-all hover:shadow-lg ${
+                selectedAgent?.id === agent.id ? 'ring-2 ring-blue-500 shadow-lg' : ''
               }`}
               onClick={() => setSelectedAgent(agent)}
             >
-              <div className="flex justify-between items-start">
-                <div>
-                  <h3 className="text-lg font-semibold text-gray-900">{agent.name}</h3>
-                  <p className="text-sm text-gray-500 mt-1">{agent.description}</p>
+              <CardContent className="p-6">
+                <div className="flex justify-between items-start">
+                  <div className="flex items-center space-x-4">
+                    <div className="w-12 h-12 bg-gradient-to-br from-slate-100 to-slate-200 rounded-xl flex items-center justify-center">
+                      <span className="text-2xl">{agent.icon}</span>
+                    </div>
+                    <div>
+                      <h3 className="text-lg font-semibold text-gray-900">{agent.name}</h3>
+                      <p className="text-sm text-gray-500">{agent.description}</p>
+                    </div>
+                  </div>
+                  <Badge variant={agent.status === 'online' ? 'default' : 'secondary'}>
+                    {agent.status}
+                  </Badge>
                 </div>
-                <div className={`px-3 py-1 rounded-full text-sm font-medium ${
-                  agent.status === 'online' ? 'bg-green-100 text-green-800' :
-                  agent.status === 'offline' ? 'bg-gray-100 text-gray-800' :
-                  'bg-red-100 text-red-800'
-                }`}>
-                  {agent.status}
-                </div>
-              </div>
 
-              <div className="mt-4 grid grid-cols-3 gap-4 text-sm">
-                <div>
-                  <span className="text-gray-500">Port</span>
-                  <p className="font-mono font-medium">{agent.port}</p>
+                <div className="mt-4 grid grid-cols-3 gap-4">
+                  <div className="bg-slate-50 rounded-xl p-3">
+                    <p className="text-xs text-gray-500">Port</p>
+                    <p className="font-mono font-semibold text-lg">{agent.port}</p>
+                  </div>
+                  <div className="bg-slate-50 rounded-xl p-3">
+                    <p className="text-xs text-gray-500">Requests</p>
+                    <p className="font-semibold text-lg">{agent.requests}</p>
+                  </div>
+                  <div className="bg-slate-50 rounded-xl p-3">
+                    <p className="text-xs text-gray-500">Uptime</p>
+                    <p className="font-semibold text-lg">{agent.uptime}</p>
+                  </div>
                 </div>
-                <div>
-                  <span className="text-gray-500">Requests</span>
-                  <p className="font-medium">{agent.requests}</p>
-                </div>
-                <div>
-                  <span className="text-gray-500">Uptime</span>
-                  <p className="font-medium">{agent.uptime}</p>
-                </div>
-              </div>
 
-              <div className="mt-4">
-                <span className="text-sm text-gray-500">Skills:</span>
-                <div className="flex flex-wrap gap-2 mt-1">
-                  {agent.skills.slice(0, 3).map((skill) => (
-                    <span key={skill} className="px-2 py-1 bg-gray-100 text-gray-700 text-xs rounded">
-                      {skill}
-                    </span>
-                  ))}
-                  {agent.skills.length > 3 && (
-                    <span className="px-2 py-1 bg-gray-100 text-gray-700 text-xs rounded">
-                      +{agent.skills.length - 3} more
-                    </span>
-                  )}
+                <div className="mt-4">
+                  <p className="text-sm text-gray-500 mb-2">Skills</p>
+                  <div className="flex flex-wrap gap-2">
+                    {agent.skills.slice(0, 3).map((skill) => (
+                      <Badge key={skill} variant="secondary">
+                        {skill}
+                      </Badge>
+                    ))}
+                    {agent.skills.length > 3 && (
+                      <Badge variant="outline">+{agent.skills.length - 3}</Badge>
+                    )}
+                  </div>
                 </div>
-              </div>
-            </div>
+              </CardContent>
+            </Card>
           ))}
         </div>
 
         {/* Agent Detail */}
         <div className="lg:col-span-1">
           {selectedAgent ? (
-            <div className="bg-white rounded-lg shadow p-6 sticky top-6">
-              <h2 className="text-xl font-bold text-gray-900 mb-4">{selectedAgent.name}</h2>
-              
-              <div className="space-y-4">
+            <Card className="sticky top-24">
+              <CardHeader>
+                <div className="flex items-center space-x-3">
+                  <div className="w-12 h-12 bg-gradient-to-br from-blue-500 to-purple-600 rounded-xl flex items-center justify-center">
+                    <span className="text-2xl">{selectedAgent.icon}</span>
+                  </div>
+                  <div>
+                    <CardTitle>{selectedAgent.name}</CardTitle>
+                    <p className="text-sm text-gray-500">Port {selectedAgent.port}</p>
+                  </div>
+                </div>
+              </CardHeader>
+              <CardContent className="space-y-4">
                 <div>
-                  <span className="text-sm text-gray-500">Description</span>
+                  <p className="text-sm text-gray-500">Description</p>
                   <p className="text-gray-900">{selectedAgent.description}</p>
                 </div>
 
                 <div>
-                  <span className="text-sm text-gray-500">Port</span>
-                  <p className="font-mono text-gray-900">{selectedAgent.port}</p>
-                </div>
-
-                <div>
-                  <span className="text-sm text-gray-500">All Skills</span>
-                  <div className="flex flex-wrap gap-2 mt-1">
+                  <p className="text-sm text-gray-500 mb-2">All Skills</p>
+                  <div className="flex flex-wrap gap-2">
                     {selectedAgent.skills.map((skill) => (
-                      <span key={skill} className="px-2 py-1 bg-blue-100 text-blue-800 text-xs rounded">
+                      <Badge key={skill} variant="default">
                         {skill}
-                      </span>
+                      </Badge>
                     ))}
                   </div>
                 </div>
 
-                <div className="pt-4 border-t">
-                  <button className="w-full bg-blue-500 hover:bg-blue-600 text-white py-2 px-4 rounded-lg mb-2">
-                    Open Chat
-                  </button>
-                  <button className="w-full bg-gray-100 hover:bg-gray-200 text-gray-700 py-2 px-4 rounded-lg">
-                    View Logs
-                  </button>
+                <div className="pt-4 space-y-2">
+                  <Button className="w-full">
+                    💬 Open Chat
+                  </Button>
+                  <Button variant="outline" className="w-full">
+                    📋 View Logs
+                  </Button>
                 </div>
-              </div>
-            </div>
+              </CardContent>
+            </Card>
           ) : (
-            <div className="bg-white rounded-lg shadow p-6 text-center text-gray-500">
-              <p>Select an agent to view details</p>
-            </div>
+            <Card>
+              <CardContent className="p-12 text-center text-gray-500">
+                <div className="text-4xl mb-4">👈</div>
+                <p>Select an agent to view details</p>
+              </CardContent>
+            </Card>
           )}
         </div>
       </div>
