@@ -8,64 +8,48 @@ set -e
 echo "🚀 DEV-Agent 多服务启动"
 echo "========================"
 
-# 检查 Hermes 是否已安装
-if ! command -v hermes &> /dev/null; then
-    echo "❌ Hermes 未安装"
+# 检查 Node.js 是否已安装
+if ! command -v node &> /dev/null; then
+    echo "❌ Node.js 未安装"
     exit 1
 fi
 
-echo "✅ Hermes 已安装"
+echo "✅ Node.js 已安装: $(node --version)"
 
 # 定义 Agent 配置
 declare -A AGENTS=(
-    ["dev-frontend"]="8201:~/.hermes-dev-frontend:前端开发 Agent"
-    ["dev-backend"]="8202:~/.hermes-dev-backend:后端开发 Agent"
-    ["dev-testing"]="8203:~/.hermes-dev-testing:测试开发 Agent"
-    ["dev-devops"]="8204:~/.hermes-dev-devops:DevOps Agent"
+    ["frontend"]="8201:packages/agents/frontend:前端开发 Agent"
+    ["backend"]="8202:packages/agents/backend:后端开发 Agent"
+    ["testing"]="8203:packages/agents/testing:测试开发 Agent"
+    ["devops"]="8204:packages/agents/devops:DevOps Agent"
 )
 
 # 启动每个 Agent
 for agent in "${!AGENTS[@]}"; do
-    IFS=':' read -r port home_dir label <<< "${AGENTS[$agent]}"
+    IFS=':' read -r port path label <<< "${AGENTS[$agent]}"
     
     echo ""
     echo "📦 启动 $label ($agent)..."
     
-    # 创建配置目录
-    mkdir -p "$home_dir"
+    # 进入 Agent 目录
+    cd "$path"
     
-    # 创建配置文件
-    cat > "$home_dir/config.yaml" << EOF
-model:
-  default: mimo-v2.5
-  provider: xiaomi
-  base_url: https://token-plan-sgp.xiaomimimo.com/v1
-
-platforms:
-  api_server:
-    enabled: true
-    extra:
-      host: "127.0.0.1"
-      port: $port
-      model_name: "hermes-agent"
-
-agent:
-  max_turns: 90
-  gateway_timeout: 1800
-
-toolsets:
-  - hermes-cli
-EOF
+    # 检查依赖是否已安装
+    if [ ! -d "node_modules" ]; then
+        echo "   📦 安装依赖..."
+        npm install
+    fi
     
-    echo "   ✅ 配置文件已创建: $home_dir/config.yaml"
-    
-    # 启动实例（后台运行）
-    HERMES_HOME="$home_dir" hermes gateway run &
+    # 启动 Agent（后台运行）
+    AGENT_PORT=$port npm run dev &
     PID=$!
     
-    echo "   ✅ 实例已启动 (PID: $PID, 端口: $port)"
+    echo "   ✅ Agent 已启动 (PID: $PID, 端口: $port)"
     
-    # 等待实例启动
+    # 返回项目根目录
+    cd - > /dev/null
+    
+    # 等待 Agent 启动
     sleep 2
 done
 
@@ -74,7 +58,7 @@ echo "🎉 所有 Agent 已启动！"
 echo ""
 echo "📋 Agent 状态："
 for agent in "${!AGENTS[@]}"; do
-    IFS=':' read -r port home_dir label <<< "${AGENTS[$agent]}"
+    IFS=':' read -r port path label <<< "${AGENTS[$agent]}"
     if curl -s "http://127.0.0.1:$port/health" > /dev/null 2>&1; then
         echo "   ✅ $label (端口 $port) - 运行中"
     else
@@ -85,5 +69,5 @@ done
 echo ""
 echo "📋 下一步："
 echo "   1. 启动 Gateway: ./start-gateway.sh"
-echo "   2. 测试路由: ./test-routing.sh"
-echo "   3. 停止所有实例: pkill -f 'hermes gateway run'"
+echo "   2. 测试路由: ./test-gateway.sh"
+echo "   3. 停止所有实例: pkill -f 'tsx watch'"
