@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 
-const AGENT_PORTS = [8201, 8202, 8203, 8204];
-const AGENT_IDS = ['frontend', 'backend', 'testing', 'devops'];
+const AGENT_PORTS = [8201, 8202, 8203, 8204, 8205];
+const AGENT_IDS = ['frontend', 'backend', 'testing', 'devops', 'pm'];
 
 interface HealthResult {
   id: string;

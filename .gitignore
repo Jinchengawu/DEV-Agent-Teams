@@ -93,3 +93,6 @@ tsconfig.tsbuildinfo
 # Local configurations
 *.local.yaml
 *.local.json
+
+.npm-cache
+.npm-cache/*

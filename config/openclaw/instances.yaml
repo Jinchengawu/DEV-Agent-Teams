@@ -69,6 +69,22 @@ instances:
       - ansible
     timeout_ms: 300000
 
+  - id: dev-pm
+    label: "产品经理 Agent"
+    port: 8205
+    hermes_port: 8205
+    tags: ["pm", "product", "prd", "requirement", "strategy", "用户研究", "产品", "需求"]
+    skills:
+      - prd-writing
+      - user-story-mapping
+      - requirements-analysis
+      - competitor-analysis
+      - product-strategy
+      - user-research
+      - roadmap-planning
+      - data-analysis
+    timeout_ms: 120000
+
 # 路由规则
 routing:
   # 基于标签的路由
@@ -81,6 +97,8 @@ routing:
       instance: "dev-testing"
     - tags: ["docker", "k8s", "deploy", "ci/cd", "devops", "运维"]
       instance: "dev-devops"
+    - tags: ["prd", "requirement", "product", "strategy", "user-story", "pm", "产品", "需求"]
+      instance: "dev-pm"
   
   # 默认实例
   default: "dev-backend"

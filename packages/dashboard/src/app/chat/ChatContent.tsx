@@ -17,7 +17,7 @@ const WELCOME_MESSAGE: ChatMessage = {
   id: 'welcome',
   role: 'assistant',
   content:
-    "Hello! I'm DEV-Agent-Teams. I can help you with:\n\n• 🎨 Frontend development (React, Vue, TypeScript)\n• ⚙️ Backend development (Python, Node.js, Go)\n• 🧪 Testing (pytest, Jest, Playwright)\n• 🚀 DevOps (Docker, Kubernetes, CI/CD)\n\nWhat would you like to work on?",
+    "Hello! I'm DEV-Agent-Teams. I can help you with:\n\n• 🎨 Frontend development (React, Vue, TypeScript)\n• ⚙️ Backend development (Python, Node.js, Go)\n• 🧪 Testing (pytest, Jest, Playwright)\n• 🚀 DevOps (Docker, Kubernetes, CI/CD)\n• 📋 Product Management (PRD, user stories, requirements)\n\nWhat would you like to work on?",
   agentId: 'system',
   timestamp: Date.now(),
 }
@@ -263,6 +263,7 @@ export default function ChatContent() {
               { label: 'Design API', text: 'Design a RESTful user API endpoint with Express' },
               { label: 'Write tests', text: 'Write unit tests for an authentication module' },
               { label: 'Create Dockerfile', text: 'Create a Dockerfile for a Node.js application' },
+              { label: 'Write PRD', text: 'Write a product requirements document for a user authentication feature' },
             ].map((suggestion) => (
               <Button
                 key={suggestion.label}

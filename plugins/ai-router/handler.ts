@@ -89,6 +89,15 @@ function getDefaultConfig(): RoutingConfig {
         skills: ['docker-management', 'kubernetes-deployment'],
         timeout_ms: 300000,
       },
+      {
+        id: 'dev-pm',
+        label: '产品经理 Agent',
+        port: 8205,
+        hermes_port: 8205,
+        tags: ['prd', 'requirement', 'product', 'strategy', 'pm', '产品', '需求'],
+        skills: ['prd-writing', 'user-story-mapping', 'requirements-analysis'],
+        timeout_ms: 120000,
+      },
     ],
     routing: {
       rules: [],

@@ -5,6 +5,7 @@ const AGENT_PORTS: Record<string, number> = {
   backend: 8202,
   testing: 8203,
   devops: 8204,
+  pm: 8205,
 };
 
 export async function POST(request: NextRequest) {

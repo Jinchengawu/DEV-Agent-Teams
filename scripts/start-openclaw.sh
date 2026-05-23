@@ -52,6 +52,7 @@ declare -A AGENTS=(
     ["backend"]="${BACKEND_AGENT_PORT:-8202}:~/.hermes-dev-backend:后端开发 Agent"
     ["testing"]="${TESTING_AGENT_PORT:-8203}:~/.hermes-dev-testing:测试开发 Agent"
     ["devops"]="${DEVOPS_AGENT_PORT:-8204}:~/.hermes-dev-devops:DevOps Agent"
+    ["pm"]="${PM_AGENT_PORT:-8205}:~/.hermes-dev-pm:产品经理 Agent"
 )
 
 # 步骤 1: 启动 Hermes 实例

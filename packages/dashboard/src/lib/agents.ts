@@ -37,6 +37,15 @@ export const AGENTS: Record<string, AgentInfo> = {
     color: 'from-purple-500 to-purple-600',
     tags: ['docker', 'k8s', 'kubernetes', 'deploy', 'ci/cd', 'devops', '运维'],
   },
+  pm: {
+    id: 'pm',
+    name: 'PM Agent',
+    label: '产品经理 Agent',
+    port: 8205,
+    icon: '📋',
+    color: 'from-red-500 to-pink-600',
+    tags: ['prd', 'requirement', 'product', 'strategy', 'user-story', 'pm', '产品', '需求', '用户研究'],
+  },
 };
 
 export const AGENT_LIST: AgentInfo[] = Object.values(AGENTS);
@@ -49,6 +58,7 @@ export function getAgentUrl(agentId: string): string {
     backend: 8202,
     testing: 8203,
     devops: 8204,
+    pm: 8205,
   };
   return `http://localhost:${ports[agentId] || 8201}`;
 }

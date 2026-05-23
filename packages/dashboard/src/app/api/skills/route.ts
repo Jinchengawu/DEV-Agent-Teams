@@ -18,6 +18,7 @@ const CATEGORY_AGENT_MAP: Record<string, string> = {
   devops: 'devops',
   database: 'backend',
   security: 'devops',
+  pm: 'pm',
 };
 
 function parseFrontmatter(content: string): {

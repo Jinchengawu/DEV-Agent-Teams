@@ -23,4 +23,5 @@ export const SKILL_CATEGORIES = [
   { key: 'devops', label: 'DevOps', icon: '🚀' },
   { key: 'database', label: 'Database', icon: '🗄️' },
   { key: 'security', label: 'Security', icon: '🔒' },
+  { key: 'pm', label: 'PM', icon: '📋' },
 ] as const;
