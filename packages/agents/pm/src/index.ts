@@ -1,22 +1,20 @@
 /**
- * DEV-Agent PM Agent (Hermes 集成版)
+ * DEV-Agent PM Agent (Core Library 集成版 + 工作流驱动)
  *
- * 产品经理专用 Agent：通过 Hermes 实现真正的 AI 能力
+ * 产品经理 Agent：
+ * - 需求分析和 PRD 编写
+ * - 与用户确认需求后触发全流程开发流水线
  */
 
-import express from 'express';
 import { readFileSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
+import { createAgentApp, WorkflowOrchestrator } from '@dev-agent/core';
+import type { AgentFactoryConfig } from '@dev-agent/core';
+import Database from 'better-sqlite3';
+import os from 'node:os';
+import path from 'node:path';
 
-interface AgentConfig {
-  id: string;
-  label: string;
-  port: number;
-  hermesPort: number;
-  skills: string[];
-}
-
-const config: AgentConfig = {
+const config: AgentFactoryConfig = {
   id: 'dev-pm',
   label: '产品经理 Agent',
   port: parseInt(process.env.AGENT_PORT || '8205'),
@@ -33,105 +31,78 @@ const config: AgentConfig = {
     'prototyping',
     'a-b-testing',
   ],
+  tags: ['prd', 'requirement', 'product', 'strategy', 'user-story', 'pm', '产品', '需求', '用户研究'],
+  peers: [
+    { host: '127.0.0.1', port: 8201, id: 'dev-frontend' },
+    { host: '127.0.0.1', port: 8202, id: 'dev-backend' },
+    { host: '127.0.0.1', port: 8203, id: 'dev-testing' },
+    { host: '127.0.0.1', port: 8204, id: 'dev-devops' },
+  ],
+  buildSystemPrompt() {
+    const skills = config.skills.map((skill) => {
+      const content = loadSkillContent(skill);
+      return `## ${skill}\n${content.substring(0, 500)}...`;
+    }).join('\n\n');
+    return `你是一个专业的产品经理 Agent，专注于产品需求分析、PRD 编写、用户研究、产品策略制定。\n\n你的技能包括：\n${config.skills.map((s) => `- ${s}`).join('\n')}\n\n技能详情：\n${skills}\n\n请根据用户的需求，提供专业的产品管理建议。`;
+  },
+  loadSkillContent(skillName: string) {
+    const skillPath = join(process.cwd(), '../../skills/pm', skillName, 'SKILL.md');
+    if (existsSync(skillPath)) return readFileSync(skillPath, 'utf-8');
+    return '';
+  },
 };
 
 function loadSkillContent(skillName: string): string {
   const skillPath = join(process.cwd(), '../../skills/pm', skillName, 'SKILL.md');
-
-  if (existsSync(skillPath)) {
-    return readFileSync(skillPath, 'utf-8');
-  }
-
+  if (existsSync(skillPath)) return readFileSync(skillPath, 'utf-8');
   return '';
 }
 
-function buildSystemPrompt(): string {
-  const skills = config.skills.map(skill => {
-    const content = loadSkillContent(skill);
-    return `## ${skill}\n${content.substring(0, 500)}...`;
-  }).join('\n\n');
+const { app, agentBus, sessionManager, memoryStore, compressor } = createAgentApp(config);
 
-  return `你是一个专业的产品经理 Agent，专注于产品需求分析、PRD 编写、用户研究、产品策略制定。
+// ── Workflow Orchestrator (PM-only) ──
+const dataDir = process.env.AGENT_DB_PATH || path.join(os.homedir(), '.dev-agent/data');
+const db = new Database(path.join(dataDir, 'pm.db'));
+db.pragma('journal_mode = WAL');
+const orchestrator = new WorkflowOrchestrator(db, agentBus, sessionManager);
 
-你的技能包括：
-${config.skills.map(s => `- ${s}`).join('\n')}
+// ── Workflow endpoints ──
+app.get('/v1/workflows', (_req, res) => {
+  const workflows = orchestrator.listWorkflows();
+  res.json({ workflows });
+});
 
-技能详情：
-${skills}
+app.get('/v1/workflows/:id', (req, res) => {
+  const wf = orchestrator.getWorkflow(req.params.id);
+  if (!wf) { res.status(404).json({ error: 'Workflow not found' }); return; }
+  const steps = orchestrator.getWorkflowSteps(req.params.id);
+  const template = orchestrator.getTemplate(wf.template);
+  res.json({ workflow: wf, steps, template });
+});
 
-请根据用户的需求，提供专业的产品管理建议，包括但不限于 PRD 文档、用户故事、需求分析、竞品分析、产品路线图等。`;
-}
-
-async function callHermes(message: string): Promise<string> {
+app.post('/v1/workflows', async (req, res) => {
   try {
-    const response = await fetch(`http://127.0.0.1:${config.hermesPort}/v1/chat/completions`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        model: 'hermes-agent',
-        messages: [
-          { role: 'system', content: buildSystemPrompt() },
-          { role: 'user', content: message }
-        ],
-        max_tokens: 2000,
-      }),
-      signal: AbortSignal.timeout(60000),
-    });
-
-    if (response.ok) {
-      const data = await response.json() as any;
-      return data.choices?.[0]?.message?.content || '无法生成响应';
+    const { sessionId, templateId, userRequest } = req.body;
+    if (!sessionId || !templateId || !userRequest) {
+      res.status(400).json({ error: 'sessionId, templateId, userRequest required' });
+      return;
     }
-
-    return `Hermes 调用失败: ${response.status}`;
-  } catch (error) {
-    return `Hermes 连接失败: ${error instanceof Error ? error.message : '未知错误'}`;
-  }
-}
-
-const app = express();
-app.use(express.json());
-
-app.get('/health', (req, res) => {
-  res.json({
-    status: 'ok',
-    agent: config.id,
-    label: config.label,
-    hermesPort: config.hermesPort,
-    skills: config.skills.length,
-  });
-});
-
-app.post('/v1/chat/completions', async (req, res) => {
-  try {
-    const { messages } = req.body;
-    const userMessage = messages?.[0]?.content || '';
-
-    const content = await callHermes(userMessage);
-
-    res.json({
-      id: `chatcmpl-${Date.now()}`,
-      object: 'chat.completion',
-      created: Math.floor(Date.now() / 1000),
-      model: config.id,
-      choices: [{
-        index: 0,
-        message: { role: 'assistant', content },
-        finish_reason: 'stop',
-      }],
-      usage: {
-        prompt_tokens: userMessage.length,
-        completion_tokens: content.length,
-        total_tokens: userMessage.length + content.length,
-      },
-    });
-  } catch (error) {
-    res.status(500).json({ error: 'Internal server error' });
+    const wf = await orchestrator.startWorkflow(sessionId, templateId, userRequest);
+    res.json({ workflow: wf });
+  } catch (e) {
+    res.status(500).json({ error: e instanceof Error ? e.message : 'Unknown error' });
   }
 });
 
-app.listen(config.port, () => {
+app.get('/v1/templates', (_req, res) => {
+  res.json({ templates: orchestrator.listTemplates() });
+});
+
+app.listen(config.port, async () => {
   console.log(`🚀 ${config.label} listening on port ${config.port}`);
-  console.log(`🔗 Hermes integration: http://127.0.0.1:${config.hermesPort}`);
-  console.log(`📋 Skills: ${config.skills.join(', ')}`);
+  console.log(`🔄 Workflow Orchestrator enabled`);
+  await agentBus.registry.registerWithPeers(config.peers);
 });
+
+process.on('SIGINT', () => { sessionManager.close(); memoryStore.close(); process.exit(0); });
+process.on('SIGTERM', () => { sessionManager.close(); memoryStore.close(); process.exit(0); });

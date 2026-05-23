@@ -11,7 +11,7 @@ const AGENT_PORTS: Record<string, number> = {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { messages, agentId } = body;
+    const { messages, agentId, sessionId } = body;
 
     if (!messages || !Array.isArray(messages) || messages.length === 0) {
       return NextResponse.json(
@@ -37,7 +37,7 @@ export async function POST(request: NextRequest) {
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ messages }),
+        body: JSON.stringify({ messages, sessionId }),
         signal: controller.signal,
       }
     );
@@ -58,6 +58,7 @@ export async function POST(request: NextRequest) {
         content: data.choices?.[0]?.message?.content || 'No response',
       },
       agent: targetAgent,
+      sessionId: data.sessionId || sessionId,
     });
   } catch (e) {
     const message = e instanceof Error ? e.message : 'Unknown error';

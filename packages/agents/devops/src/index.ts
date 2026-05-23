@@ -1,22 +1,13 @@
 /**
- * DEV-Agent DevOps Agent (Hermes 集成版)
- * 
- * DevOps 专用 Agent：通过 Hermes 实现真正的 AI 能力
+ * DEV-Agent DevOps Agent (Core Library 集成版)
  */
 
-import express from 'express';
 import { readFileSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
+import { createAgentApp } from '@dev-agent/core';
+import type { AgentFactoryConfig } from '@dev-agent/core';
 
-interface AgentConfig {
-  id: string;
-  label: string;
-  port: number;
-  hermesPort: number;
-  skills: string[];
-}
-
-const config: AgentConfig = {
+const config: AgentFactoryConfig = {
   id: 'dev-devops',
   label: 'DevOps Agent',
   port: parseInt(process.env.AGENT_PORT || '8204'),
@@ -34,105 +25,39 @@ const config: AgentConfig = {
     'chaos-engineering',
     'service-mesh',
   ],
+  tags: ['docker', 'k8s', 'kubernetes', 'deploy', 'ci/cd', 'devops', '运维'],
+  peers: [
+    { host: '127.0.0.1', port: 8201, id: 'dev-frontend' },
+    { host: '127.0.0.1', port: 8202, id: 'dev-backend' },
+    { host: '127.0.0.1', port: 8203, id: 'dev-testing' },
+    { host: '127.0.0.1', port: 8205, id: 'dev-pm' },
+  ],
+  buildSystemPrompt() {
+    const skills = config.skills.map((skill) => {
+      const content = loadSkillContent(skill);
+      return `## ${skill}\n${content.substring(0, 500)}...`;
+    }).join('\n\n');
+    return `你是一个专业的 DevOps Agent，专注于 Docker、Kubernetes、CI/CD、Terraform、监控。\n\n你的技能包括：\n${config.skills.map((s) => `- ${s}`).join('\n')}\n\n技能详情：\n${skills}\n\n请根据用户的需求，提供专业的 DevOps 解决方案。`;
+  },
+  loadSkillContent(skillName: string) {
+    const skillPath = join(process.cwd(), '../../skills/devops', skillName, 'SKILL.md');
+    if (existsSync(skillPath)) return readFileSync(skillPath, 'utf-8');
+    return '';
+  },
 };
 
 function loadSkillContent(skillName: string): string {
   const skillPath = join(process.cwd(), '../../skills/devops', skillName, 'SKILL.md');
-  
-  if (existsSync(skillPath)) {
-    return readFileSync(skillPath, 'utf-8');
-  }
-  
+  if (existsSync(skillPath)) return readFileSync(skillPath, 'utf-8');
   return '';
 }
 
-function buildSystemPrompt(): string {
-  const skills = config.skills.map(skill => {
-    const content = loadSkillContent(skill);
-    return `## ${skill}\n${content.substring(0, 500)}...`;
-  }).join('\n\n');
+const { app, agentBus, sessionManager, memoryStore } = createAgentApp(config);
 
-  return `你是一个专业的 DevOps Agent，专注于 Docker、Kubernetes、CI/CD、监控、基础设施即代码。
-
-你的技能包括：
-${config.skills.map(s => `- ${s}`).join('\n')}
-
-技能详情：
-${skills}
-
-请根据用户的需求，提供专业的 DevOps 建议和配置示例。`;
-}
-
-async function callHermes(message: string): Promise<string> {
-  try {
-    const response = await fetch(`http://127.0.0.1:${config.hermesPort}/v1/chat/completions`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        model: 'hermes-agent',
-        messages: [
-          { role: 'system', content: buildSystemPrompt() },
-          { role: 'user', content: message }
-        ],
-        max_tokens: 2000,
-      }),
-      signal: AbortSignal.timeout(60000),
-    });
-
-    if (response.ok) {
-      const data = await response.json() as any;
-      return data.choices?.[0]?.message?.content || '无法生成响应';
-    }
-    
-    return `Hermes 调用失败: ${response.status}`;
-  } catch (error) {
-    return `Hermes 连接失败: ${error instanceof Error ? error.message : '未知错误'}`;
-  }
-}
-
-const app = express();
-app.use(express.json());
-
-app.get('/health', (req, res) => {
-  res.json({
-    status: 'ok',
-    agent: config.id,
-    label: config.label,
-    hermesPort: config.hermesPort,
-    skills: config.skills.length,
-  });
-});
-
-app.post('/v1/chat/completions', async (req, res) => {
-  try {
-    const { messages } = req.body;
-    const userMessage = messages?.[0]?.content || '';
-    
-    const content = await callHermes(userMessage);
-    
-    res.json({
-      id: `chatcmpl-${Date.now()}`,
-      object: 'chat.completion',
-      created: Math.floor(Date.now() / 1000),
-      model: config.id,
-      choices: [{
-        index: 0,
-        message: { role: 'assistant', content },
-        finish_reason: 'stop',
-      }],
-      usage: {
-        prompt_tokens: userMessage.length,
-        completion_tokens: content.length,
-        total_tokens: userMessage.length + content.length,
-      },
-    });
-  } catch (error) {
-    res.status(500).json({ error: 'Internal server error' });
-  }
-});
-
-app.listen(config.port, () => {
+app.listen(config.port, async () => {
   console.log(`🚀 ${config.label} listening on port ${config.port}`);
-  console.log(`🔗 Hermes integration: http://127.0.0.1:${config.hermesPort}`);
-  console.log(`📋 Skills: ${config.skills.join(', ')}`);
+  await agentBus.registry.registerWithPeers(config.peers);
 });
+
+process.on('SIGINT', () => { sessionManager.close(); memoryStore.close(); process.exit(0); });
+process.on('SIGTERM', () => { sessionManager.close(); memoryStore.close(); process.exit(0); });

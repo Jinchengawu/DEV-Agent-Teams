@@ -28,6 +28,7 @@ export default function ChatContent() {
   const initialAgent = searchParams.get('agent') || ''
   const [selectedAgent, setSelectedAgent] = useState<string>(initialAgent)
   const [messages, setMessages] = useState<ChatMessage[]>([WELCOME_MESSAGE])
+  const [sessionId, setSessionId] = useState('')
   const [input, setInput] = useState('')
   const [isSending, setIsSending] = useState(false)
   const messagesEndRef = useRef<HTMLDivElement>(null)
@@ -69,6 +70,7 @@ export default function ChatContent() {
         body: JSON.stringify({
           messages: [{ role: 'user', content: input.trim() }],
           agentId: targetAgent,
+          sessionId: sessionId || undefined,
         }),
       })
 
@@ -76,6 +78,10 @@ export default function ChatContent() {
 
       if (!res.ok || data.error) {
         throw new Error(data.error || `HTTP ${res.status}`)
+      }
+
+      if (data.sessionId && !sessionId) {
+        setSessionId(data.sessionId)
       }
 
       const agentMessage: ChatMessage = {

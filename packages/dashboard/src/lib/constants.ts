@@ -3,6 +3,8 @@ export const NAV_ITEMS = [
   { href: '/agents', label: 'Agents', icon: '🤖' },
   { href: '/skills', label: 'Skills', icon: '📚' },
   { href: '/chat', label: 'Chat', icon: '💬' },
+  { href: '/sessions', label: 'Sessions', icon: '💬' },
+  { href: '/workflows', label: 'Workflows', icon: '🔄' },
   { href: '/settings', label: 'Settings', icon: '⚙️' },
 ] as const;
 
