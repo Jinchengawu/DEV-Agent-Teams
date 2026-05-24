@@ -89,8 +89,10 @@ export function createAgentApp(config: AgentFactoryConfig): AgentApp {
     try {
       const { messages, sessionId: clientSessionId } = req.body;
 
-      const sessionId =
-        clientSessionId || sessionManager.createSession();
+      let sessionId = clientSessionId || '';
+      if (!sessionId || !sessionManager.getSession(sessionId)) {
+        sessionId = sessionManager.createSession();
+      }
 
       const messagesArr: { role: string; content: string }[] =
         messages || [];

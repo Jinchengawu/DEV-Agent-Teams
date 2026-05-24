@@ -1,6 +1,8 @@
 #!/bin/bash
 
 # DEV-Agent-Teams 全部服务启动脚本
+# Agent 公开端口: 8201-8205
+# Hermes 内部端口: 9201-9205 (Agent 通过 internal port 调用 Hermes)
 # 使用方法: ./start-all.sh
 
 set -e
@@ -51,29 +53,31 @@ echo "✅ Node.js 已安装: $(node --version)"
 echo "✅ Hermes 已安装"
 echo "✅ 模型配置: $MODEL_PROVIDER / $MODEL_NAME"
 
-# 定义 Agent 配置（兼容 macOS 默认 bash 3.2，不使用关联数组）
+# Hermes 配置 (兼容 macOS 默认 bash 3.2)
+export GATEWAY_ALLOW_ALL_USERS=true
+export ANTHROPIC_API_KEY="${API_KEY:-}"
+
+# Agent 公开端口 / Hermes 内部端口 (port+1000)
 AGENTS=(
-    "frontend:${FRONTEND_AGENT_PORT:-8201}:packages/agents/frontend:前端开发 Agent"
-    "backend:${BACKEND_AGENT_PORT:-8202}:packages/agents/backend:后端开发 Agent"
-    "testing:${TESTING_AGENT_PORT:-8203}:packages/agents/testing:测试开发 Agent"
-    "devops:${DEVOPS_AGENT_PORT:-8204}:packages/agents/devops:DevOps Agent"
-    "pm:${PM_AGENT_PORT:-8205}:packages/agents/pm:产品经理 Agent"
+    "frontend:${FRONTEND_AGENT_PORT:-8201}:9201:packages/agents/frontend:前端开发 Agent"
+    "backend:${BACKEND_AGENT_PORT:-8202}:9202:packages/agents/backend:后端开发 Agent"
+    "testing:${TESTING_AGENT_PORT:-8203}:9203:packages/agents/testing:测试开发 Agent"
+    "devops:${DEVOPS_AGENT_PORT:-8204}:9204:packages/agents/devops:DevOps Agent"
+    "pm:${PM_AGENT_PORT:-8205}:9205:packages/agents/pm:产品经理 Agent"
 )
 
-# 步骤 1: 启动 Hermes 实例
+# 步骤 1: 启动 Hermes 实例 (内部端口)
 echo ""
 echo "📦 步骤 1: 启动 Hermes 实例..."
 
 for entry in "${AGENTS[@]}"; do
-    IFS=':' read -r agent port path label <<< "$entry"
-    
-    echo "   启动 Hermes for $label (端口 $port)..."
-    
-    # 创建 Hermes 配置目录
+    IFS=':' read -r agent public_port hermes_port path label <<< "$entry"
+
+    echo "   启动 Hermes for $label (内部端口 $hermes_port)..."
+
     HOME_DIR="$HOME/.hermes-dev-$agent"
     mkdir -p "$HOME_DIR"
-    
-    # 创建配置文件（使用环境变量）
+
     cat > "$HOME_DIR/config.yaml" << EOF
 model:
   default: $MODEL_NAME
@@ -85,7 +89,7 @@ platforms:
     enabled: true
     extra:
       host: "127.0.0.1"
-      port: $port
+      port: $hermes_port
       model_name: "hermes-agent"
 
 agent:
@@ -95,66 +99,61 @@ agent:
 toolsets:
   - hermes-cli
 EOF
-    
-    # 启动 Hermes（后台运行）
+
     HERMES_HOME="$HOME_DIR" hermes gateway run &
     HERMES_PID=$!
-    
-    echo "   ✅ Hermes 已启动 (PID: $HERMES_PID, 端口: $port)"
-    
-    # 等待 Hermes 启动
+
+    echo "   ✅ Hermes 已启动 (PID: $HERMES_PID, 内部: $hermes_port → 公开: $public_port)"
+
     sleep 3
 done
 
-# 步骤 2: 启动 Agent 服务
+# 步骤 2: 启动 Agent 服务 (公开端口)
 echo ""
 echo "📦 步骤 2: 启动 Agent 服务..."
 
 for entry in "${AGENTS[@]}"; do
-    IFS=':' read -r agent port path label <<< "$entry"
-    
+    IFS=':' read -r agent public_port hermes_port path label <<< "$entry"
+
     echo "   启动 $label..."
-    
-    # 进入 Agent 目录
+
     cd "$SCRIPT_DIR/$path"
-    
-    # 检查依赖是否已安装
+
     if [ ! -d "node_modules" ]; then
         echo "   📦 安装依赖..."
         npm install --cache "$SCRIPT_DIR/.npm-cache"
     fi
-    
-    # 启动 Agent（后台运行）
-    AGENT_PORT=$port HERMES_PORT=$port npm run dev &
+
+    AGENT_PORT=$public_port HERMES_PORT=$hermes_port npm run dev &
     AGENT_PID=$!
-    
-    echo "   ✅ Agent 已启动 (PID: $AGENT_PID, 端口: $port)"
-    
-    # 返回项目根目录
+
+    echo "   ✅ Agent 已启动 (PID: $AGENT_PID, 端口: $public_port → Hermes: $hermes_port)"
+
     cd "$SCRIPT_DIR"
-    
-    # 等待 Agent 启动
+
     sleep 2
 done
+
+# 创建 data 目录
+mkdir -p "$HOME/.dev-agent/data"
 
 echo ""
 echo "🎉 所有服务已启动！"
 echo ""
 echo "📋 服务状态："
 
-# 检查 Hermes 状态
-echo "Hermes 实例:"
+# 检查 Agent 状态 (公开端口)
+echo "Agent 实例:"
 for entry in "${AGENTS[@]}"; do
-    IFS=':' read -r agent port path label <<< "$entry"
-    if curl -s "http://127.0.0.1:$port/health" > /dev/null 2>&1; then
-        echo "   ✅ $label (端口 $port) - 运行中"
+    IFS=':' read -r agent public_port hermes_port path label <<< "$entry"
+    if curl -s "http://127.0.0.1:$public_port/health" > /dev/null 2>&1; then
+        echo "   ✅ $label (Agent:$public_port Hermes:$hermes_port) - 运行中"
     else
-        echo "   ❌ $label (端口 $port) - 未响应"
+        echo "   ❌ $label (Agent:$public_port) - 未响应"
     fi
 done
 
 echo ""
 echo "📋 下一步："
-echo "   1. 启动 Gateway: ./start-gateway.sh"
-echo "   2. 测试路由: ./test-gateway.sh"
-echo "   3. 停止所有实例: pkill -f 'hermes gateway run' && pkill -f 'tsx watch'"
+echo "   1. 启动 Dashboard: cd packages/dashboard && npm run dev"
+echo "   2. 停止所有实例: pkill -f 'hermes gateway run' && pkill -f 'tsx watch'"
