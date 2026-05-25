@@ -53,11 +53,13 @@ export class SessionManager {
       .all('deleted', limit, offset) as Session[];
   }
 
+  private readonly ALLOWED_COLUMNS = new Set(['title', 'status']);
+
   updateSession(sessionId: string, updates: Partial<Session>): void {
     const fields: string[] = [];
     const values: unknown[] = [];
     for (const [key, value] of Object.entries(updates)) {
-      if (key === 'id') continue;
+      if (!this.ALLOWED_COLUMNS.has(key)) continue;
       fields.push(`${key} = ?`);
       values.push(value);
     }
@@ -70,7 +72,9 @@ export class SessionManager {
   }
 
   deleteSession(sessionId: string): void {
-    this.db.prepare('DELETE FROM sessions WHERE id = ?').run(sessionId);
+    this.db
+      .prepare("UPDATE sessions SET status = 'deleted', updated_at = datetime('now') WHERE id = ?")
+      .run(sessionId);
   }
 
   addMessage(

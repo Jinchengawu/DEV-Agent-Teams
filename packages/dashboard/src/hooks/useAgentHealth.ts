@@ -40,10 +40,9 @@ export function useAgentHealth() {
   });
 
   const stats = {
-    totalRequests: 0,
+    totalAgents: data?.totalAgents || AGENT_LIST.length,
+    onlineCount: data?.onlineCount || 0,
     successRate: data ? Math.round((data.onlineCount / data.totalAgents) * 100) : 0,
-    avgResponse: '--',
-    activeAgents: data?.onlineCount || 0,
     totalSkills: data?.totalSkills || 0,
   };
 

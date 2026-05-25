@@ -84,6 +84,16 @@ export function createAgentApp(config: AgentFactoryConfig): AgentApp {
     });
   });
 
+  // Per-session concurrency lock
+  const sessionLocks = new Map<string, Promise<void>>();
+
+  async function withSessionLock(sessionId: string, fn: () => Promise<void>): Promise<void> {
+    const prev = sessionLocks.get(sessionId) || Promise.resolve();
+    const next = prev.then(fn, fn);
+    sessionLocks.set(sessionId, next.then(() => {}, () => {}));
+    await next;
+  }
+
   // ── Chat Completions ──
   app.post('/v1/chat/completions', async (req, res) => {
     try {
@@ -97,13 +107,21 @@ export function createAgentApp(config: AgentFactoryConfig): AgentApp {
       const messagesArr: { role: string; content: string }[] =
         messages || [];
 
-      // Store new user messages
-      for (const msg of messagesArr) {
-        if (msg.role === 'user') {
-          sessionManager.addMessage(sessionId, 'user', msg.content, 'user');
+      await withSessionLock(sessionId, async () => {
+        // BUG 1 fix: only store the LAST user message (the new one), not entire history
+        const lastUserMsg = [...messagesArr].reverse().find((m) => m.role === 'user');
+        if (lastUserMsg) {
+          const existingMessages = sessionManager.getAllMessages(sessionId);
+          const lastStored = existingMessages
+            .filter((m) => m.role === 'user')
+            .pop();
+          if (!lastStored || lastStored.content !== lastUserMsg.content) {
+            sessionManager.addMessage(sessionId, 'user', lastUserMsg.content, 'user');
+          }
         }
-      }
+      });
 
+      // Build context from DB + current request
       const allMessages = sessionManager
         .getAllMessages(sessionId)
         .map((m) => ({ role: m.role, content: m.content }));
@@ -124,28 +142,28 @@ export function createAgentApp(config: AgentFactoryConfig): AgentApp {
         hermesPayload
       );
 
-      sessionManager.addMessage(sessionId, 'assistant', content, config.id);
+      await withSessionLock(sessionId, async () => {
+        sessionManager.addMessage(sessionId, 'assistant', content, config.id);
 
-      if (compressedCount > 0) {
-        sessionManager.updateSession(sessionId, {
-          title: sessionManager.getSession(sessionId)?.title || '',
-        });
-      }
-
-      const userMessagesForTitle =
-        messagesArr.filter((m) => m.role === 'user').length;
-      const totalUserMessages =
-        sessionManager.getMessages(sessionId).filter((m) => m.role === 'user')
-          .length;
-
-      if (totalUserMessages <= userMessagesForTitle && messagesArr.length > 0) {
-        const firstUser = messagesArr.find((m) => m.role === 'user');
-        if (firstUser && firstUser.content) {
+        if (compressedCount > 0) {
           sessionManager.updateSession(sessionId, {
-            title: firstUser.content.substring(0, 100),
+            title: sessionManager.getSession(sessionId)?.title || '',
           });
         }
-      }
+
+        // Set title from first user message
+        const totalUserMessages = sessionManager
+          .getMessages(sessionId)
+          .filter((m) => m.role === 'user').length;
+        if (totalUserMessages === 1 && messagesArr.length > 0) {
+          const firstUser = messagesArr.find((m) => m.role === 'user');
+          if (firstUser?.content) {
+            sessionManager.updateSession(sessionId, {
+              title: firstUser.content.substring(0, 100),
+            });
+          }
+        }
+      });
 
       res.json({
         id: `chatcmpl-${Date.now()}`,
@@ -166,11 +184,6 @@ export function createAgentApp(config: AgentFactoryConfig): AgentApp {
             0
           ),
           completion_tokens: compressor.estimateTokens(content),
-          total_tokens:
-            hermesPayload.reduce(
-              (s, m) => s + compressor.estimateTokens(m.content),
-              0
-            ) + compressor.estimateTokens(content),
         },
       });
     } catch (error) {

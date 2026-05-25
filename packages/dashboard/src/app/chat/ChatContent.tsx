@@ -10,20 +10,25 @@ import { AGENTS, detectAgent } from '@/lib/agents'
 import type { ChatMessage } from '@/lib/types'
 
 const AGENT_LIST = Object.entries(AGENTS).map(([, info]) => ({ ...info }))
-
-const WELCOME_MESSAGE: ChatMessage = {
-  id: 'welcome',
-  role: 'assistant',
-  content:
-    "Hello! I'm DEV-Agent-Teams. I can help you with:\n\n• 🎨 Frontend development (React, Vue, TypeScript)\n• ⚙️ Backend development (Python, Node.js, Go)\n• 🧪 Testing (pytest, Jest, Playwright)\n• 🚀 DevOps (Docker, Kubernetes, CI/CD)\n• 📋 Product Management (PRD, user stories, requirements)\n\nWhat would you like to work on?",
-  agentId: 'system',
-  timestamp: Date.now(),
-}
+const MAX_INPUT_LENGTH = 10000
+const SESSION_STORAGE_KEY = 'dev-agent-chat-v1'
 
 function getWelcomeMessage(agentId: string): ChatMessage {
-  if (!agentId) return WELCOME_MESSAGE
+  if (!agentId) return {
+    id: 'welcome',
+    role: 'assistant',
+    content: "Hello! I'm DEV-Agent-Teams. I can help you with:\n\n• 🎨 Frontend development (React, Vue, TypeScript)\n• ⚙️ Backend development (Python, Node.js, Go)\n• 🧪 Testing (pytest, Jest, Playwright)\n• 🚀 DevOps (Docker, Kubernetes, CI/CD)\n• 📋 Product Management (PRD, user stories, requirements)\n\nWhat would you like to work on?",
+    agentId: 'system',
+    timestamp: Date.now(),
+  }
   const info = AGENTS[agentId]
-  if (!info) return WELCOME_MESSAGE
+  if (!info) return {
+    id: 'welcome',
+    role: 'assistant',
+    content: 'How can I help?',
+    agentId: 'system',
+    timestamp: Date.now(),
+  }
   return {
     id: `welcome-${agentId}`,
     role: 'assistant',
@@ -33,20 +38,58 @@ function getWelcomeMessage(agentId: string): ChatMessage {
   }
 }
 
+function loadConversations(): Record<string, ChatMessage[]> {
+  if (typeof window === 'undefined') return {}
+  try {
+    const raw = localStorage.getItem(SESSION_STORAGE_KEY)
+    return raw ? JSON.parse(raw) : {}
+  } catch { return {} }
+}
+
+function saveConversations(convs: Record<string, ChatMessage[]>) {
+  if (typeof window === 'undefined') return
+  try {
+    // Only persist recent messages (max 50 per agent)
+    const trimmed: Record<string, ChatMessage[]> = {}
+    for (const [key, msgs] of Object.entries(convs)) {
+      trimmed[key] = msgs.slice(-50)
+    }
+    localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(trimmed))
+  } catch { /* ignore quota errors */ }
+}
+
 export default function ChatContent() {
   const searchParams = useSearchParams()
   const { showToast } = useToast()
   const initialAgent = searchParams.get('agent') || ''
 
   const [selectedAgent, setSelectedAgent] = useState<string>(initialAgent)
-  const [conversations, setConversations] = useState<Record<string, ChatMessage[]>>({})
-  const [sessions, setSessions] = useState<Record<string, string>>({})
+  const [conversations, setConversations] = useState<Record<string, ChatMessage[]>>(() => loadConversations())
+  const [sessions, setSessions] = useState<Record<string, string>>(() => {
+    if (typeof window === 'undefined') return {}
+    try {
+      const raw = localStorage.getItem('dev-agent-sessions-v1')
+      return raw ? JSON.parse(raw) : {}
+    } catch { return {} }
+  })
   const [input, setInput] = useState('')
   const [isSending, setIsSending] = useState(false)
+  const isSendingRef = useRef(false)
+  const mountedRef = useRef(true)
   const messagesEndRef = useRef<HTMLDivElement>(null)
 
   const agentKey = selectedAgent || 'auto'
-  const currentMessages = conversations[agentKey] || [getWelcomeMessage(selectedAgent)]
+
+  // BUG 3 fix: memoize welcome message
+  const welcomeCache = useRef<Record<string, ChatMessage>>({})
+  const getCachedWelcome = useCallback((key: string) => {
+    if (!welcomeCache.current[key]) {
+      welcomeCache.current[key] = getWelcomeMessage(key === 'auto' ? '' : key)
+    }
+    return welcomeCache.current[key]
+  }, [])
+
+  const currentMessages = conversations[agentKey] || [getCachedWelcome(agentKey)]
   const currentSessionId = sessions[agentKey] || ''
 
   const scrollToBottom = useCallback(() => {
@@ -58,18 +101,34 @@ export default function ChatContent() {
   }, [currentMessages, isSending, scrollToBottom])
 
   useEffect(() => {
+    mountedRef.current = true
+    return () => { mountedRef.current = false }
+  }, [])
+
+  useEffect(() => {
     if (initialAgent) {
       setSelectedAgent(initialAgent)
     }
   }, [initialAgent])
 
+  useEffect(() => {
+    saveConversations(conversations)
+  }, [conversations])
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('dev-agent-sessions-v1', JSON.stringify(sessions))
+    }
+  }, [sessions])
+
   const addMessage = useCallback((key: string, msg: ChatMessage) => {
+    if (!mountedRef.current) return
     setConversations((prev) => {
-      const msgs = [...(prev[key] || [getWelcomeMessage(key === 'auto' ? '' : key)])]
+      const msgs = [...(prev[key] || [getCachedWelcome(key)])]
       msgs.push(msg)
       return { ...prev, [key]: msgs }
     })
-  }, [])
+  }, [getCachedWelcome])
 
   const clearConversation = useCallback(() => {
     setConversations((prev) => {
@@ -85,77 +144,101 @@ export default function ChatContent() {
     showToast('Conversation cleared', 'info')
   }, [agentKey, showToast])
 
-  const handleSend = async () => {
-    if (!input.trim() || isSending) return
+  const handleSendWithText = async (text: string, targetAgent: string, clearInput = false) => {
+    if (isSendingRef.current) return
+    isSendingRef.current = true
+    setIsSending(true)
+    if (clearInput) setInput('')
 
-    const targetAgent = selectedAgent || detectAgent(input.trim())
     const key = agentKey
-
     const userMessage: ChatMessage = {
       id: `user-${Date.now()}`,
       role: 'user',
-      content: input.trim(),
+      content: text,
       agentId: targetAgent,
       timestamp: Date.now(),
     }
 
-    addMessage(key, userMessage)
-    setInput('')
-    setIsSending(true)
-
-    // Build conversation history for this agent/session
-    const history = (conversations[key] || [])
-      .filter((m) => m.id !== 'welcome' && !m.id.startsWith('welcome-'))
+    // BUG 4 fix: build history BEFORE adding the message
+    const existingHistory = (conversations[key] || [])
+      .filter((m) => !m.id.startsWith('welcome'))
       .map((m) => ({ role: m.role, content: m.content }))
+    existingHistory.push({ role: 'user', content: text })
 
-    // Add the new user message
-    history.push({ role: 'user', content: input.trim() })
+    addMessage(key, userMessage)
 
     try {
       const res = await fetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          messages: history,
+          messages: existingHistory,
           agentId: targetAgent,
           sessionId: currentSessionId || undefined,
         }),
       })
 
-      const data = await res.json()
-
-      if (!res.ok || data.error) {
-        throw new Error(data.error || `HTTP ${res.status}`)
+      let data: Record<string, unknown> = {}
+      try {
+        data = await res.json()
+      } catch {
+        // BUG 6 fix: non-JSON response
+        const text = await res.clone().text().catch(() => '')
+        throw new Error(text.substring(0, 200) || `HTTP ${res.status}`)
       }
 
-      if (data.sessionId && !currentSessionId) {
-        setSessions((prev) => ({ ...prev, [key]: data.sessionId }))
+      if (!res.ok || data.error) {
+        throw new Error((data.error as string) || `HTTP ${res.status}`)
+      }
+
+      // BUG 2 fix: always update sessionId
+      if (data.sessionId) {
+        setSessions((prev) => ({ ...prev, [key]: data.sessionId as string }))
       }
 
       const agentMessage: ChatMessage = {
         id: `agent-${Date.now()}`,
         role: 'assistant',
-        content: data.message?.content || 'No response from agent.',
+        content: (data.message as Record<string, unknown>)?.content as string || 'No response from agent.',
         agentId: targetAgent,
         timestamp: Date.now(),
       }
-
       addMessage(key, agentMessage)
     } catch (e) {
-      const errorMsg = e instanceof Error ? e.message : 'Unknown error occurred'
-      showToast(`Failed: ${errorMsg}`, 'error')
+      const errorMsg = e instanceof Error ? e.message : 'Unknown error'
+      showToast(`Send failed: ${errorMsg}`, 'error')
 
+      // BUG 11 fix: retry button
       const errorMessage: ChatMessage = {
         id: `error-${Date.now()}`,
         role: 'assistant',
-        content: `⚠️ Failed to reach the ${targetAgent} agent.\n\nMake sure the agent services are running. You can start them with:\n\`\`\`\n./scripts/start-all.sh\n\`\`\``,
+        content: `⚠️ Failed to reach agent.\n\n${errorMsg}\n\nMake sure the agent services are running. You can click the Retry button below or start agents with:\n\`./scripts/start-all.sh\``,
         agentId: 'system',
         timestamp: Date.now(),
       }
       addMessage(key, errorMessage)
     } finally {
-      setIsSending(false)
+      if (mountedRef.current) {
+        setIsSending(false)
+      }
+      isSendingRef.current = false
     }
+  }
+
+  const handleSendWithTextRef = useRef(handleSendWithText)
+  handleSendWithTextRef.current = handleSendWithText
+
+  const handleRetry = useCallback((retryText: string, retryAgent: string) => {
+    setInput(retryText)
+    // Trigger send after a tick
+    setTimeout(() => {
+      handleSendWithTextRef.current(retryText, retryAgent)
+    }, 100)
+  }, [])
+
+  const handleSend = async () => {
+    if (!input.trim() || isSendingRef.current) return
+    await handleSendWithText(input.trim(), selectedAgent || detectAgent(input.trim()), true)
   }
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -165,11 +248,13 @@ export default function ChatContent() {
     }
   }
 
+  // BUG 8 fix: clear input on agent switch
   const handleSwitchAgent = (id: string) => {
-    if (id === selectedAgent) {
-      setSelectedAgent('')
-    } else {
+    if (id !== selectedAgent) {
+      setInput('')
       setSelectedAgent(id)
+    } else {
+      setSelectedAgent('')
     }
   }
 
@@ -197,7 +282,7 @@ export default function ChatContent() {
               <Badge
                 variant={selectedAgent === '' ? 'default' : 'outline'}
                 className="cursor-pointer select-none"
-                onClick={() => setSelectedAgent('')}
+                onClick={() => { setSelectedAgent(''); setInput('') }}
               >
                 Auto
               </Badge>
@@ -227,6 +312,8 @@ export default function ChatContent() {
         <CardContent className="flex-1 overflow-y-auto p-4 space-y-4">
           {currentMessages.map((message) => {
             const displayInfo = getAgentDisplayInfo(message.agentId)
+            const isError = message.id.startsWith('error-')
+            const lastUserMsg = [...currentMessages].reverse().find((m) => m.role === 'user')
 
             return (
               <div
@@ -237,6 +324,8 @@ export default function ChatContent() {
                   className={`max-w-[75%] rounded-2xl p-4 ${
                     message.role === 'user'
                       ? 'bg-gradient-to-r from-blue-500 to-blue-600 text-white shadow-lg'
+                      : isError
+                      ? 'bg-red-50 border border-red-200 text-gray-900'
                       : 'bg-white border border-slate-200 text-gray-900 shadow-sm'
                   }`}
                 >
@@ -258,8 +347,20 @@ export default function ChatContent() {
                       message.role === 'user' ? 'text-blue-100' : 'text-gray-400'
                     }`}
                   >
-                    {new Date(message.timestamp).toLocaleTimeString()}
+                    {message.timestamp > 1000000000000
+                      ? new Date(message.timestamp).toLocaleTimeString()
+                      : ''}
                   </div>
+                  {isError && lastUserMsg && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="mt-2 text-xs"
+                      onClick={() => handleRetry(lastUserMsg.content, selectedAgent || detectAgent(lastUserMsg.content))}
+                    >
+                      🔄 Retry
+                    </Button>
+                  )}
                 </div>
               </div>
             )
@@ -296,6 +397,7 @@ export default function ChatContent() {
                   : 'Type your message... (e.g., "Create a React login component")'
               }
               disabled={isSending}
+              maxLength={MAX_INPUT_LENGTH}
               className="flex-1 border border-slate-300 rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white shadow-sm disabled:opacity-50"
             />
             <Button

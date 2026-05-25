@@ -8,7 +8,7 @@ export function NavBar() {
   const pathname = usePathname();
   const router = useRouter();
   const { stats } = useAgentHealth();
-  const systemOnline = stats.activeAgents > 0;
+  const systemOnline = stats.onlineCount > 0;
 
   return (
     <>
@@ -46,7 +46,7 @@ export function NavBar() {
                   }`}
                 >
                   {systemOnline
-                    ? `${stats.activeAgents} Agents Online`
+                    ? `${stats.onlineCount} Agents Online`
                     : 'No Agents'}
                 </span>
               </div>

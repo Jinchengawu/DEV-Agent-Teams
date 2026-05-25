@@ -14,10 +14,10 @@ export default function Dashboard() {
   const statCards = [
     {
       title: 'Active Agents',
-      value: `${stats.activeAgents}/4`,
+      value: `${stats.onlineCount}/${stats.totalAgents}`,
       icon: '🤖',
       color: 'from-blue-500 to-blue-600',
-      detail: stats.activeAgents > 0 ? 'Some online' : 'All offline',
+      detail: stats.onlineCount > 0 ? `${stats.onlineCount} online` : 'All offline',
     },
     {
       title: 'Total Skills',
@@ -28,16 +28,16 @@ export default function Dashboard() {
     },
     {
       title: 'Success Rate',
-      value: stats.activeAgents > 0 ? `${stats.successRate}%` : '--',
+      value: stats.onlineCount > 0 ? `${stats.successRate}%` : '--',
       icon: '✅',
       color: 'from-yellow-500 to-orange-500',
-      detail: stats.activeAgents > 0 ? 'Agents reachable' : 'No agents',
+      detail: stats.onlineCount > 0 ? 'Agents reachable' : 'No agents',
     },
     {
-      title: 'Avg Response',
-      value: stats.avgResponse,
+      title: 'System',
+      value: stats.onlineCount > 0 ? 'Online' : 'Offline',
       icon: '⚡',
-      color: 'from-purple-500 to-purple-600',
+      color: stats.onlineCount > 0 ? 'from-green-500 to-green-600' : 'from-red-500 to-red-600',
       detail: 'Via Hermes runtime',
     },
   ]
@@ -205,7 +205,7 @@ export default function Dashboard() {
                 { label: 'Model', value: 'deepseek-v4-pro[1m]' },
                 {
                   label: 'Agents',
-                  value: `${stats.activeAgents}/${agents.length} online`,
+                  value: `${stats.onlineCount}/${agents.length} online`,
                 },
                 { label: 'Skills', value: String(stats.totalSkills) },
                 { label: 'Updated', value: new Date().toLocaleTimeString() },
