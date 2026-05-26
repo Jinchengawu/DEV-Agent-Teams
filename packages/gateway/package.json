@@ -1,0 +1,20 @@
+{
+  "name": "@dev-agent/gateway",
+  "version": "0.2.0",
+  "description": "OpenClaw Native Gateway — 中央编排层，Agent 路由、鉴权、限流、熔断",
+  "type": "module",
+  "main": "src/openclaw-gateway.ts",
+  "scripts": {
+    "dev": "tsx watch src/openclaw-gateway.ts",
+    "build": "tsc",
+    "start": "node dist/openclaw-gateway.js"
+  },
+  "dependencies": {
+    "yaml": "^2.4.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.0",
+    "tsx": "^4.7.0",
+    "typescript": "^5.3.0"
+  }
+}

@@ -108,7 +108,25 @@ EOF
     sleep 3
 done
 
-# 步骤 2: 启动 Agent 服务 (公开端口)
+# 步骤 2: 启动 OpenClaw Gateway (编排层)
+echo ""
+echo "🧠 步骤 2: 启动 OpenClaw Gateway..."
+
+cd "$SCRIPT_DIR/packages/gateway"
+
+if [ ! -d "node_modules" ]; then
+    echo "   📦 安装依赖..."
+    npm install --cache "$SCRIPT_DIR/.npm-cache"
+fi
+
+npx tsx src/openclaw-gateway.ts &
+GATEWAY_PID=$!
+echo "   ✅ OpenClaw Gateway 已启动 (PID: $GATEWAY_PID, 端口: 8400)"
+
+cd "$SCRIPT_DIR"
+sleep 2
+
+# 步骤 3: 启动 Agent 服务 (公开端口，注册到 OpenClaw Gateway)
 echo ""
 echo "📦 步骤 2: 启动 Agent 服务..."
 
@@ -143,6 +161,14 @@ echo ""
 echo "📋 服务状态："
 
 # 检查 Agent 状态 (公开端口)
+echo "OpenClaw Gateway:"
+if curl -s "http://127.0.0.1:8400/health" > /dev/null 2>&1; then
+    echo "   ✅ OpenClaw Gateway (:8400) — 运行中"
+else
+    echo "   ⚠️  OpenClaw Gateway (:8400) — 未响应（将使用降级直连）"
+fi
+
+echo ""
 echo "Agent 实例:"
 for entry in "${AGENTS[@]}"; do
     IFS=':' read -r agent public_port hermes_port path label <<< "$entry"
