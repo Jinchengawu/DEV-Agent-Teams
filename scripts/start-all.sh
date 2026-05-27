@@ -55,7 +55,7 @@ echo "✅ 模型配置: $MODEL_PROVIDER / $MODEL_NAME"
 
 # Hermes 配置 (兼容 macOS 默认 bash 3.2)
 export GATEWAY_ALLOW_ALL_USERS=true
-export ANTHROPIC_API_KEY="${API_KEY:-}"
+export DEEPSEEK_API_KEY="${API_KEY:-}"
 
 # Agent 公开端口 / Hermes 内部端口 (port+1000)
 AGENTS=(
@@ -142,6 +142,9 @@ for entry in "${AGENTS[@]}"; do
         npm install --cache "$SCRIPT_DIR/.npm-cache"
     fi
 
+    MODEL_BASE_URL="$MODEL_BASE_URL" \
+    MODEL_NAME="$MODEL_NAME" \
+    API_KEY="$API_KEY" \
     AGENT_PORT=$public_port HERMES_PORT=$hermes_port npm run dev &
     AGENT_PID=$!
 
