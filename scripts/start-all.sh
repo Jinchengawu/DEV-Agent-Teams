@@ -55,6 +55,7 @@ echo "✅ 模型配置: $MODEL_PROVIDER / $MODEL_NAME"
 
 # Hermes 配置 (兼容 macOS 默认 bash 3.2)
 export GATEWAY_ALLOW_ALL_USERS=true
+export HERMES_INFERENCE_PROVIDER=deepseek
 export DEEPSEEK_API_KEY="${API_KEY:-}"
 
 # Agent 公开端口 / Hermes 内部端口 (port+1000)
