@@ -94,11 +94,21 @@ platforms:
       model_name: "hermes-agent"
 
 agent:
-  max_turns: 90
+  max_turns: 3
   gateway_timeout: 1800
 
-toolsets:
-  - hermes-cli
+toolsets: []
+
+delegation:
+  model: $MODEL_NAME
+  provider: $MODEL_PROVIDER
+  base_url: $MODEL_BASE_URL
+  api_key: ${API_KEY:-}
+  orchestrator_enabled: true
+  max_concurrent_children: 3
+  max_spawn_depth: 1
+  child_timeout_seconds: 600
+  max_iterations: 50
 EOF
 
     HERMES_HOME="$HOME_DIR" hermes gateway run &
@@ -120,7 +130,7 @@ if [ ! -d "node_modules" ]; then
     npm install --cache "$SCRIPT_DIR/.npm-cache"
 fi
 
-npx tsx src/openclaw-gateway.ts &
+npx tsx src/api-gateway.ts &
 GATEWAY_PID=$!
 echo "   ✅ OpenClaw Gateway 已启动 (PID: $GATEWAY_PID, 端口: 8400)"
 
@@ -129,7 +139,7 @@ sleep 2
 
 # 步骤 3: 启动 Agent 服务 (公开端口，注册到 OpenClaw Gateway)
 echo ""
-echo "📦 步骤 2: 启动 Agent 服务..."
+echo "📦 步骤 3: 启动 Agent 服务..."
 
 for entry in "${AGENTS[@]}"; do
     IFS=':' read -r agent public_port hermes_port path label <<< "$entry"
