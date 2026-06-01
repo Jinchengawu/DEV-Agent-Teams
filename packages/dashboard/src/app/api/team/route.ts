@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-const AGENT_PORTS: Record<string, number> = {
-  frontend: 8201, backend: 8202, testing: 8203, devops: 8204, pm: 8205,
-};
+const GATEWAY_URL = process.env.GATEWAY_URL || 'http://127.0.0.1:8400';
+
+const AGENT_IDS = ['dev-frontend', 'dev-backend', 'dev-testing', 'dev-devops', 'dev-pm'];
 
 /**
  * /api/team — 多 Agent 协作端点
@@ -18,22 +18,21 @@ export async function POST(request: NextRequest) {
     }
 
     const targets = (agents && Array.isArray(agents) && agents.length > 0)
-      ? agents.filter((a: string) => AGENT_PORTS[a])
-      : Object.keys(AGENT_PORTS);
+      ? agents.filter((a: string) => AGENT_IDS.includes(a))
+      : AGENT_IDS;
 
     if (mode === 'sequential') {
+      // 顺序模式 — 依次通过 Gateway 发送到各 Agent
       const results = [];
       for (const agentId of targets) {
-        const port = AGENT_PORTS[agentId];
-        if (!port) continue;
         try {
           const controller = new AbortController();
           const t = setTimeout(() => controller.abort(), 300000);
-          const res = await fetch(`http://127.0.0.1:${port}/v1/chat/completions`, {
+          const res = await fetch(`${GATEWAY_URL}/v1/chat/completions`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-              messages: [{ role: 'user', content: goal }],
+              messages: [{ role: 'user', content: `[${agentId}] ${goal}` }],
               sessionId: `team-seq-${Date.now()}-${agentId}`,
             }),
             signal: controller.signal,
@@ -51,19 +50,17 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ goal, mode: 'sequential', responses: results, timestamp: Date.now() });
     }
 
-    // Parallel mode — 所有 Agent 并发
+    // Parallel mode — 所有 Agent 并发（通过 Gateway 路由）
     const results = await Promise.allSettled(
       targets.map(async (agentId: string) => {
-        const port = AGENT_PORTS[agentId];
-        if (!port) return { agent: agentId, content: 'Unknown agent' };
         const controller = new AbortController();
         const t = setTimeout(() => controller.abort(), 300000);
         try {
-          const res = await fetch(`http://127.0.0.1:${port}/v1/chat/completions`, {
+          const res = await fetch(`${GATEWAY_URL}/v1/chat/completions`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-              messages: [{ role: 'user', content: goal }],
+              messages: [{ role: 'user', content: `[${agentId}] ${goal}` }],
               sessionId: `team-${Date.now()}-${agentId}`,
             }),
             signal: controller.signal,

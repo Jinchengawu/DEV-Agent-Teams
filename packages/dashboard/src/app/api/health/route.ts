@@ -1,7 +1,6 @@
 import { NextResponse } from 'next/server';
 
-const AGENT_PORTS = [8201, 8202, 8203, 8204, 8205];
-const AGENT_IDS = ['frontend', 'backend', 'testing', 'devops', 'pm'];
+const GATEWAY_URL = process.env.GATEWAY_URL || 'http://127.0.0.1:8400';
 
 interface HealthResult {
   id: string;
@@ -16,42 +15,41 @@ interface HealthResult {
   error?: string;
 }
 
-async function checkAgent(port: number, id: string): Promise<HealthResult> {
+async function checkGateway(): Promise<{ online: boolean; agents: HealthResult[] }> {
   try {
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 3000);
-    const res = await fetch(`http://localhost:${port}/health`, {
+    const timeout = setTimeout(() => controller.abort(), 5000);
+    const res = await fetch(`${GATEWAY_URL}/agents`, {
       signal: controller.signal,
     });
     clearTimeout(timeout);
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = await res.json();
-    return { id, online: true, data };
+    const agents: HealthResult[] = (data.agents || []).map((a: { name: string }) => ({
+      id: a.name,
+      online: true,
+    }));
+    return { online: true, agents };
   } catch (e) {
     return {
-      id,
       online: false,
-      error: e instanceof Error ? e.message : 'Unknown error',
+      agents: ['dev-frontend', 'dev-backend', 'dev-testing', 'dev-devops', 'dev-pm'].map(id => ({
+        id,
+        online: false,
+        error: e instanceof Error ? e.message : 'Gateway offline',
+      })),
     };
   }
 }
 
 export async function GET() {
-  const results = await Promise.all(
-    AGENT_PORTS.map((port, i) => checkAgent(port, AGENT_IDS[i]))
-  );
-
-  const onlineCount = results.filter((r) => r.online).length;
-  const totalSkills = results.reduce(
-    (sum, r) => sum + (r.data?.skills || 0),
-    0
-  );
+  const { online, agents } = await checkGateway();
 
   return NextResponse.json({
     timestamp: Date.now(),
-    onlineCount,
-    totalAgents: results.length,
-    totalSkills,
-    agents: results,
+    onlineCount: online ? agents.length : 0,
+    totalAgents: agents.length,
+    totalSkills: 0,
+    agents,
   });
 }

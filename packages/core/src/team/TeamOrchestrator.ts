@@ -1,21 +1,24 @@
 /**
- * TeamOrchestrator — 基于 open-multi-agent 的多 Agent 协作编排器
+ * TeamOrchestrator — 基于 @open-multi-agent/core 的多 Agent 协作编排器
  *
  * 核心能力：
- * - runTeam(): 自动拆解目标 → 并行分配 → 结果汇总
- * - 内置 delegateToAgentTool: Agent 可主动委托其他 Agent
- * - MessageBus: Agent 间消息传递
+ * - runTeam(): 自动拆解目标 → DAG 并行执行 → 结果汇总
+ * - runAgent(): 单 Agent 执行简单任务
+ * - runTasks(): 显式任务列表（用户指定具体步骤时）
  * - SharedMemory: 团队共享上下文
+ * - MessageBus: Agent 间消息传递
+ * - delegate_to_agent: 内置工具（带循环检测 + 深度限制）
  */
 
 import {
   OpenMultiAgent,
-  Team,
-  Agent,
+  type AgentConfig,
   type TeamConfig,
   type TeamRunResult,
-  type AgentConfig,
   type AgentRunResult,
+  type OrchestratorConfig,
+  type RunTeamOptions,
+  type OrchestratorEvent,
 } from '@open-multi-agent/core';
 
 // ============================================================================
@@ -37,6 +40,9 @@ export interface TeamOrchestratorConfig {
   defaultModel: string;
   apiKey: string;
   baseUrl: string;
+  maxConcurrency?: number;
+  maxDelegationDepth?: number;
+  onProgress?: (event: OrchestratorEvent) => void;
 }
 
 // ============================================================================
@@ -45,7 +51,7 @@ export interface TeamOrchestratorConfig {
 
 export class TeamOrchestrator {
   private omAgent: OpenMultiAgent;
-  private team: Team;
+  private team: Awaited<ReturnType<OpenMultiAgent['createTeam']>>;
   private agentConfigs: Map<string, TeamAgentConfig>;
 
   constructor(config: TeamOrchestratorConfig) {
@@ -54,73 +60,105 @@ export class TeamOrchestrator {
       this.agentConfigs.set(a.id, a);
     }
 
-    // 初始化 OpenMultiAgent
-    this.omAgent = new OpenMultiAgent({
+    // 初始化 OpenMultiAgent — 使用 mimo provider 避免 404
+    const orchestratorConfig: OrchestratorConfig = {
       defaultModel: config.defaultModel,
-      apiKey: config.apiKey,
-      baseURL: config.baseUrl,
-    });
-
-    // 创建团队 — 每个 DEV Agent 映射为一个 open-multi-agent Agent
-    const teamAgents: Agent[] = config.agents.map((a) => ({
-      name: a.id,
-      model: config.defaultModel,
-      systemPrompt: a.systemPrompt,
-    }));
-
-    // 添加协调员 Agent
-    const coordinator: Agent = {
-      name: 'coordinator',
-      model: config.defaultModel,
-      systemPrompt: `你是一个多 Agent 团队的协调员。根据用户目标：
-1. 分析任务，拆解为独立子任务
-2. 将子任务通过 delegate_to_agent 工具分配给合适的 Agent
-3. 收集各 Agent 结果后汇总输出
-
-可用 Agent 成员：
-${config.agents.map((a) => `- ${a.id}: ${a.role}`).join('\n')}`,
+      defaultProvider: 'mimo',
+      defaultBaseURL: config.baseUrl,
+      defaultApiKey: config.apiKey,
+      maxConcurrency: config.maxConcurrency ?? 5,
+      maxDelegationDepth: config.maxDelegationDepth ?? 3,
+      onProgress: config.onProgress,
     };
 
-    this.team = this.omAgent.createTeam('dev-agent-team', {
-      name: 'DEV-Agent-Team',
-      agents: [coordinator, ...teamAgents],
-      sharedMemory: true,
-    });
+    this.omAgent = new OpenMultiAgent(orchestratorConfig);
 
-    console.log(`[TeamOrchestrator] 团队已创建: ${this.team.agents.length} 成员`);
+    // 创建团队 — 每个 DEV Agent 映射为一个 open-multi-agent Agent
+    const teamAgents: AgentConfig[] = config.agents.map((a) => ({
+      name: a.id,
+      model: config.defaultModel,
+      provider: 'mimo' as const,
+      baseURL: config.baseUrl,
+      apiKey: config.apiKey,
+      systemPrompt: a.systemPrompt,
+      tools: ['file_read', 'file_write', 'file_edit', 'bash', 'grep', 'glob'],
+    }));
+
+    const teamConfig: TeamConfig = {
+      name: 'DEV-Agent-Team',
+      agents: teamAgents,
+      sharedMemory: true,
+    };
+
+    this.team = this.omAgent.createTeam('dev-agent-team', teamConfig);
+
+    console.log(`[TeamOrchestrator] 团队已创建: ${teamAgents.length} 成员, sharedMemory=true`);
   }
 
   /**
    * runTeam — 自动编排多 Agent 协作
-   * 协调员分析目标 → 拆解任务 → delegate 给各 Agent → 汇总结果
+   * 协调员分析目标 → 拆解为任务 DAG → 并行执行无依赖任务 → 汇总结果
    */
-  async runTeam(goal: string): Promise<TeamRunResult> {
+  async runTeam(goal: string, options?: RunTeamOptions): Promise<TeamRunResult> {
     console.log(`[TeamOrchestrator] runTeam: "${goal.substring(0, 60)}..."`);
-    return this.omAgent.runTeam(this.team, goal);
+    return this.omAgent.runTeam(this.team, goal, options);
   }
 
   /**
    * runAgent — 单 Agent 执行
+   * 用于简单任务，不需要多 Agent 协作
    */
   async runAgent(agentId: string, goal: string): Promise<AgentRunResult> {
     const config = this.agentConfigs.get(agentId);
     if (!config) throw new Error(`Agent "${agentId}" not found`);
 
+    console.log(`[TeamOrchestrator] runAgent: ${agentId} → "${goal.substring(0, 60)}..."`);
+
     return this.omAgent.runAgent(
       {
         name: config.id,
-        model: this.team.config?.defaultModel || config.model,
+        model: config.model,
+        provider: 'mimo' as const,
+        baseURL: config.baseUrl,
+        apiKey: config.apiKey,
         systemPrompt: config.systemPrompt,
+        tools: ['file_read', 'file_write', 'file_edit', 'bash', 'grep', 'glob'],
       },
-      goal
+      goal,
     );
+  }
+
+  /**
+   * runTasks — 显式任务列表
+   * 当用户指定具体步骤时使用，不经过协调员分解
+   */
+  async runTasks(
+    tasks: Array<{
+      title: string;
+      description: string;
+      assignee?: string;
+      dependsOn?: string[];
+    }>,
+  ): Promise<TeamRunResult> {
+    console.log(`[TeamOrchestrator] runTasks: ${tasks.length} 个任务`);
+    return this.omAgent.runTasks(this.team, tasks);
   }
 
   /**
    * 获取 Agent 间消息历史
    */
-  getMessages() {
-    return this.team.messageBus?.getHistory() || [];
+  getMessages(agentName?: string) {
+    if (agentName) {
+      return this.team.getMessages(agentName);
+    }
+    return this.team.getAgents().flatMap((a) => this.team.getMessages(a.name));
+  }
+
+  /**
+   * 广播消息给所有 Agent
+   */
+  broadcast(from: string, content: string) {
+    this.team.broadcast(from, content);
   }
 
   /**
@@ -128,32 +166,65 @@ ${config.agents.map((a) => `- ${a.id}: ${a.role}`).join('\n')}`,
    */
   getStatus() {
     return {
-      teamAgents: this.team.agents.map((a) => ({
+      teamAgents: this.team.getAgents().map((a) => ({
         name: a.name,
         model: a.model || 'default',
       })),
-      coordinator: this.team.coordinator?.name || 'coordinator',
       sharedMemory: !!this.team.config?.sharedMemory,
+      orchestrator: this.omAgent.getStatus(),
     };
+  }
+
+  /**
+   * 获取 OpenMultiAgent 实例（高级用法）
+   */
+  getOrchestrator() {
+    return this.omAgent;
+  }
+
+  /**
+   * 获取 Team 实例（高级用法）
+   */
+  getTeam() {
+    return this.team;
+  }
+
+  /**
+   * 关闭编排器
+   */
+  async shutdown() {
+    await this.omAgent.shutdown();
+    console.log('[TeamOrchestrator] 已关闭');
   }
 }
 
+// ============================================================================
+// 便捷工厂
+// ============================================================================
+
 /**
- * 便捷工厂 — 用 DEV-Agent-Teams 的 Agent 配置创建编排器
+ * 用 DEV-Agent-Teams 的 Agent 配置创建编排器
  */
-export function createTeamOrchestrator(agents: TeamAgentConfig[], model?: string): TeamOrchestrator {
+export function createTeamOrchestrator(
+  agents: TeamAgentConfig[],
+  model?: string,
+  options?: { onProgress?: (event: OrchestratorEvent) => void },
+): TeamOrchestrator {
   return new TeamOrchestrator({
     agents,
     defaultModel: model || process.env.MODEL_NAME || 'mimo-v2.5-pro',
     apiKey: process.env.API_KEY || '',
     baseUrl: process.env.MODEL_BASE_URL || 'https://token-plan-cn.xiaomimimo.com/v1',
+    onProgress: options?.onProgress,
   });
 }
 
 /**
  * 从环境变量创建 DEV-Agent-Teams 标准团队
  */
-export function createDevTeamOrchestrator(): TeamOrchestrator {
+export function createDevTeamOrchestrator(options?: {
+  onProgress?: (event: OrchestratorEvent) => void;
+}): TeamOrchestrator {
   const model = process.env.MODEL_NAME || 'mimo-v2.5-pro';
   const apiKey = process.env.API_KEY || '';
   const baseUrl = process.env.MODEL_BASE_URL || 'https://token-plan-cn.xiaomimimo.com/v1';
@@ -196,5 +267,5 @@ export function createDevTeamOrchestrator(): TeamOrchestrator {
     },
   ];
 
-  return new TeamOrchestrator({ agents, defaultModel: model, apiKey, baseUrl });
+  return new TeamOrchestrator({ agents, defaultModel: model, apiKey, baseUrl, onProgress: options?.onProgress });
 }

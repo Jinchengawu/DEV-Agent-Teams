@@ -1,17 +1,13 @@
-// @dev-agent/core - Shared Agent Team infrastructure
+// @dev-agent/core — 基于 @open-multi-agent/core 的多 Agent 协作框架
+
+// ── 会话管理（保留，框架不覆盖）──
 export { SessionManager } from './session/SessionManager';
 export { initSchema } from './session/schema';
-export { MemoryStore } from './memory/MemoryStore';
-export { ContextCompressor } from './context/ContextCompressor';
-export type { CompressionConfig } from './context/ContextCompressor';
-export { RegistryClient } from './bus/RegistryClient';
-export { AgentBus } from './bus/AgentBus';
-export { MessageType } from './bus/types';
-export type { AgentMessageEnvelope, AgentRegistration } from './bus/types';
-export { WorkflowOrchestrator } from './workflow/WorkflowOrchestrator';
-export { BUILTIN_TEMPLATES } from './workflow/templates';
-export type { WorkflowTemplate, WorkflowStepDefinition as WorkflowStep, WorkflowStatus, StepStatus } from './workflow/types';
-export { createAgentApp } from './agent-factory';
-export type { AgentFactoryConfig } from './agent-factory';
+
+// ── 编排器（核心）──
 export { TeamOrchestrator, createTeamOrchestrator, createDevTeamOrchestrator } from './team/TeamOrchestrator';
 export type { TeamAgentConfig, TeamOrchestratorConfig } from './team/TeamOrchestrator';
+
+// ── HTTP API 层 ──
+export { createAgentApp } from './agent-factory';
+export type { AgentAppConfig, AgentApp } from './agent-factory';

@@ -1,13 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-// Agent 消息端点映射
-const AGENT_PORTS: Record<string, number> = {
-  frontend: 8201,
-  backend: 8202,
-  testing: 8203,
-  devops: 8204,
-  pm: 8205,
-};
+const GATEWAY_URL = process.env.GATEWAY_URL || 'http://127.0.0.1:8400';
+
+const AGENT_IDS = ['dev-frontend', 'dev-backend', 'dev-testing', 'dev-devops', 'dev-pm'];
 
 export async function POST(request: NextRequest) {
   try {
@@ -19,22 +14,21 @@ export async function POST(request: NextRequest) {
     }
 
     // 默认全部 Agent
-    const targets = (agents as string[]) || Object.keys(AGENT_PORTS);
-    const validTargets = targets.filter((a) => AGENT_PORTS[a]);
+    const targets = (agents as string[]) || AGENT_IDS;
+    const validTargets = targets.filter((a) => AGENT_IDS.includes(a));
 
     if (validTargets.length === 0) {
       return NextResponse.json({ error: 'No valid agents specified' }, { status: 400 });
     }
 
-    // 并发发送到多个 Agent
+    // 并发发送到多个 Agent（通过 Gateway 路由）
     const results = await Promise.allSettled(
       validTargets.map(async (agentId) => {
-        const port = AGENT_PORTS[agentId];
         const controller = new AbortController();
         const timeout = setTimeout(() => controller.abort(), 300000);
 
         try {
-          const res = await fetch(`http://127.0.0.1:${port}/v1/chat/completions`, {
+          const res = await fetch(`${GATEWAY_URL}/v1/chat/completions`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({

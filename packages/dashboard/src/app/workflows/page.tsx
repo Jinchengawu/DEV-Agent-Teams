@@ -65,7 +65,7 @@ export default function WorkflowsPage() {
   useEffect(() => { fetchWorkflows() }, [])
 
   useEffect(() => {
-    fetch('http://localhost:8205/v1/templates')
+    fetch('http://127.0.0.1:8400/v1/templates')
       .then((r) => r.json())
       .then((data) => setTemplates(data.templates || []))
       .catch(() => {})
@@ -86,7 +86,7 @@ export default function WorkflowsPage() {
     return (
       <ErrorState
         title="No workflows available"
-        message="Start the PM agent to enable workflow orchestration."
+        message="Start the Gateway to enable workflow orchestration."
         onRetry={fetchWorkflows}
       />
     )

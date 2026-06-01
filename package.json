@@ -1,0 +1,12 @@
+{
+  "name": "dev-agent-teams",
+  "version": "0.3.0",
+  "private": true,
+  "description": "基于 @open-multi-agent/core 的多 Agent 协同开发系统",
+  "workspaces": [
+    "packages/core",
+    "packages/gateway",
+    "packages/dashboard",
+    "packages/agents/*"
+  ]
+}

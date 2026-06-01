@@ -1,7 +1,7 @@
 {
   "name": "@dev-agent/gateway",
-  "version": "0.2.0",
-  "description": "OpenClaw Native Gateway — 中央编排层，Agent 路由、鉴权、限流、熔断",
+  "version": "0.3.0",
+  "description": "DEV-Agent-Teams Gateway — 统一 HTTP 入口，基于 @open-multi-agent/core 编排",
   "type": "module",
   "main": "src/api-gateway.ts",
   "scripts": {
@@ -10,7 +10,8 @@
     "start": "node dist/api-gateway.js"
   },
   "dependencies": {
-    "yaml": "^2.4.0"
+    "@dev-agent/core": "workspace:*",
+    "dotenv": "^17.4.2"
   },
   "devDependencies": {
     "@types/node": "^20.11.0",

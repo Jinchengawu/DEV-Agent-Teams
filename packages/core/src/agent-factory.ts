@@ -1,88 +1,53 @@
+/**
+ * Agent App — 基于 @open-multi-agent/core 的 HTTP API 层
+ *
+ * 职责：
+ * - 提供 OpenAI 兼容的 /v1/chat/completions 端点
+ * - 会话持久化（SessionManager + SQLite）
+ * - 健康检查
+ * - 委托 TeamOrchestrator 处理所有 Agent 编排
+ */
+
 import os from 'node:os';
 import path from 'node:path';
+import { mkdirSync } from 'node:fs';
 import express from 'express';
-import Database from 'better-sqlite3';
-import { v4 as uuidv4 } from 'uuid';
 import { SessionManager } from './session/SessionManager';
-import { MemoryStore } from './memory/MemoryStore';
-import { ContextCompressor } from './context/ContextCompressor';
-import { RegistryClient } from './bus/RegistryClient';
-import { AgentBus } from './bus/AgentBus';
-import { MessageType } from './bus/types';
-import type { AgentRegistration, AgentMessageEnvelope } from './bus/types';
+import { TeamOrchestrator, createDevTeamOrchestrator } from './team/TeamOrchestrator';
+import type { OrchestratorEvent } from '@open-multi-agent/core';
 
-export interface AgentFactoryConfig {
-  id: string;
-  label: string;
-  port: number;
-  hermesPort: number;
-  skills: string[];
-  tags: string[];
-  peers: { host: string; port: number; id: string }[];
-  buildSystemPrompt: () => string;
-  loadSkillContent: (skillName: string) => string;
+// ============================================================================
+// Types
+// ============================================================================
+
+export interface AgentAppConfig {
+  /** 数据库目录，默认 ~/.dev-agent/data */
+  dataDir?: string;
+  /** 进度回调（用于 Dashboard 实时展示） */
+  onProgress?: (event: OrchestratorEvent) => void;
 }
 
 export interface AgentApp {
   app: express.Application;
   sessionManager: SessionManager;
-  memoryStore: MemoryStore;
-  agentBus: AgentBus;
-  compressor: ContextCompressor;
-  config: AgentFactoryConfig;
-  handleInterAgentMessage: (
-    envelope: AgentMessageEnvelope,
-    sendResponse: (msg: AgentMessageEnvelope) => void
-  ) => Promise<void>;
+  orchestrator: TeamOrchestrator;
+  close: () => Promise<void>;
 }
 
-import { mkdirSync } from 'node:fs';
+// ============================================================================
+// Factory
+// ============================================================================
 
-export function createAgentApp(config: AgentFactoryConfig): AgentApp {
-  const dataDir =
-    process.env.AGENT_DB_PATH || path.join(os.homedir(), '.dev-agent/data');
+export function createAgentApp(config: AgentAppConfig = {}): AgentApp {
+  const dataDir = config.dataDir || process.env.AGENT_DB_PATH || path.join(os.homedir(), '.dev-agent/data');
   mkdirSync(dataDir, { recursive: true });
-  const dbPath = path.join(dataDir, `${config.id.replace('dev-', '')}.db`);
-
-  const db = new Database(dbPath);
-  db.pragma('journal_mode = WAL');
+  const dbPath = path.join(dataDir, 'sessions.db');
 
   const sessionManager = new SessionManager(dbPath);
-  const memoryStore = new MemoryStore(dbPath);
-  const compressor = new ContextCompressor();
-
-  const selfReg: AgentRegistration = {
-    id: config.id,
-    label: config.label,
-    host: '127.0.0.1',
-    port: config.port,
-    capabilities: config.tags,
-    healthEndpoint: `http://127.0.0.1:${config.port}/health`,
-    messageEndpoint: `http://127.0.0.1:${config.port}/agent/message`,
-  };
-
-  const registry = new RegistryClient(selfReg);
-  const agentBus = new AgentBus(registry);
+  const orchestrator = createDevTeamOrchestrator({ onProgress: config.onProgress });
 
   const app = express();
   app.use(express.json({ limit: '1mb' }));
-
-  // ── Health ──
-  app.get('/health', (_req, res) => {
-    res.json({
-      status: 'ok',
-      agent: config.id,
-      label: config.label,
-      port: config.port,
-      hermesPort: config.hermesPort,
-      skills: config.skills.length,
-      capabilities: config.tags,
-      sessionCount: sessionManager.getSessionCount(),
-      messagesProcessed: sessionManager.getTotalMessageCount(),
-      uptime: process.uptime(),
-      peers: registry.getAllAgents().map((a) => ({ id: a.id, label: a.label })),
-    });
-  });
 
   // Per-session concurrency lock
   const sessionLocks = new Map<string, Promise<void>>();
@@ -94,81 +59,85 @@ export function createAgentApp(config: AgentFactoryConfig): AgentApp {
     await next;
   }
 
-  // ── Chat Completions ──
+  // ── Health ──
+  app.get('/health', (_req, res) => {
+    const status = orchestrator.getStatus();
+    res.json({
+      status: 'ok',
+      framework: '@open-multi-agent/core',
+      agents: status.teamAgents.length,
+      sharedMemory: status.sharedMemory,
+      sessionCount: sessionManager.getSessionCount(),
+      messagesProcessed: sessionManager.getTotalMessageCount(),
+      uptime: process.uptime(),
+    });
+  });
+
+  // ── Chat Completions（OpenAI 兼容）──
   app.post('/v1/chat/completions', async (req, res) => {
     try {
-      const { messages, sessionId: clientSessionId } = req.body;
+      const { messages, sessionId: clientSessionId, mode } = req.body;
 
+      if (!messages || !Array.isArray(messages) || messages.length === 0) {
+        res.status(400).json({ error: 'messages is required' });
+        return;
+      }
+
+      // 会话管理
       let sessionId = clientSessionId || '';
       if (!sessionId || !sessionManager.getSession(sessionId)) {
         sessionId = sessionManager.createSession('', clientSessionId || '');
       }
 
-      const messagesArr = (messages || []) as { role: string; content: unknown }[];
+      const messagesArr = messages as { role: string; content: unknown }[];
+      const lastUserMsg = [...messagesArr].reverse().find((m) => m.role === 'user');
+      const userContent = lastUserMsg?.content;
 
+      if (!userContent) {
+        res.status(400).json({ error: 'No user message found' });
+        return;
+      }
+
+      const userText = typeof userContent === 'string' ? userContent : JSON.stringify(userContent);
+
+      // 保存用户消息
       await withSessionLock(sessionId, async () => {
-        const lastUserMsg = [...messagesArr].reverse().find((m) => m.role === 'user');
-        if (lastUserMsg) {
-          // 兼容 OpenAI content 格式（string | array）
-          const contentStr = typeof lastUserMsg.content === 'string'
-            ? lastUserMsg.content
-            : JSON.stringify(lastUserMsg.content);
-          const existingMessages = sessionManager.getAllMessages(sessionId);
-          const lastStored = existingMessages
-            .filter((m) => m.role === 'user')
-            .pop();
-          if (!lastStored || lastStored.content !== contentStr) {
-            sessionManager.addMessage(sessionId, 'user', contentStr, 'user');
-          }
+        const existingMessages = sessionManager.getAllMessages(sessionId);
+        const lastStored = existingMessages.filter((m) => m.role === 'user').pop();
+        if (!lastStored || lastStored.content !== userText) {
+          sessionManager.addMessage(sessionId, 'user', userText, 'user');
         }
       });
 
-      // Build context from DB + current request
-      const allMessages = sessionManager
-        .getAllMessages(sessionId)
-        .map((m) => ({ role: m.role, content: m.content }));
+      // 设置会话标题（第一条消息）
+      const totalUserMessages = sessionManager.getMessages(sessionId).filter((m) => m.role === 'user').length;
+      if (totalUserMessages === 1) {
+        sessionManager.updateSession(sessionId, { title: userText.substring(0, 100) });
+      }
 
-      const { systemMessages, chatMessages, compressedCount } =
-        compressor.buildContext(allMessages, config.buildSystemPrompt());
+      // 委托给 TeamOrchestrator
+      let result: { output: string; agent: string };
 
-      // MiMo-V2.5-Pro 使用标准 Anthropic/OAI 协议，不需要 thinking 过滤
-      const hermesPayload = [
-        ...systemMessages.map((c) => ({ role: 'system', content: c })),
-        ...chatMessages.map((m) => ({
-          role: m.role as 'user' | 'assistant',
-          content: m.content,
-        })),
-      ];
+      if (mode === 'team') {
+        // 多 Agent 协同模式
+        const teamResult = await orchestrator.runTeam(userText);
+        result = {
+          output: teamResult.agentResults.get('coordinator')?.output || JSON.stringify(teamResult),
+          agent: 'team',
+        };
+      } else {
+        // 单 Agent 模式 — 简单意图路由
+        const agentId = detectAgent(userText);
+        const agentResult = await orchestrator.runAgent(agentId, userText);
+        result = {
+          output: agentResult.output,
+          agent: agentId,
+        };
+      }
 
-      const content = await callHermes(
-        config.hermesPort,
-        hermesPayload
-      );
-
+      // 保存助手回复
       await withSessionLock(sessionId, async () => {
-        sessionManager.addMessage(sessionId, 'assistant', content, config.id);
-
-        if (compressedCount > 0) {
-          sessionManager.updateSession(sessionId, {
-            title: sessionManager.getSession(sessionId)?.title || '',
-          });
-        }
-
-        // Set title from first user message
-        const totalUserMessages = sessionManager
-          .getMessages(sessionId)
-          .filter((m) => m.role === 'user').length;
-        if (totalUserMessages === 1 && messagesArr.length > 0) {
-          const firstUser = messagesArr.find((m) => m.role === 'user');
-          if (firstUser?.content) {
-            const titleText = typeof firstUser.content === 'string'
-              ? firstUser.content
-              : JSON.stringify(firstUser.content);
-            sessionManager.updateSession(sessionId, {
-              title: titleText.substring(0, 100),
-            });
-          }
-        }
+        sessionManager.addMessage(sessionId, 'assistant', result.output, result.agent);
       });
 
       res.json({
@@ -176,130 +145,29 @@ export function createAgentApp(config: AgentFactoryConfig): AgentApp {
         sessionId,
         object: 'chat.completion',
         created: Math.floor(Date.now() / 1000),
-        model: config.id,
+        model: result.agent,
         choices: [
           {
             index: 0,
-            message: { role: 'assistant', content },
+            message: { role: 'assistant', content: result.output },
             finish_reason: 'stop',
           },
         ],
-        usage: {
-          prompt_tokens: hermesPayload.reduce(
-            (s, m) => s + compressor.estimateTokens(m.content),
-            0
-          ),
-          completion_tokens: compressor.estimateTokens(content),
-        },
+        instance: result.agent,
+        routedBy: mode === 'team' ? 'team-orchestrator' : 'intent-router',
       });
     } catch (error) {
-      console.error(`[${config.id}] Chat error:`, error);
-      res.status(500).json({ error: 'Internal server error' });
+      console.error('[agent-app] Chat error:', error);
+      res.status(500).json({ error: error instanceof Error ? error.message : 'Internal server error' });
     }
   });
 
-  // ── Inter-Agent Message ──
-  const handleInterAgentMessage = async (
-    envelope: AgentMessageEnvelope,
-    sendResponse: (msg: AgentMessageEnvelope) => void
-  ): Promise<void> => {
-    switch (envelope.type) {
-      case MessageType.TASK: {
-        const prompt = (envelope.payload as Record<string, unknown>)?.prompt as string || '';
-        const systemPrompt = config.buildSystemPrompt();
-        const hermesPayload = [
-          { role: 'system', content: systemPrompt },
-          { role: 'user', content: prompt },
-        ];
-        const output = await callHermes(config.hermesPort, hermesPayload);
-        sendResponse({
-          id: uuidv4(),
-          from: config.id,
-          to: envelope.from,
-          sessionId: envelope.sessionId,
-          type: MessageType.RESULT,
-          payload: { output },
-          timestamp: Date.now(),
-          correlationId: envelope.correlationId,
-        });
-        break;
-      }
-      case MessageType.STATUS: {
-        sendResponse({
-          id: uuidv4(),
-          from: config.id,
-          to: envelope.from,
-          sessionId: envelope.sessionId,
-          type: MessageType.RESPONSE,
-          payload: { status: 'ok', agent: config.id },
-          timestamp: Date.now(),
-          correlationId: envelope.correlationId,
-        });
-        break;
-      }
-      default: {
-        sendResponse({
-          id: uuidv4(),
-          from: config.id,
-          to: envelope.from,
-          sessionId: envelope.sessionId,
-          type: MessageType.RESPONSE,
-          payload: { received: true },
-          timestamp: Date.now(),
-          correlationId: envelope.correlationId,
-        });
-      }
-    }
-  };
-
-  app.post('/agent/message', async (req, res) => {
-    try {
-      const envelope = req.body as AgentMessageEnvelope;
-
-      // 跨 Agent 转发（to 不是自己）
-      if (envelope.to && envelope.to !== config.id && registry.getAgent(envelope.to)) {
-        try {
-          const result = await agentBus.sendAndWait(envelope.to, {
-            from: config.id,
-            to: envelope.to,
-            sessionId: envelope.sessionId,
-            type: envelope.type,
-            payload: envelope.payload,
-          });
-          res.json(result);
-          return;
-        } catch (err) {
-          res.status(502).json({ error: `Agent "${envelope.to}" unreachable: ${err instanceof Error ? err.message : 'unknown'}` });
-          return;
-        }
-      }
-
-      // 本地处理（发给自己的消息）
-      await handleInterAgentMessage(envelope, (response) => {
-        res.json(response);
-      });
-    } catch (error) {
-      res.status(500).json({ error: 'Message processing failed' });
-    }
+  // ── Agent List ──
+  app.get('/agents', (_req, res) => {
+    res.json({ agents: orchestrator.getStatus().teamAgents });
   });
 
-  // ── Peer Registration ──
-  app.post('/agent/register', (req, res) => {
-    const peer = req.body as AgentRegistration;
-    if (peer?.id && peer?.messageEndpoint) {
-      registry.addPeer(peer);
-      res.json(selfReg);
-    } else {
-      res.status(400).json({ error: 'Invalid registration' });
-    }
-  });
-
-  // ── List Peers ──
-  app.get('/agent/peers', (_req, res) => {
-    res.json({ peers: registry.getAllAgents() });
-  });
-
-  // ── Session Info ──
+  // ── Session Endpoints ──
   app.get('/v1/sessions', (_req, res) => {
     const sessions = sessionManager.listSessions();
     res.json({ sessions });
@@ -315,78 +183,35 @@ export function createAgentApp(config: AgentFactoryConfig): AgentApp {
     res.json({ session, messages });
   });
 
-  return {
-    app,
-    sessionManager,
-    memoryStore,
-    agentBus,
-    compressor,
-    config,
-    handleInterAgentMessage,
+  // ── Close ──
+  const close = async () => {
+    await orchestrator.shutdown();
+    sessionManager.close();
   };
+
+  return { app, sessionManager, orchestrator, close };
 }
 
-async function callHermes(
-  hermesPort: number,
-  messages: { role: string; content: string }[],
-  retries = 5
-): Promise<string> {
-  // 优先使用直连 API（如果配置了 MODEL_BASE_URL 和 API_KEY）
-  const directUrl = process.env.MODEL_BASE_URL;
-  const directKey = process.env.API_KEY;
-  const directModel = process.env.MODEL_NAME || 'mimo-v2.5-pro';
-  const useDirect = !!(directUrl && directKey);
+// ============================================================================
+// 简意图路由（单 Agent 模式下使用）
+// ============================================================================
 
-  let lastError = '';
+function detectAgent(message: string): string {
+  const lower = message.toLowerCase();
 
-  for (let attempt = 0; attempt <= retries; attempt++) {
-    try {
-      const apiUrl = useDirect
-        ? `${directUrl}/chat/completions`
-        : `http://127.0.0.1:${hermesPort}/v1/chat/completions`;
+  const rules: [string[], string][] = [
+    [['react', 'vue', 'component', 'ui', 'css', 'tailwind', '前端', '界面', '组件', '样式'], 'dev-frontend'],
+    [['api', 'database', 'server', 'python', 'node', 'go', '后端', '接口', '数据库', '服务器'], 'dev-backend'],
+    [['test', 'unit', 'e2e', 'coverage', 'jest', 'pytest', '测试', '单元测试', '覆盖率'], 'dev-testing'],
+    [['docker', 'k8s', 'deploy', 'ci/cd', 'devops', '运维', '容器', '部署'], 'dev-devops'],
+    [['prd', 'requirement', 'product', 'strategy', 'user-story', 'pm', '产品', '需求'], 'dev-pm'],
+  ];
 
-      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-      if (useDirect) {
-        headers['Authorization'] = `Bearer ${directKey}`;
-      }
-
-      const body: Record<string, unknown> = {
-        model: useDirect ? directModel : 'hermes-agent',
-        messages,
-        max_tokens: 8192,
-      };
-      if (!useDirect) {
-        body.thinking = { type: 'disabled' };
-      }
-
-      const response = await fetch(apiUrl, {
-        method: 'POST',
-        headers,
-        body: JSON.stringify(body),
-        signal: AbortSignal.timeout(180000),
-      });
-
-      if (response.ok) {
-        const data = (await response.json()) as {
-          choices?: { message?: { content?: string } }[];
-        };
-        const content = data.choices?.[0]?.message?.content;
-        if (content) return content;
-        lastError = '模型返回空内容';
-      } else if (response.status >= 500) {
-        lastError = `服务异常 (HTTP ${response.status})`;
-      } else {
-        return `请求参数错误 (HTTP ${response.status})`;
-      }
-    } catch (error) {
-      lastError = `连接失败: ${error instanceof Error ? error.message : '未知错误'}`;
-    }
-
-    if (attempt < retries) {
-      // 指数退避: 2s, 4s, 8s, 16s, 32s
-      await new Promise((resolve) => setTimeout(resolve, 1000 * Math.pow(2, attempt + 1)));
+  for (const [keywords, agentId] of rules) {
+    for (const kw of keywords) {
+      if (lower.includes(kw)) return agentId;
     }
   }
 
-  return `模型调用失败 (已重试 ${retries} 次): ${lastError}`;
+  return 'dev-backend'; // 默认
 }
