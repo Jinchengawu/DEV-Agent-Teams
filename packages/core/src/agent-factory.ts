@@ -121,10 +121,49 @@ export function createAgentApp(config: AgentAppConfig = {}): AgentApp {
       if (mode === 'team') {
         // 多 Agent 协同模式
         const teamResult = await orchestrator.runTeam(userText);
-        result = {
-          output: teamResult.agentResults.get('coordinator')?.output || JSON.stringify(teamResult),
-          agent: 'team',
-        };
+
+        // 从 AgentRunResult 中提取文本输出
+        function extractOutput(agentResult: { output: string; success: boolean; messages: { role: string; content: { type: string; text?: string }[] }[]; toolCalls: { toolName: string; input: Record<string, unknown>; output: string }[] }): string {
+          const allText: string[] = [];
+          for (const msg of agentResult.messages) {
+            if (msg.role === 'assistant') {
+              for (const block of msg.content) {
+                if ((block.type === 'text' || block.type === 'reasoning') && block.text) {
+                  allText.push(block.text);
+                }
+              }
+            }
+          }
+          const combined = allText.join('\n').trim();
+          const parts: string[] = [];
+          if (combined) parts.push(combined);
+          if (agentResult.toolCalls.length > 0) {
+            const toolNames = [...new Set(agentResult.toolCalls.map((tc) => tc.toolName))];
+            parts.push(`\n📊 执行了 ${agentResult.toolCalls.length} 个操作 (${toolNames.join(', ')})`);
+          }
+          return parts.join('\n') || (agentResult.success ? '✅ 任务完成' : '❌ 任务失败');
+        }
+
+        // 构建结构化输出：汇总协调员结论 + 各 Agent 贡献
+        const parts: string[] = [];
+        const coordinatorResult = teamResult.agentResults.get('coordinator');
+        if (coordinatorResult) {
+          const coordinatorOutput = extractOutput(coordinatorResult);
+          if (coordinatorOutput) parts.push(coordinatorOutput);
+        }
+        for (const [name, agentResult] of teamResult.agentResults) {
+          if (name !== 'coordinator') {
+            const agentOutput = extractOutput(agentResult);
+            if (agentOutput) {
+              parts.push(`\n---\n## ${name}\n${agentOutput}`);
+            }
+          }
+        }
+        const output = parts.length > 0
+          ? parts.join('\n')
+          : JSON.stringify({ success: teamResult.success, totalTokenUsage: teamResult.totalTokenUsage });
+
+        result = { output, agent: 'team' };
       } else {
         // 单 Agent 模式 — 简单意图路由
         const agentId = detectAgent(userText);
