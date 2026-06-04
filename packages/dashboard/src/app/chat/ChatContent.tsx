@@ -100,6 +100,7 @@ export default function ChatContent() {
   // 每个 Agent 独立的发送状态（并发关键）
   const [sending, setSending] = useState<Record<string, boolean>>({})
   const sendingRef = useRef<Record<string, boolean>>({})
+  const [broadcasting, setBroadcasting] = useState(false)
   const mountedRef = useRef(true)
   const messagesEndRefs = useRef<Record<string, HTMLDivElement | null>>({})
 
@@ -398,7 +399,7 @@ export default function ChatContent() {
               <Button
                 variant="outline"
                 size="sm"
-                disabled={isCurrentSending || !currentInput.trim()}
+                disabled={isCurrentSending || broadcasting || !currentInput.trim()}
                 onClick={async () => {
                   const msg = currentInput.trim()
                   if (!msg) return
@@ -406,6 +407,7 @@ export default function ChatContent() {
                   const targets = tabs.map(t => t.id)
                   if (targets.length === 0) return
                   setTabInput(activeAgentId, '')
+                  setBroadcasting(true)
                   // 在当前对话中显示广播消息
                   addMessage(activeKey, {
                     id: `user-${Date.now()}-broadcast`,
@@ -414,7 +416,7 @@ export default function ChatContent() {
                     agentId: activeAgentId,
                     timestamp: Date.now(),
                   })
-                  // 并发发送
+                  // 通过 TeamOrchestrator 编排
                   try {
                     const res = await fetch('/api/collab', {
                       method: 'POST',
@@ -422,22 +424,69 @@ export default function ChatContent() {
                       body: JSON.stringify({ message: msg, agents: targets }),
                     })
                     const data = await res.json()
-                    for (const r of (data.responses || [])) {
-                      const agentInfo = AGENTS[r.agent] || { icon: '🤖', name: r.agent }
-                      addMessage(activeKey, {
-                        id: `agent-${Date.now()}-${r.agent}`,
-                        role: 'assistant',
-                        content: r.content,
-                        agentId: r.agent,
-                        timestamp: Date.now(),
-                      })
+                    if (data.error) {
+                      throw new Error(data.error)
                     }
+                    addMessage(activeKey, {
+                      id: `agent-${Date.now()}-team`,
+                      role: 'assistant',
+                      content: data.content || 'No response',
+                      agentId: data.agent || 'team',
+                      timestamp: Date.now(),
+                    })
                   } catch (e) {
                     showToast(`Broadcast failed: ${e instanceof Error ? e.message : 'unknown'}`, 'error')
+                  } finally {
+                    setBroadcasting(false)
                   }
                 }}
               >
-                📢 Broadcast
+                {broadcasting ? '⏳ 编排中...' : '📢 Broadcast'}
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={isCurrentSending || broadcasting || !currentInput.trim()}
+                className="border-purple-300 text-purple-600 hover:bg-purple-50"
+                onClick={async () => {
+                  const msg = currentInput.trim()
+                  if (!msg) return
+                  const targets = tabs.map(t => t.id)
+                  if (targets.length === 0) return
+                  setTabInput(activeAgentId, '')
+                  setBroadcasting(true)
+                  addMessage(activeKey, {
+                    id: `user-${Date.now()}-meeting`,
+                    role: 'user',
+                    content: `🎙️ Meeting (${targets.length} agents): ${msg}`,
+                    agentId: activeAgentId,
+                    timestamp: Date.now(),
+                  })
+                  try {
+                    const res = await fetch('/api/collab', {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ message: msg, agents: targets, mode: 'meeting' }),
+                    })
+                    const data = await res.json()
+                    if (data.error) {
+                      throw new Error(data.error)
+                    }
+                    addMessage(activeKey, {
+                      id: `agent-${Date.now()}-meeting`,
+                      role: 'assistant',
+                      content: data.content || 'No response',
+                      agentId: data.agent || 'meeting',
+                      timestamp: Date.now(),
+                    })
+                  } catch (e) {
+                    showToast(`Meeting failed: ${e instanceof Error ? e.message : 'unknown'}`, 'error')
+                  } finally {
+                    setBroadcasting(false)
+                  }
+                }}
+              >
+                {broadcasting ? '⏳ 会议中...' : '🎙️ Meeting'}
               </Button>
             </div>
           </div>
@@ -509,6 +558,21 @@ export default function ChatContent() {
                       <div className="w-2 h-2 bg-blue-400 rounded-full animate-bounce" style={{ animationDelay: '0.2s' }} />
                     </div>
                     <span className="text-sm text-gray-500">Agent thinking...</span>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {broadcasting && (
+              <div className="flex justify-start">
+                <div className="bg-purple-50 border border-purple-200 rounded-2xl p-4 shadow-sm">
+                  <div className="flex items-center space-x-2">
+                    <div className="flex space-x-1">
+                      <div className="w-2 h-2 bg-purple-400 rounded-full animate-bounce" />
+                      <div className="w-2 h-2 bg-purple-400 rounded-full animate-bounce" style={{ animationDelay: '0.1s' }} />
+                      <div className="w-2 h-2 bg-purple-400 rounded-full animate-bounce" style={{ animationDelay: '0.2s' }} />
+                    </div>
+                    <span className="text-sm text-purple-600">🧠 多 Agent 协同编排中...</span>
                   </div>
                 </div>
               </div>

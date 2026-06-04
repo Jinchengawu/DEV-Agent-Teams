@@ -118,12 +118,8 @@ export function createAgentApp(config: AgentAppConfig = {}): AgentApp {
       // 委托给 TeamOrchestrator
       let result: { output: string; agent: string };
 
-      if (mode === 'team') {
-        // 多 Agent 协同模式
-        const teamResult = await orchestrator.runTeam(userText);
-
-        // 从 AgentRunResult 中提取文本输出
-        function extractOutput(agentResult: { output: string; success: boolean; messages: { role: string; content: { type: string; text?: string }[] }[]; toolCalls: { toolName: string; input: Record<string, unknown>; output: string }[] }): string {
+      // 从 AgentRunResult 中提取文本输出
+      function extractOutput(agentResult: { output: string; success: boolean; messages: { role: string; content: { type: string; text?: string }[] }[]; toolCalls: { toolName: string; input: Record<string, unknown>; output: string }[] }): string {
           const allText: string[] = [];
           for (const msg of agentResult.messages) {
             if (msg.role === 'assistant') {
@@ -142,7 +138,11 @@ export function createAgentApp(config: AgentAppConfig = {}): AgentApp {
             parts.push(`\n📊 执行了 ${agentResult.toolCalls.length} 个操作 (${toolNames.join(', ')})`);
           }
           return parts.join('\n') || (agentResult.success ? '✅ 任务完成' : '❌ 任务失败');
-        }
+      }
+
+      if (mode === 'team') {
+        // 多 Agent 协同模式
+        const teamResult = await orchestrator.runTeam(userText);
 
         // 构建结构化输出：汇总协调员结论 + 各 Agent 贡献
         const parts: string[] = [];
@@ -164,6 +164,26 @@ export function createAgentApp(config: AgentAppConfig = {}): AgentApp {
           : JSON.stringify({ success: teamResult.success, totalTokenUsage: teamResult.totalTokenUsage });
 
         result = { output, agent: 'team' };
+      } else if (mode === 'meeting') {
+        // 圆桌会议模式 — 所有 Agent 顺序发言，共享上下文
+        const meetingResult = await orchestrator.runMeeting(userText);
+
+        // 复用 extractOutput 提取每个 Agent 的输出
+        const meetingParts: string[] = [];
+        meetingParts.push(`# 🎙️ 会议讨论\n`);
+        for (const [name, agentResult] of meetingResult.agentResults) {
+          const agentOutput = extractOutput(agentResult);
+          if (agentOutput) {
+            const agentConfig = orchestrator.getStatus().teamAgents.find((a) => a.name === name);
+            const roleLabel = agentConfig ? `（${agentConfig.model}）` : '';
+            meetingParts.push(`\n---\n## 🧑‍💼 ${name}${roleLabel}\n${agentOutput}`);
+          }
+        }
+        const meetingOutput = meetingParts.length > 1
+          ? meetingParts.join('\n')
+          : JSON.stringify({ success: meetingResult.success, totalTokenUsage: meetingResult.totalTokenUsage });
+
+        result = { output: meetingOutput, agent: 'meeting' };
       } else {
         // 单 Agent 模式 — 简单意图路由
         const agentId = detectAgent(userText);
@@ -193,7 +213,7 @@ export function createAgentApp(config: AgentAppConfig = {}): AgentApp {
           },
         ],
         instance: result.agent,
-        routedBy: mode === 'team' ? 'team-orchestrator' : 'intent-router',
+        routedBy: mode === 'team' ? 'team-orchestrator' : mode === 'meeting' ? 'meeting-orchestrator' : 'intent-router',
       });
     } catch (error) {
       console.error('[agent-app] Chat error:', error);
