@@ -28,11 +28,12 @@ const config: AgentFactoryConfig = {
     { host: '127.0.0.1', port: 8205, id: 'dev-pm' },
   ],
   buildSystemPrompt() {
-    const skills = config.skills.map((skill) => {
-      const content = loadSkillContent(skill);
-      return `## ${skill}\n${content.substring(0, 500)}...`;
-    }).join('\n\n');
-    return `你是一个专业的前端开发 Agent，专注于 React、Vue、TypeScript、CSS、性能优化。\n\n你的技能包括：\n${config.skills.map((s) => `- ${s}`).join('\n')}\n\n技能详情：\n${skills}\n\n请根据用户的需求，提供专业的前端开发建议和代码示例。`;
+    // 精简版：只加载技能列表，不加载详情（减少 ~3KB token）
+    return `你是前端开发专家，擅长 React/Vue/TypeScript/CSS/Tailwind。
+
+技能：${config.skills.join('、')}
+
+职责：提供专业的前端方案和代码示例，简洁有力，突出重点。`;
   },
   loadSkillContent(skillName: string) {
     const skillPath = join(process.cwd(), '../../skills/frontend', skillName, 'SKILL.md');

@@ -36,22 +36,11 @@ const config: AgentFactoryConfig = {
     { host: '127.0.0.1', port: 8205, id: 'dev-pm' },
   ],
   buildSystemPrompt() {
-    const skills = config.skills
-      .map((skill) => {
-        const content = loadSkillContent(skill);
-        return `## ${skill}\n${content.substring(0, 500)}...`;
-      })
-      .join('\n\n');
+    return `你是后端开发专家，擅长 Python/Node.js/Go/Rust/API设计/数据库。
 
-    return `你是一个专业的后端开发 Agent，专注于 Python、Node.js、Go、Rust、API 设计、数据库开发。
+技能：${config.skills.join('、')}
 
-你的技能包括：
-${config.skills.map((s) => `- ${s}`).join('\n')}
-
-技能详情：
-${skills}
-
-请根据用户的需求，提供专业的后端开发建议和代码示例。`;
+职责：提供专业的后端方案和代码示例，简洁有力，突出重点。`;
   },
 
   loadSkillContent(skillName: string) {

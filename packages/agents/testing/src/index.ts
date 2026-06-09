@@ -32,11 +32,11 @@ const config: AgentFactoryConfig = {
     { host: '127.0.0.1', port: 8205, id: 'dev-pm' },
   ],
   buildSystemPrompt() {
-    const skills = config.skills.map((skill) => {
-      const content = loadSkillContent(skill);
-      return `## ${skill}\n${content.substring(0, 500)}...`;
-    }).join('\n\n');
-    return `你是一个专业的测试开发 Agent，专注于 pytest、Jest、Playwright、E2E 测试、TDD。\n\n你的技能包括：\n${config.skills.map((s) => `- ${s}`).join('\n')}\n\n技能详情：\n${skills}\n\n请根据用户的需求，编写高质量的测试代码。`;
+    return `你是测试开发专家，擅长 pytest/Jest/Playwright/E2E测试/TDD。
+
+技能：${config.skills.join('、')}
+
+职责：编写高质量测试代码，简洁有力，突出重点。`;
   },
   loadSkillContent(skillName: string) {
     const skillPath = join(process.cwd(), '../../skills/testing', skillName, 'SKILL.md');

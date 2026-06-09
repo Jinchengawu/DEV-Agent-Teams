@@ -25,6 +25,17 @@ import { createSendMessageTool } from '../tools/send-message.js';
 import { registerTeam } from '../tools/team-registry.js';
 
 // ============================================================================
+// Types
+// ============================================================================
+
+export type MeetingProgressEvent =
+  | { type: 'agent_start'; agent: string; name: string; role: string; index: number; total: number }
+  | { type: 'thinking'; agent: string; name: string; message: string }
+  | { type: 'output'; agent: string; name: string; role: string; output: string; toolCalls: number; index: number; total: number }
+  | { type: 'error'; agent: string; name: string; error: string }
+  | { type: 'done' };
+
+// ============================================================================
 // Config
 // ============================================================================
 
@@ -201,6 +212,163 @@ export class TeamOrchestrator {
 
       console.log(`[TeamOrchestrator] meeting: ${config.id} 已发言`);
     }
+
+    return {
+      success: true,
+      goal,
+      agentResults,
+      totalTokenUsage: totalTokenUsage as TokenUsage,
+    };
+  }
+
+  /**
+   * runMeetingWithProgress — 带实时进度的圆桌会议（并发控制 + 重试）
+   * 最多 MAX_CONCURRENT 个 Agent 同时执行，429 错误自动重试
+   */
+  async runMeetingWithProgress(
+    goal: string,
+    onProgress: (event: MeetingProgressEvent) => void,
+  ): Promise<TeamRunResult> {
+    const MAX_CONCURRENT = 2; // 并发限制
+    const MAX_RETRIES = 3;    // 最大重试次数
+    const BASE_DELAY = 2000;  // 基础延迟 2s
+
+    console.log(`[TeamOrchestrator] runMeetingWithProgress (concurrency=${MAX_CONCURRENT}): "${goal.substring(0, 60)}..."`);
+
+    const agents = this.team.getAgents();
+    const agentResults = new Map<string, AgentRunResult>();
+    const totalTokenUsage = { input_tokens: 0, output_tokens: 0 };
+
+    // 通知所有 Agent 开始
+    const agentConfigs = agents
+      .map((agent, i) => ({ agent, config: this.agentConfigs.get(agent.name), index: i }))
+      .filter((a): a is { agent: typeof a.agent; config: NonNullable<typeof a.config>; index: number } => !!a.config);
+
+    for (const { config, index } of agentConfigs) {
+      onProgress({
+        type: 'agent_start',
+        agent: config.id,
+        name: config.name,
+        role: config.role,
+        index,
+        total: agents.length,
+      });
+      onProgress({
+        type: 'thinking',
+        agent: config.id,
+        name: config.name,
+        message: `${config.name} 正在排队...`,
+      });
+    }
+
+    // 带重试的 Agent 执行函数
+    const prompt = `## 会议议题\n${goal}\n\n请从你的专业角度发表意见。简洁有力，突出重点。`;
+
+    const runWithRetry = async (config: typeof agentConfigs[0]['config'], attempt = 1): Promise<AgentRunResult> => {
+      try {
+        return await this.omAgent.runAgent(
+          {
+            name: config.id,
+            model: config.model,
+            provider: 'mimo' as const,
+            baseURL: config.baseUrl,
+            apiKey: config.apiKey,
+            systemPrompt: config.systemPrompt,
+            tools: ['file_read', 'file_write', 'file_edit', 'bash', 'grep', 'glob', 'send_message'],
+            customTools: [createSendMessageTool('dev-agent-team')],
+          },
+          prompt,
+        );
+      } catch (err) {
+        const is429 = err instanceof Error && (err.message.includes('429') || err.message.includes('Too many requests'));
+        if (is429 && attempt < MAX_RETRIES) {
+          const delay = BASE_DELAY * Math.pow(2, attempt - 1); // 指数退避
+          console.log(`[TeamOrchestrator] ${config.id} 触发限流，${delay}ms 后重试 (${attempt}/${MAX_RETRIES})`);
+          await new Promise(r => setTimeout(r, delay));
+          return runWithRetry(config, attempt + 1);
+        }
+        throw err;
+      }
+    };
+
+    // 并发控制：使用信号量限制同时执行的 Agent 数量
+    let running = 0;
+    const queue: (() => void)[] = [];
+
+    const acquire = () => new Promise<void>(resolve => {
+      if (running < MAX_CONCURRENT) {
+        running++;
+        resolve();
+      } else {
+        queue.push(resolve);
+      }
+    });
+
+    const release = () => {
+      if (queue.length > 0) {
+        const next = queue.shift()!;
+        next();
+      } else {
+        running--;
+      }
+    };
+
+    // 并发执行所有 Agent（受信号量控制）
+    const results = await Promise.allSettled(
+      agentConfigs.map(async ({ config }) => {
+        await acquire();
+        try {
+          const result = await runWithRetry(config);
+          return { config, result };
+        } finally {
+          release();
+        }
+      }),
+    );
+
+    // 收集结果并发送进度事件
+    for (let i = 0; i < results.length; i++) {
+      const { config, index } = agentConfigs[i];
+      const outcome = results[i];
+
+      if (outcome.status === 'fulfilled') {
+        const { result } = outcome.value;
+        agentResults.set(config.name, result);
+        totalTokenUsage.input_tokens += result.tokenUsage.input_tokens;
+        totalTokenUsage.output_tokens += result.tokenUsage.output_tokens;
+
+        onProgress({
+          type: 'output',
+          agent: config.id,
+          name: config.name,
+          role: config.role,
+          output: result.output,
+          toolCalls: result.toolCalls.length,
+          index,
+          total: agents.length,
+        });
+      } else {
+        const errorMsg = outcome.reason instanceof Error ? outcome.reason.message : 'Unknown error';
+        console.error(`[TeamOrchestrator] meeting: ${config.id} 失败:`, errorMsg);
+
+        onProgress({
+          type: 'error',
+          agent: config.id,
+          name: config.name,
+          error: errorMsg,
+        });
+
+        agentResults.set(config.name, {
+          success: false,
+          output: `❌ 执行失败: ${errorMsg}`,
+          messages: [],
+          tokenUsage: { input_tokens: 0, output_tokens: 0 },
+          toolCalls: [],
+        });
+      }
+    }
+
+    onProgress({ type: 'done' });
 
     return {
       success: true,

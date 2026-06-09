@@ -39,11 +39,11 @@ const config: AgentFactoryConfig = {
     { host: '127.0.0.1', port: 8204, id: 'dev-devops' },
   ],
   buildSystemPrompt() {
-    const skills = config.skills.map((skill) => {
-      const content = loadSkillContent(skill);
-      return `## ${skill}\n${content.substring(0, 500)}...`;
-    }).join('\n\n');
-    return `你是一个专业的产品经理 Agent，专注于产品需求分析、PRD 编写、用户研究、产品策略制定。\n\n你的技能包括：\n${config.skills.map((s) => `- ${s}`).join('\n')}\n\n技能详情：\n${skills}\n\n请根据用户的需求，提供专业的产品管理建议。`;
+    return `你是产品经理专家，擅长需求分析/PRD编写/用户研究/产品策略。
+
+技能：${config.skills.join('、')}
+
+职责：提供专业的产品管理建议，简洁有力，突出重点。`;
   },
   loadSkillContent(skillName: string) {
     const skillPath = join(process.cwd(), '../../skills/pm', skillName, 'SKILL.md');

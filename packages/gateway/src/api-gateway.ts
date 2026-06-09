@@ -16,7 +16,7 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { config } from 'dotenv';
 import { createAgentApp } from '@dev-agent/core';
-import type { OrchestratorEvent } from '@open-multi-agent/core';
+import type { OrchestratorEvent, MeetingProgressEvent } from '@dev-agent/core';
 
 // 加载项目根目录的 .env 文件
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -190,12 +190,90 @@ async function main(): Promise<void> {
         let routedBy: string;
 
         if (mode === 'team') {
+          // 先用 runTeam 让协调员分析目标
+          // 如果协调员短路到单个 Agent，结果已经足够好
+          // 如果需要多 Agent 协作，runTeam 内部会自动分解
           const teamResult = await agentApp.orchestrator.runTeam(userText);
-          result = {
-            output: teamResult.agentResults.get('coordinator')?.output || JSON.stringify(teamResult),
-            agent: 'team',
-          };
+
+          // 从 AgentRunResult 中提取文本输出
+          function extractOutput(agentResult: { output: string; messages: { role: string; content: { type: string; text?: string }[] }[]; toolCalls: { toolName: string; input: Record<string, unknown>; output: string }[] }): string {
+            // 收集所有 assistant 消息中的文本（包括 reasoning 和 text 类型）
+            const allText: string[] = [];
+            for (const msg of agentResult.messages) {
+              if (msg.role === 'assistant') {
+                for (const block of msg.content) {
+                  if ((block.type === 'text' || block.type === 'reasoning') && block.text) {
+                    allText.push(block.text);
+                  }
+                }
+              }
+            }
+            const combined = allText.join('\n').trim();
+
+            // 构建结果
+            const parts: string[] = [];
+            if (combined) {
+              parts.push(combined);
+            }
+
+            // 补充 tool call 摘要
+            if (agentResult.toolCalls.length > 0) {
+              const toolNames = [...new Set(agentResult.toolCalls.map((tc) => tc.toolName))];
+              parts.push(`\n📊 执行了 ${agentResult.toolCalls.length} 个操作 (${toolNames.join(', ')})`);
+            }
+
+            return parts.join('\n') || (agentResult.success ? '✅ 任务完成' : '❌ 任务失败');
+          }
+
+          // 构建结构化输出：汇总协调员结论 + 各 Agent 贡献
+          const parts: string[] = [];
+          const coordinatorResult = teamResult.agentResults.get('coordinator');
+          if (coordinatorResult) {
+            const coordinatorOutput = extractOutput(coordinatorResult);
+            if (coordinatorOutput) parts.push(coordinatorOutput);
+          }
+          for (const [name, agentResult] of teamResult.agentResults) {
+            if (name !== 'coordinator') {
+              const agentOutput = extractOutput(agentResult);
+              if (agentOutput) {
+                parts.push(`\n---\n## ${name}\n${agentOutput}`);
+              }
+            }
+          }
+          const output = parts.length > 0
+            ? parts.join('\n')
+            : JSON.stringify({ success: teamResult.success, totalTokenUsage: teamResult.totalTokenUsage });
+
+          result = { output, agent: 'team' };
           routedBy = 'team-orchestrator';
+        } else if (mode === 'meeting') {
+          // 圆桌会议模式 — 所有 Agent 顺序发言
+          const meetingResult = await agentApp.orchestrator.runMeeting(userText);
+
+          function extractOutput(agentResult: { output: string; messages: { role: string; content: { type: string; text?: string }[] }[]; toolCalls: { toolName: string; input: Record<string, unknown>; output: string }[] }): string {
+            const allText: string[] = [];
+            for (const msg of agentResult.messages) {
+              if (msg.role === 'assistant') {
+                for (const block of msg.content) {
+                  if ((block.type === 'text' || block.type === 'reasoning') && block.text) {
+                    allText.push(block.text);
+                  }
+                }
+              }
+            }
+            return allText.join('\n').trim() || agentResult.output || (agentResult.success ? '✅ 任务完成' : '❌ 任务失败');
+          }
+
+          const meetingParts: string[] = [];
+          for (const [name, agentResult] of meetingResult.agentResults) {
+            const output = extractOutput(agentResult);
+            if (output) {
+              const agentConf = agentApp.orchestrator.getStatus().teamAgents.find((a: { name: string }) => a.name === name);
+              meetingParts.push(`\n---\n## 🧑‍💼 ${name}${agentConf ? `（${agentConf.model}）` : ''}\n${output}`);
+            }
+          }
+          result = { output: meetingParts.join('\n') || '会议完成', agent: 'meeting' };
+          routedBy = 'meeting-orchestrator';
         } else {
           // 单 Agent 模式 — 优先使用请求指定的 agentId，否则自动检测
           const agentId = normalizeAgentId(requestedAgentId) || detectAgent(userText);
@@ -258,6 +336,93 @@ async function main(): Promise<void> {
         const messages = agentApp.sessionManager.getAllMessages(sessionId);
         res.writeHead(200, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ session, messages }));
+        return;
+      }
+
+      // Meeting SSE Stream — 流式会议进度
+      if (path === '/v1/meeting/stream' && req.method === 'POST') {
+        const request = body ? JSON.parse(body) : {};
+        const { message, sessionId, topicId } = request;
+
+        if (!message) {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: 'message is required' }));
+          return;
+        }
+
+        // SSE 头
+        res.writeHead(200, {
+          'Content-Type': 'text/event-stream',
+          'Cache-Control': 'no-cache',
+          'Connection': 'keep-alive',
+          'X-Accel-Buffering': 'no',
+        });
+
+        const sendEvent = (data: Record<string, unknown>) => {
+          res.write(`data: ${JSON.stringify(data)}\n\n`);
+          // 强制刷新，确保事件立即发送到客户端
+          if (typeof (res as any).flush === 'function') {
+            (res as any).flush();
+          }
+        };
+
+        try {
+          // 会话管理
+          const sid = sessionId || `meeting-${topicId || Date.now()}`;
+          if (!agentApp.sessionManager.getSession(sid)) {
+            agentApp.sessionManager.createSession('', sid);
+          }
+          agentApp.sessionManager.addMessage(sid, 'user', message, 'user');
+
+          sendEvent({ type: 'start', sessionId: sid });
+
+          const meetingResult = await agentApp.orchestrator.runMeetingWithProgress(
+            message,
+            (event: MeetingProgressEvent) => {
+              sendEvent(event);
+            },
+          );
+
+          // 组装最终输出
+          function extractOutput(agentResult: { output: string; messages: { role: string; content: { type: string; text?: string }[] }[]; toolCalls: { toolName: string; input: Record<string, unknown>; output: string }[] }): string {
+            const allText: string[] = [];
+            for (const msg of agentResult.messages) {
+              if (msg.role === 'assistant') {
+                for (const block of msg.content) {
+                  if ((block.type === 'text' || block.type === 'reasoning') && block.text) {
+                    allText.push(block.text);
+                  }
+                }
+              }
+            }
+            return allText.join('\n').trim() || agentResult.output || (agentResult.success ? '✅ 任务完成' : '❌ 任务失败');
+          }
+
+          const parts: string[] = [];
+          for (const [name, agentResult] of meetingResult.agentResults) {
+            const output = extractOutput(agentResult);
+            if (output) {
+              const config = agentApp.orchestrator.getStatus().teamAgents.find((a: { name: string }) => a.name === name);
+              parts.push(`\n---\n## 🧑‍💼 ${name}${config ? `（${config.model}）` : ''}\n${output}`);
+            }
+          }
+          const finalOutput = parts.join('\n') || '会议完成';
+
+          agentApp.sessionManager.addMessage(sid, 'assistant', finalOutput, 'meeting');
+
+          sendEvent({
+            type: 'complete',
+            output: finalOutput,
+            sessionId: sid,
+          });
+        } catch (err) {
+          sendEvent({
+            type: 'error',
+            error: err instanceof Error ? err.message : 'Unknown error',
+          });
+        }
+
+        res.end();
         return;
       }
 
