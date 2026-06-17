@@ -70,22 +70,23 @@ describe('SessionManager', () => {
       expect(messages[1].role).toBe('assistant');
     });
 
-    it('应支持 agentId', () => {
+    it('应支持 agent_id', () => {
       const sessionId = manager.createSession('user-1');
       manager.addMessage(sessionId, 'assistant', '回复', 'dev-frontend');
 
       const messages = manager.getMessages(sessionId);
-      expect(messages[0].agentId).toBe('dev-frontend');
+      expect(messages[0].agent_id).toBe('dev-frontend');
     });
 
-    it('应获取所有消息（跨会话）', () => {
-      const s1 = manager.createSession('user-1');
-      const s2 = manager.createSession('user-2');
-      manager.addMessage(s1, 'user', '消息1');
-      manager.addMessage(s2, 'user', '消息2');
+    it('应获取会话内所有消息', () => {
+      const sessionId = manager.createSession('user-1');
+      manager.addMessage(sessionId, 'user', '消息1');
+      manager.addMessage(sessionId, 'assistant', '消息2');
+      manager.addMessage(sessionId, 'user', '消息3');
 
-      const all = manager.getAllMessages();
-      expect(all.length).toBeGreaterThanOrEqual(2);
+      const all = manager.getAllMessages(sessionId);
+      expect(all.length).toBe(3);
+      expect(all[0].content).toBe('消息1'); // ASC 排序
     });
 
     it('应获取总消息数', () => {
