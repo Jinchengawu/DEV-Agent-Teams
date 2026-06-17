@@ -133,6 +133,26 @@ open http://localhost:3000
 | 前端 | Next.js 14 + React + Tailwind CSS |
 | 数据库 | SQLite (better-sqlite3) |
 
+## 测试
+
+### 快速回归测试（3分钟）
+
+```bash
+bash scripts/quick-regression.sh
+```
+
+验证：Gateway 健康、5 Agent 在线、单 Agent 响应、Team 模式协同、Dashboard 集成。
+
+### 完整回归测试（10分钟）
+
+```bash
+bash scripts/full-regression.sh
+```
+
+覆盖：健康检查、Agent 列表、单 Agent / Team / Meeting 三种模式、数据持久化、审计日志。
+
+> 详细说明见 [REGRESSION-TEST.md](REGRESSION-TEST.md)
+
 ## 相关项目
 
 - [@open-multi-agent/core](https://github.com/open-multi-agent/open-multi-agent) — 多 Agent 编排框架
@@ -145,4 +165,4 @@ MIT License
 ---
 
 **版本**：v0.3.0
-**最后更新**：2026-06-01
+**最后更新**：2026-06-17
