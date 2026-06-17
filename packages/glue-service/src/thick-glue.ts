@@ -1,7 +1,8 @@
 /**
  * 厚胶水（ThickGlue）
  *
- * 多 Agent 协作：会议模式，评论聚合、决议生成
+ * 多 Agent 协作：会议模式，评论聚合、决议生成、版本快照
+ * 支持基于文档的会议
  */
 
 import type { ProfileManager } from './lifecycle/profile-manager.js';
@@ -12,6 +13,29 @@ import type {
   MeetingComment,
   TaskRequest,
 } from './types.js';
+
+/** 会议快照 */
+export interface MeetingSnapshot {
+  version: string;
+  timestamp: string;
+  goal: string;
+  participants: string[];
+  comments: MeetingComment[];
+  resolution: string;
+  documentId?: string;
+  totalTokens: number;
+  duration: number;
+}
+
+/** 基于文档的会议请求 */
+export interface DocumentMeetingRequest {
+  documentId: string;
+  documentTitle: string;
+  documentContent: string;
+  agenda: string;
+  agents?: string[];
+  maxRounds?: number;
+}
 
 export interface ThickGlueConfig {
   /** 最大轮次，默认 3 */
@@ -27,6 +51,8 @@ export class ThickGlue {
     maxRounds: number;
     roundTimeout: number;
   };
+  private snapshots: MeetingSnapshot[] = [];
+  private versionCounter = new Map<string, number>();
 
   constructor(
     profileManager: ProfileManager,
@@ -76,13 +102,69 @@ export class ThickGlue {
     // 生成决议
     const resolution = await this.generateResolution(request.goal, comments);
 
-    return {
+    // 生成版本快照
+    const version = this.generateVersion(request.goal);
+    const snapshot: MeetingSnapshot = {
+      version,
+      timestamp: new Date().toISOString(),
       goal: request.goal,
+      participants: agents,
       comments,
       resolution,
       totalTokens: comments.reduce((sum, c) => sum + c.tokens, 0),
       duration: Date.now() - startTime,
     };
+    this.snapshots.push(snapshot);
+
+    return {
+      goal: request.goal,
+      comments,
+      resolution,
+      totalTokens: snapshot.totalTokens,
+      duration: snapshot.duration,
+    };
+  }
+
+  /** 基于文档的会议 */
+  async runDocumentMeeting(request: DocumentMeetingRequest): Promise<MeetingResponse> {
+    const context = `## 讨论文档
+
+**标题**: ${request.documentTitle}
+
+**内容**:
+${request.documentContent}
+
+**议题**: ${request.agenda}
+
+请针对以上文档和议题发表你的专业观点。`;
+
+    return this.runMeeting({
+      goal: request.agenda,
+      agents: request.agents,
+      maxRounds: request.maxRounds,
+    });
+  }
+
+  /** 获取会议快照 */
+  getSnapshots(goal?: string): MeetingSnapshot[] {
+    if (goal) {
+      return this.snapshots.filter(s => s.goal === goal);
+    }
+    return [...this.snapshots];
+  }
+
+  /** 获取最新快照 */
+  getLatestSnapshot(goal: string): MeetingSnapshot | null {
+    const snapshots = this.getSnapshots(goal);
+    return snapshots.length > 0 ? snapshots[snapshots.length - 1] : null;
+  }
+
+  /** 生成版本号 */
+  private generateVersion(goal: string): string {
+    const current = this.versionCounter.get(goal) ?? 0;
+    const next = current + 1;
+    this.versionCounter.set(goal, next);
+    return `v${next}.0`;
   }
 
   /** 收集一轮评论 */

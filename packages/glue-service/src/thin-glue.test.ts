@@ -58,4 +58,46 @@ describe('ThinGlue', () => {
       thinGlue.executeTask({ agentId: 'unknown', task: 'test' })
     ).rejects.toThrow('No available handler');
   });
+
+  it('应批量并行执行任务', async () => {
+    // 注册多个 Profile（未启动，会使用 fallback）
+    ['frontend', 'backend', 'testing'].forEach(id => {
+      profileManager.register({ agentId: id, name: id, role: '', port: 8000, skills: [], tags: [] });
+    });
+
+    thinGlue.setFallbackHandler(async (req) => ({
+      agentId: req.agentId,
+      output: `${req.agentId} result`,
+      tokens: 10,
+      duration: 0,
+      source: 'fallback',
+    }));
+
+    const results = await thinGlue.executeParallel([
+      { agentId: 'frontend', task: '创建 header' },
+      { agentId: 'backend', task: '创建 API' },
+      { agentId: 'testing', task: '写测试' },
+    ]);
+
+    expect(results.results.size).toBe(3);
+    expect(results.failed).toHaveLength(0);
+    expect(results.totalTokens).toBe(30);
+  });
+
+  it('批量任务部分失败应记录失败', async () => {
+    profileManager.register({ agentId: 'valid', name: 'Valid', role: '', port: 8000, skills: [], tags: [] });
+
+    thinGlue.setFallbackHandler(async (req) => {
+      if (req.agentId === 'invalid') throw new Error('Agent not found');
+      return { agentId: req.agentId, output: 'ok', tokens: 10, duration: 0, source: 'fallback' };
+    });
+
+    const results = await thinGlue.executeParallel([
+      { agentId: 'valid', task: 'task1' },
+      { agentId: 'invalid', task: 'task2' },
+    ]);
+
+    expect(results.results.size).toBe(1);
+    expect(results.failed).toContain('invalid');
+  });
 });
