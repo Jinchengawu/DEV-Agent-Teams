@@ -1,23 +1,17 @@
 /**
- * DEV-Agent Backend Agent (Core Library 集成版)
+ * DEV-Agent Backend Agent
  *
- * 后端开发专用 Agent：
- * - 会话持久化 (SQLite)
- * - 上下文压缩
- * - Agent 间通信 (AgentBus)
- * - 工作流支持 (WorkflowOrchestrator)
+ * 定义后端 Agent 配置 + 轻量健康检查服务。
+ * 实际编排由 Gateway 的 TeamOrchestrator 内嵌处理。
  */
 
-import { readFileSync, existsSync } from 'node:fs';
-import { join } from 'node:path';
-import { createAgentApp } from '@dev-agent/core';
-import type { AgentFactoryConfig } from '@dev-agent/core';
+import { createServer } from 'node:http';
 
-const config: AgentFactoryConfig = {
+export const agentConfig = {
   id: 'dev-backend',
-  label: '后端开发 Agent',
+  name: 'Backend Agent',
+  role: '后端开发专家 — Python/Node.js/Go/API/数据库',
   port: parseInt(process.env.AGENT_PORT || '8202'),
-  hermesPort: parseInt(process.env.HERMES_PORT || '8202'),
   skills: [
     'python-development',
     'nodejs-development',
@@ -29,73 +23,16 @@ const config: AgentFactoryConfig = {
     'microservices',
   ],
   tags: ['api', 'database', 'server', 'python', 'node', 'go', 'backend', '后端'],
-  peers: [
-    { host: '127.0.0.1', port: 8201, id: 'dev-frontend' },
-    { host: '127.0.0.1', port: 8203, id: 'dev-testing' },
-    { host: '127.0.0.1', port: 8204, id: 'dev-devops' },
-    { host: '127.0.0.1', port: 8205, id: 'dev-pm' },
-  ],
-  buildSystemPrompt() {
-    return `你是后端开发专家，擅长 Python/Node.js/Go/Rust/API设计/数据库。
-
-技能：${config.skills.join('、')}
-
-职责：提供专业的后端方案和代码示例，简洁有力，突出重点。`;
-  },
-
-  loadSkillContent(skillName: string) {
-    const skillPath = join(
-      process.cwd(),
-      '../../skills/backend',
-      skillName,
-      'SKILL.md'
-    );
-    if (existsSync(skillPath)) {
-      return readFileSync(skillPath, 'utf-8');
-    }
-    return '';
-  },
 };
 
-function loadSkillContent(skillName: string): string {
-  const skillPath = join(
-    process.cwd(),
-    '../../skills/backend',
-    skillName,
-    'SKILL.md'
-  );
-  if (existsSync(skillPath)) {
-    return readFileSync(skillPath, 'utf-8');
-  }
-  return '';
-}
-
-const { app, agentBus, sessionManager, memoryStore, compressor } =
-  createAgentApp(config);
-
-app.listen(config.port, async () => {
-  console.log(`🚀 ${config.label} listening on port ${config.port}`);
-  console.log(`🔗 Hermes integration: http://127.0.0.1:${config.hermesPort}`);
-  console.log(`📋 Skills: ${config.skills.join(', ')}`);
-  console.log(
-    `💾 Database: ${process.env.AGENT_DB_PATH || '~/.dev-agent/data'}`
-  );
-
-  // Phase B1: Register with peers on startup
-  const registered = await agentBus.registry.registerWithPeers(config.peers);
-  console.log(
-    `🤝 Peers: ${registered}/${config.peers.length} registered (${agentBus.registry.getAllAgents().length} total including self)`
-  );
+const server = createServer((_req, res) => {
+  res.writeHead(200, { 'Content-Type': 'application/json' });
+  res.end(JSON.stringify({ status: 'ok', agent: agentConfig.id, port: agentConfig.port }));
 });
 
-process.on('SIGINT', () => {
-  sessionManager.close();
-  memoryStore.close();
-  process.exit(0);
+server.listen(agentConfig.port, () => {
+  console.log(`🚀 ${agentConfig.name} listening on port ${agentConfig.port}`);
 });
 
-process.on('SIGTERM', () => {
-  sessionManager.close();
-  memoryStore.close();
-  process.exit(0);
-});
+process.on('SIGINT', () => process.exit(0));
+process.on('SIGTERM', () => process.exit(0));

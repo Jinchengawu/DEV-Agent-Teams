@@ -1,17 +1,17 @@
 /**
- * DEV-Agent DevOps Agent (Core Library 集成版)
+ * DEV-Agent DevOps Agent
+ *
+ * 定义 DevOps Agent 配置 + 轻量健康检查服务。
+ * 实际编排由 Gateway 的 TeamOrchestrator 内嵌处理。
  */
 
-import { readFileSync, existsSync } from 'node:fs';
-import { join } from 'node:path';
-import { createAgentApp } from '@dev-agent/core';
-import type { AgentFactoryConfig } from '@dev-agent/core';
+import { createServer } from 'node:http';
 
-const config: AgentFactoryConfig = {
+export const agentConfig = {
   id: 'dev-devops',
-  label: 'DevOps Agent',
+  name: 'DevOps Agent',
+  role: '运维专家 — Docker/K8s/CI-CD/部署',
   port: parseInt(process.env.AGENT_PORT || '8204'),
-  hermesPort: parseInt(process.env.HERMES_PORT || '8204'),
   skills: [
     'docker-management',
     'kubernetes-deployment',
@@ -20,44 +20,18 @@ const config: AgentFactoryConfig = {
     'terraform-iac',
     'helm-charts',
     'ansible',
-    'pulumi',
-    'argocd',
-    'chaos-engineering',
-    'service-mesh',
   ],
-  tags: ['docker', 'k8s', 'kubernetes', 'deploy', 'ci/cd', 'devops', '运维'],
-  peers: [
-    { host: '127.0.0.1', port: 8201, id: 'dev-frontend' },
-    { host: '127.0.0.1', port: 8202, id: 'dev-backend' },
-    { host: '127.0.0.1', port: 8203, id: 'dev-testing' },
-    { host: '127.0.0.1', port: 8205, id: 'dev-pm' },
-  ],
-  buildSystemPrompt() {
-    return `你是 DevOps 专家，擅长 Docker/K8s/CI-CD/Terraform/监控。
-
-技能：${config.skills.join('、')}
-
-职责：提供专业的 DevOps 方案，简洁有力，突出重点。`;
-  },
-  loadSkillContent(skillName: string) {
-    const skillPath = join(process.cwd(), '../../skills/devops', skillName, 'SKILL.md');
-    if (existsSync(skillPath)) return readFileSync(skillPath, 'utf-8');
-    return '';
-  },
+  tags: ['devops', 'docker', 'k8s', 'deploy', 'ci/cd', '运维'],
 };
 
-function loadSkillContent(skillName: string): string {
-  const skillPath = join(process.cwd(), '../../skills/devops', skillName, 'SKILL.md');
-  if (existsSync(skillPath)) return readFileSync(skillPath, 'utf-8');
-  return '';
-}
-
-const { app, agentBus, sessionManager, memoryStore } = createAgentApp(config);
-
-app.listen(config.port, async () => {
-  console.log(`🚀 ${config.label} listening on port ${config.port}`);
-  await agentBus.registry.registerWithPeers(config.peers);
+const server = createServer((_req, res) => {
+  res.writeHead(200, { 'Content-Type': 'application/json' });
+  res.end(JSON.stringify({ status: 'ok', agent: agentConfig.id, port: agentConfig.port }));
 });
 
-process.on('SIGINT', () => { sessionManager.close(); memoryStore.close(); process.exit(0); });
-process.on('SIGTERM', () => { sessionManager.close(); memoryStore.close(); process.exit(0); });
+server.listen(agentConfig.port, () => {
+  console.log(`🚀 ${agentConfig.name} listening on port ${agentConfig.port}`);
+});
+
+process.on('SIGINT', () => process.exit(0));
+process.on('SIGTERM', () => process.exit(0));

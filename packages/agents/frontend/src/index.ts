@@ -1,17 +1,21 @@
 /**
- * DEV-Agent Frontend Agent (Core Library 集成版)
+ * DEV-Agent Frontend Agent
+ *
+ * 定义前端 Agent 配置 + 轻量健康检查服务。
+ * 实际编排由 Gateway 的 TeamOrchestrator 内嵌处理。
  */
 
-import { readFileSync, existsSync } from 'node:fs';
-import { join } from 'node:path';
-import { createAgentApp } from '@dev-agent/core';
-import type { AgentFactoryConfig } from '@dev-agent/core';
+import { createServer } from 'node:http';
 
-const config: AgentFactoryConfig = {
+// ============================================================================
+// Agent 配置（供 Gateway 使用）
+// ============================================================================
+
+export const agentConfig = {
   id: 'dev-frontend',
-  label: '前端开发 Agent',
+  name: 'Frontend Agent',
+  role: '前端开发专家 — React/Vue/TypeScript/CSS/Tailwind',
   port: parseInt(process.env.AGENT_PORT || '8201'),
-  hermesPort: parseInt(process.env.HERMES_PORT || '8201'),
   skills: [
     'react-development',
     'vue-development',
@@ -21,39 +25,20 @@ const config: AgentFactoryConfig = {
     'performance-optimization',
   ],
   tags: ['react', 'vue', 'component', 'ui', 'css', 'typescript', 'frontend', '前端'],
-  peers: [
-    { host: '127.0.0.1', port: 8202, id: 'dev-backend' },
-    { host: '127.0.0.1', port: 8203, id: 'dev-testing' },
-    { host: '127.0.0.1', port: 8204, id: 'dev-devops' },
-    { host: '127.0.0.1', port: 8205, id: 'dev-pm' },
-  ],
-  buildSystemPrompt() {
-    // 精简版：只加载技能列表，不加载详情（减少 ~3KB token）
-    return `你是前端开发专家，擅长 React/Vue/TypeScript/CSS/Tailwind。
-
-技能：${config.skills.join('、')}
-
-职责：提供专业的前端方案和代码示例，简洁有力，突出重点。`;
-  },
-  loadSkillContent(skillName: string) {
-    const skillPath = join(process.cwd(), '../../skills/frontend', skillName, 'SKILL.md');
-    if (existsSync(skillPath)) return readFileSync(skillPath, 'utf-8');
-    return '';
-  },
 };
 
-function loadSkillContent(skillName: string): string {
-  const skillPath = join(process.cwd(), '../../skills/frontend', skillName, 'SKILL.md');
-  if (existsSync(skillPath)) return readFileSync(skillPath, 'utf-8');
-  return '';
-}
+// ============================================================================
+// 轻量健康检查服务（用于 dev-agent status）
+// ============================================================================
 
-const { app, agentBus, sessionManager, memoryStore } = createAgentApp(config);
-
-app.listen(config.port, async () => {
-  console.log(`🚀 ${config.label} listening on port ${config.port}`);
-  await agentBus.registry.registerWithPeers(config.peers);
+const server = createServer((_req, res) => {
+  res.writeHead(200, { 'Content-Type': 'application/json' });
+  res.end(JSON.stringify({ status: 'ok', agent: agentConfig.id, port: agentConfig.port }));
 });
 
-process.on('SIGINT', () => { sessionManager.close(); memoryStore.close(); process.exit(0); });
-process.on('SIGTERM', () => { sessionManager.close(); memoryStore.close(); process.exit(0); });
+server.listen(agentConfig.port, () => {
+  console.log(`🚀 ${agentConfig.name} listening on port ${agentConfig.port}`);
+});
+
+process.on('SIGINT', () => process.exit(0));
+process.on('SIGTERM', () => process.exit(0));

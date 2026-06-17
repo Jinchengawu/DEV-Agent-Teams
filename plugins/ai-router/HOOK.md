@@ -2,7 +2,7 @@
 name: ai-router
 description: "DEV-Agent AI 路由器 - 根据任务内容路由到对应 Agent"
 metadata:
-  { "openclaw": { "emoji": "🧠", "events": ["message:received"], "requires": { "bins": ["node"] } } }
+  { "oma": { "emoji": "🧠", "events": ["message:received"], "requires": { "bins": ["node"] } } }
 ---
 
 # DEV-Agent AI 路由器
@@ -23,4 +23,4 @@ metadata:
 
 ## 配置
 
-路由配置位于 `config/openclaw/instances.yaml`
+路由配置位于 `config/oma/instances.yaml`

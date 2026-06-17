@@ -1,6 +1,8 @@
 /**
  * TeamOrchestrator — 基于 @open-multi-agent/core 的多 Agent 协作编排器
  *
+ * 实现 IOrchestrator 接口，对外不暴露 @open-multi-agent/core 的类型。
+ *
  * 核心能力：
  * - runTeam(): 自动拆解目标 → DAG 并行执行 → 结果汇总
  * - runAgent(): 单 Agent 执行简单任务
@@ -12,58 +14,38 @@
 
 import {
   OpenMultiAgent,
-  type AgentConfig,
-  type TeamConfig,
-  type TeamRunResult,
-  type AgentRunResult,
-  type OrchestratorConfig,
-  type RunTeamOptions,
-  type OrchestratorEvent,
-  type TokenUsage,
+  type AgentConfig as OmaAgentConfig,
+  type TeamConfig as OmaTeamConfig,
+  type TeamRunResult as OmaTeamRunResult,
+  type AgentRunResult as OmaAgentRunResult,
+  type OrchestratorConfig as OmaOrchestratorConfig,
+  type RunTeamOptions as OmaRunTeamOptions,
+  type OrchestratorEvent as OmaOrchestratorEvent,
+  type TokenUsage as OmaTokenUsage,
 } from '@open-multi-agent/core';
 import { createSendMessageTool } from '../tools/send-message.js';
 import { registerTeam } from '../tools/team-registry.js';
+import type { IOrchestrator } from '../orchestrator/IOrchestrator.js';
+import type {
+  TeamAgentConfig,
+  TeamOrchestratorConfig,
+  TeamRunResult,
+  AgentRunResult,
+  TaskDefinition,
+  OrchestratorStatus,
+  MeetingProgressEvent,
+  OrchestratorEvent,
+  TokenUsage,
+} from '../orchestrator/types.js';
 
-// ============================================================================
-// Types
-// ============================================================================
-
-export type MeetingProgressEvent =
-  | { type: 'agent_start'; agent: string; name: string; role: string; index: number; total: number }
-  | { type: 'thinking'; agent: string; name: string; message: string }
-  | { type: 'output'; agent: string; name: string; role: string; output: string; toolCalls: number; index: number; total: number }
-  | { type: 'error'; agent: string; name: string; error: string }
-  | { type: 'done' };
-
-// ============================================================================
-// Config
-// ============================================================================
-
-export interface TeamAgentConfig {
-  id: string;
-  name: string;
-  role: string;
-  systemPrompt: string;
-  model: string;
-  apiKey: string;
-  baseUrl: string;
-}
-
-export interface TeamOrchestratorConfig {
-  agents: TeamAgentConfig[];
-  defaultModel: string;
-  apiKey: string;
-  baseUrl: string;
-  maxConcurrency?: number;
-  maxDelegationDepth?: number;
-  onProgress?: (event: OrchestratorEvent) => void;
-}
+// Re-export types for backward compatibility
+export type { TeamAgentConfig, TeamOrchestratorConfig, MeetingProgressEvent, OrchestratorEvent } from '../orchestrator/types.js';
 
 // ============================================================================
 // Orchestrator
 // ============================================================================
 
-export class TeamOrchestrator {
+export class TeamOrchestrator implements IOrchestrator {
   private omAgent: OpenMultiAgent;
   private team: Awaited<ReturnType<OpenMultiAgent['createTeam']>>;
   private agentConfigs: Map<string, TeamAgentConfig>;
@@ -75,14 +57,14 @@ export class TeamOrchestrator {
     }
 
     // 初始化 OpenMultiAgent — 使用 mimo provider 避免 404
-    const orchestratorConfig: OrchestratorConfig = {
+    const orchestratorConfig: OmaOrchestratorConfig = {
       defaultModel: config.defaultModel,
       defaultProvider: 'mimo',
       defaultBaseURL: config.baseUrl,
       defaultApiKey: config.apiKey,
       maxConcurrency: config.maxConcurrency ?? 5,
       maxDelegationDepth: config.maxDelegationDepth ?? 3,
-      onProgress: config.onProgress,
+      onProgress: config.onProgress as ((event: OmaOrchestratorEvent) => void) | undefined,
     };
 
     this.omAgent = new OpenMultiAgent(orchestratorConfig);
@@ -92,7 +74,7 @@ export class TeamOrchestrator {
     const sendMessageTool = createSendMessageTool(teamId);
 
     // 创建团队 — 每个 DEV Agent 映射为一个 open-multi-agent Agent
-    const teamAgents: AgentConfig[] = config.agents.map((a) => ({
+    const teamAgents: OmaAgentConfig[] = config.agents.map((a) => ({
       name: a.id,
       model: config.defaultModel,
       provider: 'mimo' as const,
@@ -103,7 +85,7 @@ export class TeamOrchestrator {
       customTools: [sendMessageTool],
     }));
 
-    const teamConfig: TeamConfig = {
+    const teamConfig: OmaTeamConfig = {
       name: 'DEV-Agent-Team',
       agents: teamAgents,
       sharedMemory: true,
@@ -121,9 +103,10 @@ export class TeamOrchestrator {
    * runTeam — 自动编排多 Agent 协作
    * 协调员分析目标 → 拆解为任务 DAG → 并行执行无依赖任务 → 汇总结果
    */
-  async runTeam(goal: string, options?: RunTeamOptions): Promise<TeamRunResult> {
+  async runTeam(goal: string, options?: { maxRounds?: number }): Promise<TeamRunResult> {
     console.log(`[TeamOrchestrator] runTeam: "${goal.substring(0, 60)}..."`);
-    return this.omAgent.runTeam(this.team, goal, options);
+    const result = await this.omAgent.runTeam(this.team, goal, options as OmaRunTeamOptions);
+    return result as unknown as TeamRunResult;
   }
 
   /**
@@ -136,7 +119,7 @@ export class TeamOrchestrator {
 
     console.log(`[TeamOrchestrator] runAgent: ${agentId} → "${goal.substring(0, 60)}..."`);
 
-    return this.omAgent.runAgent(
+    const result = await this.omAgent.runAgent(
       {
         name: config.id,
         model: config.model,
@@ -149,22 +132,20 @@ export class TeamOrchestrator {
       },
       goal,
     );
+    return result as unknown as AgentRunResult;
   }
 
   /**
    * runTasks — 显式任务列表
    * 当用户指定具体步骤时使用，不经过协调员分解
    */
-  async runTasks(
-    tasks: Array<{
-      title: string;
-      description: string;
-      assignee?: string;
-      dependsOn?: string[];
-    }>,
-  ): Promise<TeamRunResult> {
+  async runTasks(tasks: TaskDefinition[]): Promise<TeamRunResult> {
     console.log(`[TeamOrchestrator] runTasks: ${tasks.length} 个任务`);
-    return this.omAgent.runTasks(this.team, tasks);
+    const result = await this.omAgent.runTasks(
+      this.team,
+      tasks as unknown as Parameters<typeof this.omAgent.runTasks>[1],
+    );
+    return result as unknown as TeamRunResult;
   }
 
   /**
@@ -203,12 +184,13 @@ export class TeamOrchestrator {
         prompt,
       );
 
-      agentResults.set(agent.name, result);
+      const typedResult = result as unknown as AgentRunResult;
+      agentResults.set(agent.name, typedResult);
 
       // 累积上下文和 token 用量
-      discussion.push(`### ${config.name}（${config.role}）\n${result.output}`);
-      totalTokenUsage.input_tokens += result.tokenUsage.input_tokens;
-      totalTokenUsage.output_tokens += result.tokenUsage.output_tokens;
+      discussion.push(`### ${config.name}（${config.role}）\n${typedResult.output}`);
+      totalTokenUsage.input_tokens += typedResult.tokenUsage.input_tokens;
+      totalTokenUsage.output_tokens += typedResult.tokenUsage.output_tokens;
 
       console.log(`[TeamOrchestrator] meeting: ${config.id} 已发言`);
     }
@@ -266,7 +248,7 @@ export class TeamOrchestrator {
 
     const runWithRetry = async (config: typeof agentConfigs[0]['config'], attempt = 1): Promise<AgentRunResult> => {
       try {
-        return await this.omAgent.runAgent(
+        const result = await this.omAgent.runAgent(
           {
             name: config.id,
             model: config.model,
@@ -279,6 +261,7 @@ export class TeamOrchestrator {
           },
           prompt,
         );
+        return result as unknown as AgentRunResult;
       } catch (err) {
         const is429 = err instanceof Error && (err.message.includes('429') || err.message.includes('Too many requests'));
         if (is429 && attempt < MAX_RETRIES) {
@@ -396,31 +379,16 @@ export class TeamOrchestrator {
   }
 
   /**
-   * 获取团队状态
+   * 获取团队状态（不暴露上游类型）
    */
-  getStatus() {
+  getStatus(): OrchestratorStatus {
     return {
       teamAgents: this.team.getAgents().map((a) => ({
         name: a.name,
         model: a.model || 'default',
       })),
       sharedMemory: !!this.team.config?.sharedMemory,
-      orchestrator: this.omAgent.getStatus(),
     };
-  }
-
-  /**
-   * 获取 OpenMultiAgent 实例（高级用法）
-   */
-  getOrchestrator() {
-    return this.omAgent;
-  }
-
-  /**
-   * 获取 Team 实例（高级用法）
-   */
-  getTeam() {
-    return this.team;
   }
 
   /**

@@ -1,10 +1,10 @@
-# DEV-Agent OpenClaw 配置
-# 基于 AI-local-OS 架构
+# DEV-Agent OMA 配置
+# 基于 @open-multi-agent/core 架构
 
 version: 1
 
-# OpenClaw 内核配置
-openclaw:
+# OMA 内核配置
+oma:
   enabled: true
   version: "2026.3.7"
   

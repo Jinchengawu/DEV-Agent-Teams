@@ -1,17 +1,17 @@
 /**
- * DEV-Agent Testing Agent (Core Library 集成版)
+ * DEV-Agent Testing Agent
+ *
+ * 定义测试 Agent 配置 + 轻量健康检查服务。
+ * 实际编排由 Gateway 的 TeamOrchestrator 内嵌处理。
  */
 
-import { readFileSync, existsSync } from 'node:fs';
-import { join } from 'node:path';
-import { createAgentApp } from '@dev-agent/core';
-import type { AgentFactoryConfig } from '@dev-agent/core';
+import { createServer } from 'node:http';
 
-const config: AgentFactoryConfig = {
+export const agentConfig = {
   id: 'dev-testing',
-  label: '测试开发 Agent',
+  name: 'Testing Agent',
+  role: '测试专家 — pytest/Jest/Playwright/覆盖率',
   port: parseInt(process.env.AGENT_PORT || '8203'),
-  hermesPort: parseInt(process.env.HERMES_PORT || '8203'),
   skills: [
     'pytest-development',
     'jest-development',
@@ -20,43 +20,18 @@ const config: AgentFactoryConfig = {
     'cypress',
     'e2e-testing',
     'tdd-practices',
-    'performance-testing',
-    'security-testing',
-    'coverage-analysis',
   ],
-  tags: ['test', 'unit', 'e2e', 'coverage', 'jest', 'pytest', 'testing', '测试'],
-  peers: [
-    { host: '127.0.0.1', port: 8201, id: 'dev-frontend' },
-    { host: '127.0.0.1', port: 8202, id: 'dev-backend' },
-    { host: '127.0.0.1', port: 8204, id: 'dev-devops' },
-    { host: '127.0.0.1', port: 8205, id: 'dev-pm' },
-  ],
-  buildSystemPrompt() {
-    return `你是测试开发专家，擅长 pytest/Jest/Playwright/E2E测试/TDD。
-
-技能：${config.skills.join('、')}
-
-职责：编写高质量测试代码，简洁有力，突出重点。`;
-  },
-  loadSkillContent(skillName: string) {
-    const skillPath = join(process.cwd(), '../../skills/testing', skillName, 'SKILL.md');
-    if (existsSync(skillPath)) return readFileSync(skillPath, 'utf-8');
-    return '';
-  },
+  tags: ['testing', 'test', 'qa', 'coverage', 'e2e', '测试'],
 };
 
-function loadSkillContent(skillName: string): string {
-  const skillPath = join(process.cwd(), '../../skills/testing', skillName, 'SKILL.md');
-  if (existsSync(skillPath)) return readFileSync(skillPath, 'utf-8');
-  return '';
-}
-
-const { app, agentBus, sessionManager, memoryStore } = createAgentApp(config);
-
-app.listen(config.port, async () => {
-  console.log(`🚀 ${config.label} listening on port ${config.port}`);
-  await agentBus.registry.registerWithPeers(config.peers);
+const server = createServer((_req, res) => {
+  res.writeHead(200, { 'Content-Type': 'application/json' });
+  res.end(JSON.stringify({ status: 'ok', agent: agentConfig.id, port: agentConfig.port }));
 });
 
-process.on('SIGINT', () => { sessionManager.close(); memoryStore.close(); process.exit(0); });
-process.on('SIGTERM', () => { sessionManager.close(); memoryStore.close(); process.exit(0); });
+server.listen(agentConfig.port, () => {
+  console.log(`🚀 ${agentConfig.name} listening on port ${agentConfig.port}`);
+});
+
+process.on('SIGINT', () => process.exit(0));
+process.on('SIGTERM', () => process.exit(0));

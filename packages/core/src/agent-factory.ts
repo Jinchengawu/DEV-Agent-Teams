@@ -14,7 +14,7 @@ import { mkdirSync } from 'node:fs';
 import express from 'express';
 import { SessionManager } from './session/SessionManager';
 import { TeamOrchestrator, createDevTeamOrchestrator } from './team/TeamOrchestrator';
-import type { OrchestratorEvent } from '@open-multi-agent/core';
+import type { OrchestratorEvent } from './orchestrator/types.js';
 
 // ============================================================================
 // Types
@@ -119,13 +119,17 @@ export function createAgentApp(config: AgentAppConfig = {}): AgentApp {
       let result: { output: string; agent: string };
 
       // 从 AgentRunResult 中提取文本输出
-      function extractOutput(agentResult: { output: string; success: boolean; messages: { role: string; content: { type: string; text?: string }[] }[]; toolCalls: { toolName: string; input: Record<string, unknown>; output: string }[] }): string {
+      function extractOutput(agentResult: { output: string; success: boolean; messages: { role: string; content: string | { type: string; text?: string }[] }[]; toolCalls: { toolName: string; input: Record<string, unknown>; output: string }[] }): string {
           const allText: string[] = [];
           for (const msg of agentResult.messages) {
             if (msg.role === 'assistant') {
-              for (const block of msg.content) {
-                if ((block.type === 'text' || block.type === 'reasoning') && block.text) {
-                  allText.push(block.text);
+              if (typeof msg.content === 'string') {
+                allText.push(msg.content);
+              } else {
+                for (const block of msg.content) {
+                  if ((block.type === 'text' || block.type === 'reasoning') && block.text) {
+                    allText.push(block.text);
+                  }
                 }
               }
             }

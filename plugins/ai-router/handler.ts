@@ -35,7 +35,7 @@ interface RoutingConfig {
 // ============================================================================
 
 function loadConfig(): RoutingConfig {
-  const configPath = join(process.cwd(), 'config/openclaw/instances.yaml');
+  const configPath = join(process.cwd(), 'config/oma/instances.yaml');
   
   if (!existsSync(configPath)) {
     return getDefaultConfig();

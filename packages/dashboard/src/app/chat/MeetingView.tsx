@@ -18,6 +18,17 @@ interface MeetingTopic {
   messages: ChatMessage[]
 }
 
+/** Agent 实时状态 */
+interface AgentStatus {
+  agent: string
+  name: string
+  role?: string
+  state: 'waiting' | 'thinking' | 'done' | 'error'
+  output?: string
+  error?: string
+  toolCalls?: number
+}
+
 const STORAGE_KEY = 'dev-agent-meeting-v1'
 
 // ============================================================================
@@ -45,6 +56,8 @@ export default function MeetingView() {
   const [discussionInput, setDiscussionInput] = useState('')
   const [sending, setSending] = useState(false)
   const [showNewTopic, setShowNewTopic] = useState(false)
+  /** 每个 Agent 的实时状态 */
+  const [agentStatuses, setAgentStatuses] = useState<AgentStatus[]>([])
   const { showToast } = useToast()
   const scrollRef = useRef<HTMLDivElement>(null)
 
@@ -56,7 +69,7 @@ export default function MeetingView() {
   // 自动滚动
   useEffect(() => {
     scrollRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [activeTopicId, meetings])
+  }, [activeTopicId, meetings, agentStatuses])
 
   const activeTopic = activeTopicId ? meetings[activeTopicId] : null
 
@@ -97,13 +110,21 @@ export default function MeetingView() {
     }
   }, [activeTopicId])
 
-  // ── 发起讨论 ──
+  // ── 发起讨论（SSE 流式） ──
   const handleDiscuss = useCallback(async () => {
     const msg = discussionInput.trim()
     if (!msg || !activeTopic || sending) return
 
     setDiscussionInput('')
     setSending(true)
+
+    // 初始化所有 Agent 状态为 waiting
+    const initialStatuses: AgentStatus[] = AGENT_LIST.map(a => ({
+      agent: a.id,
+      name: a.name,
+      state: 'waiting' as const,
+    }))
+    setAgentStatuses(initialStatuses)
 
     // 添加用户消息
     const userMsg: ChatMessage = {
@@ -132,76 +153,110 @@ export default function MeetingView() {
         })
         .join('\n\n')
 
-      // 构建带上下文的消息
       const fullMessage = discussionContext
         ? `## 会议议题：${activeTopic.topic}\n\n## 之前的讨论\n${discussionContext}\n\n## 新的发言\n${msg}`
         : `## 会议议题：${activeTopic.topic}\n\n${msg}`
 
-      const res = await fetch('/api/collab', {
+      // 使用 SSE 流式端点
+      const res = await fetch('/api/meeting/stream', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           message: fullMessage,
-          agents: AGENT_LIST.map(a => a.id),
-          mode: 'meeting',
           topicId: activeTopic.id,
+          sessionId: `meeting-${activeTopic.id}`,
         }),
       })
 
-      const data = await res.json()
-      if (data.error) throw new Error(data.error)
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({ error: 'Request failed' }))
+        throw new Error(errData.error || `HTTP ${res.status}`)
+      }
 
-      // 添加各 Agent 的响应
-      const agentMessages: ChatMessage[] = []
+      const reader = res.body?.getReader()
+      if (!reader) throw new Error('No response stream')
 
-      if (data.responses) {
-        // 多 Agent 响应格式
-        for (const r of data.responses) {
-          agentMessages.push({
-            id: `agent-${Date.now()}-${r.agent}`,
-            role: 'assistant',
-            content: r.content,
-            agentId: r.agent,
-            timestamp: Date.now(),
-          })
+      const decoder = new TextDecoder()
+      let buffer = ''
+
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+
+        buffer += decoder.decode(value, { stream: true })
+        const lines = buffer.split('\n')
+        buffer = lines.pop() || ''
+
+        for (const line of lines) {
+          if (!line.startsWith('data: ')) continue
+          const jsonStr = line.slice(6).trim()
+          if (!jsonStr) continue
+
+          try {
+            const event = JSON.parse(jsonStr)
+
+            switch (event.type) {
+              case 'agent_start':
+                setAgentStatuses(prev => prev.map(s =>
+                  s.agent === event.agent
+                    ? { ...s, state: 'thinking', role: event.role }
+                    : s
+                ))
+                break
+
+              case 'thinking':
+                setAgentStatuses(prev => prev.map(s =>
+                  s.agent === event.agent
+                    ? { ...s, state: 'thinking' }
+                    : s
+                ))
+                break
+
+              case 'output':
+                setAgentStatuses(prev => prev.map(s =>
+                  s.agent === event.agent
+                    ? { ...s, state: 'done', output: event.output, toolCalls: event.toolCalls }
+                    : s
+                ))
+                // 实时添加到讨论记录
+                const agentMsg: ChatMessage = {
+                  id: `agent-${Date.now()}-${event.agent}`,
+                  role: 'assistant',
+                  content: event.output,
+                  agentId: event.agent,
+                  timestamp: Date.now(),
+                }
+                setMeetings(prev => ({
+                  ...prev,
+                  [activeTopic.id]: {
+                    ...prev[activeTopic.id],
+                    messages: [...prev[activeTopic.id].messages, agentMsg],
+                  },
+                }))
+                break
+
+              case 'error':
+                setAgentStatuses(prev => prev.map(s =>
+                  s.agent === event.agent
+                    ? { ...s, state: 'error', error: event.error }
+                    : s
+                ))
+                break
+
+              case 'done':
+                break
+            }
+          } catch {
+            // 忽略解析错误
+          }
         }
-      } else if (data.content) {
-        // 单响应格式（Gateway team 模式）
-        agentMessages.push({
-          id: `agent-${Date.now()}-team`,
-          role: 'assistant',
-          content: data.content,
-          agentId: data.agent || 'team',
-          timestamp: Date.now(),
-        })
       }
-
-      setMeetings(prev => ({
-        ...prev,
-        [activeTopic.id]: {
-          ...prev[activeTopic.id],
-          messages: [...prev[activeTopic.id].messages, ...agentMessages],
-        },
-      }))
     } catch (e) {
-      const errorMsg: ChatMessage = {
-        id: `error-${Date.now()}`,
-        role: 'system',
-        content: `❌ 讨论失败: ${e instanceof Error ? e.message : 'unknown'}`,
-        agentId: 'system',
-        timestamp: Date.now(),
-      }
-      setMeetings(prev => ({
-        ...prev,
-        [activeTopic.id]: {
-          ...prev[activeTopic.id],
-          messages: [...prev[activeTopic.id].messages, errorMsg],
-        },
-      }))
       showToast(`Meeting failed: ${e instanceof Error ? e.message : 'unknown'}`, 'error')
     }
 
     setSending(false)
+    setAgentStatuses([])
   }, [discussionInput, activeTopic, sending, showToast])
 
   // ── 排序后的议题列表 ──
@@ -223,7 +278,6 @@ export default function MeetingView() {
           </Button>
         </div>
 
-        {/* 新建议题输入 */}
         {showNewTopic && (
           <div className="p-3 border-b bg-blue-50">
             <input
@@ -236,17 +290,12 @@ export default function MeetingView() {
               autoFocus
             />
             <div className="flex gap-2 mt-2">
-              <Button size="sm" onClick={handleCreateTopic} className="flex-1">
-                创建
-              </Button>
-              <Button size="sm" variant="ghost" onClick={() => setShowNewTopic(false)}>
-                取消
-              </Button>
+              <Button size="sm" onClick={handleCreateTopic} className="flex-1">创建</Button>
+              <Button size="sm" variant="ghost" onClick={() => setShowNewTopic(false)}>取消</Button>
             </div>
           </div>
         )}
 
-        {/* 议题列表 */}
         <div className="flex-1 overflow-y-auto">
           {sortedTopics.length === 0 ? (
             <div className="p-4 text-center text-gray-400 text-sm">
@@ -267,19 +316,14 @@ export default function MeetingView() {
                 >
                   <div className="flex items-start justify-between">
                     <div className="flex-1 min-w-0">
-                      <div className="text-sm font-medium text-gray-800 truncate">
-                        {topic.topic}
-                      </div>
+                      <div className="text-sm font-medium text-gray-800 truncate">{topic.topic}</div>
                       <div className="text-xs text-gray-400 mt-1">
                         {new Date(topic.createdAt).toLocaleDateString()} · {msgCount} 条讨论
                       </div>
                     </div>
                     <button
                       className="opacity-0 group-hover:opacity-100 text-gray-400 hover:text-red-500 ml-2 text-xs transition-opacity"
-                      onClick={e => {
-                        e.stopPropagation()
-                        handleDeleteTopic(topic.id)
-                      }}
+                      onClick={e => { e.stopPropagation(); handleDeleteTopic(topic.id) }}
                     >
                       ✕
                     </button>
@@ -309,26 +353,53 @@ export default function MeetingView() {
             <div className="mb-3 px-4 py-3 bg-white border rounded-xl">
               <div className="flex items-center justify-between">
                 <div>
-                  <h2 className="text-lg font-semibold text-gray-800">
-                    🎙️ {activeTopic.topic}
-                  </h2>
+                  <h2 className="text-lg font-semibold text-gray-800">🎙️ {activeTopic.topic}</h2>
                   <p className="text-xs text-gray-400 mt-1">
-                    议题 ID: {activeTopic.id} · {activeTopic.messages.filter(m => m.role !== 'system').length} 条讨论
+                    {activeTopic.messages.filter(m => m.role !== 'system').length} 条讨论
                   </p>
                 </div>
                 <div className="flex gap-1">
-                  {AGENT_LIST.map(a => (
-                    <span
-                      key={a.id}
-                      className="text-lg"
-                      title={a.name}
-                    >
-                      {a.icon}
-                    </span>
-                  ))}
+                  {AGENT_LIST.map(a => <span key={a.id} className="text-lg" title={a.name}>{a.icon}</span>)}
                 </div>
               </div>
             </div>
+
+            {/* Agent 实时状态面板 */}
+            {sending && agentStatuses.length > 0 && (
+              <div className="mb-3 grid grid-cols-5 gap-2">
+                {agentStatuses.map(s => {
+                  const agent = AGENTS[s.agent]
+                  return (
+                    <div
+                      key={s.agent}
+                      className={`border rounded-lg p-2 text-center text-xs transition-all ${
+                        s.state === 'thinking'
+                          ? 'border-purple-400 bg-purple-50 animate-pulse'
+                          : s.state === 'done'
+                          ? 'border-green-400 bg-green-50'
+                          : s.state === 'error'
+                          ? 'border-red-400 bg-red-50'
+                          : 'border-gray-200 bg-gray-50'
+                      }`}
+                    >
+                      <div className="text-base mb-1">{agent?.icon || '🤖'}</div>
+                      <div className="font-medium truncate">{s.name}</div>
+                      <div className={`mt-1 ${
+                        s.state === 'thinking' ? 'text-purple-600' :
+                        s.state === 'done' ? 'text-green-600' :
+                        s.state === 'error' ? 'text-red-600' :
+                        'text-gray-400'
+                      }`}>
+                        {s.state === 'waiting' && '⏳ 等待中'}
+                        {s.state === 'thinking' && '🧠 思考中...'}
+                        {s.state === 'done' && `✅ 完成${s.toolCalls ? ` (${s.toolCalls} 操作)` : ''}`}
+                        {s.state === 'error' && '❌ 失败'}
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            )}
 
             {/* 讨论消息 */}
             <Card className="flex-1 overflow-hidden mb-3">
@@ -355,37 +426,19 @@ export default function MeetingView() {
                     )
                   }
 
-                  // assistant — Agent 发言
                   const agent = AGENTS[msg.agentId || '']
                   return (
                     <div key={msg.id} className="flex justify-start">
                       <div className="max-w-[80%] bg-white border rounded-2xl p-4 shadow-sm">
                         <div className="flex items-center gap-2 mb-2 pb-2 border-b">
                           <span className="text-lg">{agent?.icon || '🤖'}</span>
-                          <span className="font-medium text-sm text-gray-700">
-                            {agent?.name || msg.agentId}
-                          </span>
+                          <span className="font-medium text-sm text-gray-700">{agent?.name || msg.agentId}</span>
                         </div>
-                        <div className="text-sm whitespace-pre-wrap text-gray-700">
-                          {msg.content}
-                        </div>
+                        <div className="text-sm whitespace-pre-wrap text-gray-700">{msg.content}</div>
                       </div>
                     </div>
                   )
                 })}
-
-                {sending && (
-                  <div className="flex justify-center">
-                    <div className="flex items-center gap-2 px-4 py-2 bg-purple-100 rounded-full">
-                      <div className="flex space-x-1">
-                        <div className="w-2 h-2 bg-purple-500 rounded-full animate-bounce" />
-                        <div className="w-2 h-2 bg-purple-500 rounded-full animate-bounce" style={{ animationDelay: '0.1s' }} />
-                        <div className="w-2 h-2 bg-purple-500 rounded-full animate-bounce" style={{ animationDelay: '0.2s' }} />
-                      </div>
-                      <span className="text-sm text-purple-600">Agent 们正在讨论...</span>
-                    </div>
-                  </div>
-                )}
 
                 <div ref={scrollRef} />
               </CardContent>
