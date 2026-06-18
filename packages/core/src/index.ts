@@ -24,3 +24,6 @@ export type {
 // ── HTTP API 层 ──
 export { createAgentApp } from './agent-factory';
 export type { AgentAppConfig, AgentApp } from './agent-factory';
+
+// ── 重新导出 Open-Agent-Teams 框架核心（血缘关系）──
+export * from '@open-agent-teams/core';
