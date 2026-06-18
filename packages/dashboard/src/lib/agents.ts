@@ -41,6 +41,14 @@ export const AGENTS: Record<string, AgentInfo> = {
     color: 'from-red-500 to-pink-600',
     tags: ['prd', 'requirement', 'product', 'strategy', 'user-story', 'pm', '产品', '需求'],
   },
+  'project-admin': {
+    id: 'project-admin',
+    name: 'Project Admin',
+    label: '项目管理员 Agent',
+    icon: '📊',
+    color: 'from-indigo-500 to-indigo-600',
+    tags: ['project', 'admin', 'kanban', 'milestone', 'progress', 'task', '管理', '进度', '里程碑'],
+  },
 };
 
 export const AGENT_LIST: AgentInfo[] = Object.values(AGENTS);

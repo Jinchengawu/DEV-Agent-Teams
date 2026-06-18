@@ -30,14 +30,14 @@ echo ""
 echo "[TC-01] Gateway 健康检查"
 HEALTH=$(curl -s "$GATEWAY/health" 2>/dev/null || echo '{}')
 AGENTS_COUNT=$(echo "$HEALTH" | python3 -c "import sys,json; print(json.load(sys.stdin).get('agents',0))" 2>/dev/null || echo 0)
-[ "$AGENTS_COUNT" -eq 5 ] && report PASS "agents=$AGENTS_COUNT" || report FAIL "agents=$AGENTS_COUNT, expected 5"
+[ "$AGENTS_COUNT" -eq 6 ] && report PASS "agents=$AGENTS_COUNT" || report FAIL "agents=$AGENTS_COUNT, expected 6"
 
 # TC-02: Agent 列表
 echo ""
 echo "[TC-02] Agent 列表 API"
 AGENTS=$(curl -s "$GATEWAY/agents" 2>/dev/null || echo '{}')
 AGENT_COUNT=$(echo "$AGENTS" | python3 -c "import sys,json; print(len(json.load(sys.stdin).get('agents',[])))" 2>/dev/null || echo 0)
-[ "$AGENT_COUNT" -eq 5 ] && report PASS "count=$AGENT_COUNT" || report FAIL "count=$AGENT_COUNT, expected 5"
+[ "$AGENT_COUNT" -eq 6 ] && report PASS "count=$AGENT_COUNT" || report FAIL "count=$AGENT_COUNT, expected 6"
 
 # TC-03: 单 Agent 模式
 echo ""
@@ -62,7 +62,7 @@ echo ""
 echo "[TC-07] Dashboard API"
 DASH_RESP=$(curl -s "$DASHBOARD/api/health" 2>/dev/null || echo '{}')
 ONLINE_COUNT=$(echo "$DASH_RESP" | python3 -c "import sys,json; print(json.load(sys.stdin).get('onlineCount',0))" 2>/dev/null || echo 0)
-[ "$ONLINE_COUNT" -eq 5 ] && report PASS "onlineCount=$ONLINE_COUNT" || report FAIL "onlineCount=$ONLINE_COUNT, expected 5"
+[ "$ONLINE_COUNT" -eq 6 ] && report PASS "onlineCount=$ONLINE_COUNT" || report FAIL "onlineCount=$ONLINE_COUNT, expected 6"
 
 # 汇总
 echo ""

@@ -431,7 +431,7 @@ export function createDevTeamOrchestrator(options?: {
   const apiKey = process.env.API_KEY || '';
   const baseUrl = process.env.MODEL_BASE_URL || 'https://token-plan-cn.xiaomimimo.com/v1';
 
-  const commGuide = '\n\n团队通信：你可以使用 send_message 工具与其他 Agent 对话。\n- send_message({ to: "dev-backend", content: "..." }) — 发送给指定 Agent\n- send_message({ to: "*", content: "..." }) — 广播给所有 Agent\n可用的团队成员: dev-frontend, dev-backend, dev-testing, dev-devops, dev-pm\n收到其他 Agent 的消息时，直接用 send_message 回复，不需要搜索文件系统。';
+  const commGuide = '\n\n团队通信：你可以使用 send_message 工具与其他 Agent 对话。\n- send_message({ to: "dev-backend", content: "..." }) — 发送给指定 Agent\n- send_message({ to: "*", content: "..." }) — 广播给所有 Agent\n可用的团队成员: dev-frontend, dev-backend, dev-testing, dev-devops, dev-pm, project-admin\n收到其他 Agent 的消息时，直接用 send_message 回复，不需要搜索文件系统。';
 
   const agents: TeamAgentConfig[] = [
     {
@@ -467,6 +467,13 @@ export function createDevTeamOrchestrator(options?: {
       name: 'PM Agent',
       role: '产品经理 — PRD/需求分析/用户故事/产品策略',
       systemPrompt: '你是产品经理，专注于 PRD、需求分析、用户故事、产品策略。收到任务后给出结构化的产品文档。' + commGuide,
+      model, apiKey, baseUrl,
+    },
+    {
+      id: 'project-admin',
+      name: 'Project Admin',
+      role: '项目管理员 — 统筹进度、任务分配、里程碑跟踪、Agent 协作协调',
+      systemPrompt: '你是项目管理员，专注于看板管理、里程碑规划、进度监控、风险识别、跨 Agent 任务协调。收到任务后给出项目管理方案和进度跟踪建议。' + commGuide,
       model, apiKey, baseUrl,
     },
   ];

@@ -65,6 +65,7 @@ AGENTS=(
     "testing:${TESTING_AGENT_PORT:-8203}:9203:packages/agents/testing:测试开发 Agent"
     "devops:${DEVOPS_AGENT_PORT:-8204}:9204:packages/agents/devops:DevOps Agent"
     "pm:${PM_AGENT_PORT:-8205}:9205:packages/agents/pm:产品经理 Agent"
+    "project-admin:${PROJECT_ADMIN_AGENT_PORT:-8206}:9206:packages/agents/project-admin:项目管理员 Agent"
 )
 
 # 步骤 1: 启动 Hermes 实例 (内部端口)

@@ -484,6 +484,7 @@ const AGENT_ID_MAP: Record<string, string> = {
   'testing': 'dev-testing',
   'devops': 'dev-devops',
   'pm': 'dev-pm',
+  'project-admin': 'project-admin',
   'dev-frontend': 'dev-frontend',
   'dev-backend': 'dev-backend',
   'dev-testing': 'dev-testing',
@@ -504,6 +505,7 @@ function detectAgent(message: string): string {
     [['test', 'unit', 'e2e', 'coverage', 'jest', 'pytest', '测试', '单元测试', '覆盖率'], 'dev-testing'],
     [['docker', 'k8s', 'deploy', 'ci/cd', 'devops', '运维', '容器', '部署'], 'dev-devops'],
     [['prd', 'requirement', 'product', 'strategy', 'user-story', 'pm', '产品', '需求'], 'dev-pm'],
+    [['project', 'admin', 'kanban', 'milestone', '进度', '里程碑', '看板', '任务管理'], 'project-admin'],
   ];
 
   for (const [keywords, agentId] of rules) {
