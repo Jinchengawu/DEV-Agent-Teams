@@ -115,7 +115,7 @@ export function createAgentApp(config: AgentAppConfig = {}): AgentApp {
         sessionManager.updateSession(sessionId, { title: userText.substring(0, 100) });
       }
 
-      // 委托给 TeamOrchestrator
+      // 委托给 TeamOrchestrator — 智能路由（自动决策协作模式）
       let result: { output: string; agent: string };
 
       // 从 AgentRunResult 中提取文本输出
@@ -144,11 +144,11 @@ export function createAgentApp(config: AgentAppConfig = {}): AgentApp {
           return parts.join('\n') || (agentResult.success ? '✅ 任务完成' : '❌ 任务失败');
       }
 
+      // 支持显式 mode（客户端可覆盖），否则走智能路由
       if (mode === 'team') {
-        // 多 Agent 协同模式
+        // 多 Agent 协同模式（显式指定）
         const teamResult = await orchestrator.runTeam(userText);
 
-        // 构建结构化输出：汇总协调员结论 + 各 Agent 贡献
         const parts: string[] = [];
         const coordinatorResult = teamResult.agentResults.get('coordinator');
         if (coordinatorResult) {
@@ -169,10 +169,9 @@ export function createAgentApp(config: AgentAppConfig = {}): AgentApp {
 
         result = { output, agent: 'team' };
       } else if (mode === 'meeting') {
-        // 圆桌会议模式 — 所有 Agent 顺序发言，共享上下文
+        // 圆桌会议模式（显式指定）
         const meetingResult = await orchestrator.runMeeting(userText);
 
-        // 复用 extractOutput 提取每个 Agent 的输出
         const meetingParts: string[] = [];
         meetingParts.push(`# 🎙️ 会议讨论\n`);
         for (const [name, agentResult] of meetingResult.agentResults) {
@@ -189,13 +188,25 @@ export function createAgentApp(config: AgentAppConfig = {}): AgentApp {
 
         result = { output: meetingOutput, agent: 'meeting' };
       } else {
-        // 单 Agent 模式 — 简单意图路由
-        const agentId = detectAgent(userText);
-        const agentResult = await orchestrator.runAgent(agentId, userText);
-        result = {
-          output: agentResult.output,
-          agent: agentId,
-        };
+        // 智能路由模式 — 由 IntentRouter 自动决策
+        const teamResult = await orchestrator.handleRequest(userText);
+        const decision = orchestrator.getLastRoutingDecision();
+
+        // 构建结构化输出
+        const parts: string[] = [];
+        if (decision) {
+          parts.push(`🎯 路由决策: ${decision.strategy} | 复杂度: ${decision.complexity}\n理由: ${decision.reasoning}\n`);
+        }
+        for (const [name, agentResult] of teamResult.agentResults) {
+          const agentOutput = extractOutput(agentResult);
+          if (agentOutput) {
+            parts.push(`\n---\n## ${name}\n${agentOutput}`);
+          }
+        }
+        const output = parts.join('\n');
+        const agentName = decision?.primaryAgent || decision?.involvedAgents?.[0] || 'team';
+
+        result = { output, agent: agentName };
       }
 
       // 保存助手回复
@@ -217,7 +228,7 @@ export function createAgentApp(config: AgentAppConfig = {}): AgentApp {
           },
         ],
         instance: result.agent,
-        routedBy: mode === 'team' ? 'team-orchestrator' : mode === 'meeting' ? 'meeting-orchestrator' : 'intent-router',
+        routedBy: 'intent-router',
       });
     } catch (error) {
       console.error('[agent-app] Chat error:', error);
@@ -253,28 +264,4 @@ export function createAgentApp(config: AgentAppConfig = {}): AgentApp {
   };
 
   return { app, sessionManager, orchestrator, close };
-}
-
-// ============================================================================
-// 简意图路由（单 Agent 模式下使用）
-// ============================================================================
-
-function detectAgent(message: string): string {
-  const lower = message.toLowerCase();
-
-  const rules: [string[], string][] = [
-    [['react', 'vue', 'component', 'ui', 'css', 'tailwind', '前端', '界面', '组件', '样式'], 'dev-frontend'],
-    [['api', 'database', 'server', 'python', 'node', 'go', '后端', '接口', '数据库', '服务器'], 'dev-backend'],
-    [['test', 'unit', 'e2e', 'coverage', 'jest', 'pytest', '测试', '单元测试', '覆盖率'], 'dev-testing'],
-    [['docker', 'k8s', 'deploy', 'ci/cd', 'devops', '运维', '容器', '部署'], 'dev-devops'],
-    [['prd', 'requirement', 'product', 'strategy', 'user-story', 'pm', '产品', '需求'], 'dev-pm'],
-  ];
-
-  for (const [keywords, agentId] of rules) {
-    for (const kw of keywords) {
-      if (lower.includes(kw)) return agentId;
-    }
-  }
-
-  return 'dev-backend'; // 默认
 }

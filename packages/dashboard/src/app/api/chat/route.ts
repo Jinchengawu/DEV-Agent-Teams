@@ -20,7 +20,7 @@ export async function POST(request: NextRequest) {
     const res = await fetch(`${GATEWAY_URL}/v1/chat/completions`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ messages, sessionId, mode, agentId }),
+      body: JSON.stringify({ messages, sessionId, mode, agentId, attachments: body.attachments || [] }),
       signal: controller.signal,
     });
 

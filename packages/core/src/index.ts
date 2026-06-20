@@ -19,7 +19,12 @@ export type {
   TaskDefinition,
   OrchestratorStatus,
   TokenUsage,
+  RoutingDecision,
+  IntentRouterConfig,
 } from './orchestrator/types';
+
+// ── 意图路由（新增）──
+export { IntentRouter } from './intent/IntentRouter';
 
 // ── HTTP API 层 ──
 export { createAgentApp } from './agent-factory';

@@ -21,6 +21,7 @@ async function checkGateway(): Promise<{ online: boolean; agents: HealthResult[]
     const timeout = setTimeout(() => controller.abort(), 5000);
     const res = await fetch(`${GATEWAY_URL}/agents`, {
       signal: controller.signal,
+      cache: 'no-store',
     });
     clearTimeout(timeout);
     if (!res.ok) throw new Error(`HTTP ${res.status}`);

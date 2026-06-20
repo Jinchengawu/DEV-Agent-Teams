@@ -54,11 +54,22 @@ start_services() {
 stop_services() {
     echo -e "${BLUE}🛑 停止 DEV-Agent 服务...${NC}"
     
+    # 停止 Gateway (端口 8400)
+    echo -e "${YELLOW}停止 Gateway...${NC}"
+    lsof -ti:8400 | xargs kill -9 2>/dev/null || true
+    
+    # 停止各 Agent (端口 8201-8206)
+    echo -e "${YELLOW}停止 Agent 实例...${NC}"
+    for port in 8201 8202 8203 8204 8205 8206; do
+        lsof -ti:$port | xargs kill -9 2>/dev/null || true
+    done
+    
     # 停止 Hermes 进程
     pkill -f "hermes gateway run" 2>/dev/null || true
     
-    # 停止 Node 进程
-    pkill -f "tsx watch src/index.ts" 2>/dev/null || true
+    # 停止 Dashboard (端口 3000)
+    echo -e "${YELLOW}停止 Dashboard...${NC}"
+    lsof -ti:3000 | xargs kill -9 2>/dev/null || true
     
     echo -e "${GREEN}✅ 所有服务已停止${NC}"
 }
@@ -70,8 +81,8 @@ show_status() {
     
     # 检查 Agent
     echo "Agent 实例:"
-    for port in 8201 8202 8203 8204; do
-        if curl -s "http://127.0.0.1:$port/health" > /dev/null 2>&1; then
+    for port in 8201 8202 8203 8204 8205 8206; do
+        if curl -s "http://127.0.0.1:$port/" > /dev/null 2>&1; then
             echo -e "  ${GREEN}✅ 端口 $port - 运行中${NC}"
         else
             echo -e "  ${RED}❌ 端口 $port - 未运行${NC}"
@@ -80,10 +91,10 @@ show_status() {
     
     echo ""
     echo "Gateway:"
-    if curl -s "http://127.0.0.1:8200/health" > /dev/null 2>&1; then
-        echo -e "  ${GREEN}✅ 端口 8200 - 运行中${NC}"
+    if curl -s "http://127.0.0.1:8400/health" > /dev/null 2>&1; then
+        echo -e "  ${GREEN}✅ 端口 8400 - 运行中${NC}"
     else
-        echo -e "  ${RED}❌ 端口 8200 - 未运行${NC}"
+        echo -e "  ${RED}❌ 端口 8400 - 未运行${NC}"
     fi
 }
 

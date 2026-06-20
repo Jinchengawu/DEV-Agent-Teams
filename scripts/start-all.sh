@@ -1,4 +1,14 @@
 #!/bin/bash
+###
+ # @Author: dreamworks.cnn@gmail.com
+ # @Date: 2026-06-20 15:04:16
+ # @LastEditors: dreamworks.cnn@gmail.com
+ # @LastEditTime: 2026-06-20 15:07:27
+ # @FilePath: /DEV-Agent-Teams/scripts/start-all.sh
+ # @Description: 
+ # 
+ # Copyright (c) 2026 by ${git_name_email}, All Rights Reserved. 
+### 
 
 # DEV-Agent-Teams 全部服务启动脚本
 # Agent 公开端口: 8201-8205
@@ -25,17 +35,17 @@ fi
 # 检查必要的环境变量
 if [ -z "$MODEL_PROVIDER" ]; then
     echo "⚠️  MODEL_PROVIDER 未设置，使用默认值"
-    MODEL_PROVIDER="your_provider"
+    MODEL_PROVIDER=kimi
 fi
 
 if [ -z "$MODEL_NAME" ]; then
     echo "⚠️  MODEL_NAME 未设置，使用默认值"
-    MODEL_NAME="your_model_name"
+    MODEL_NAME=k2.7
 fi
 
 if [ -z "$MODEL_BASE_URL" ]; then
     echo "⚠️  MODEL_BASE_URL 未设置，使用默认值"
-    MODEL_BASE_URL="your_api_base_url"
+    MODEL_BASE_URL=https://api.moonshot.cn/v1
 fi
 
 # 检查依赖
@@ -55,7 +65,7 @@ echo "✅ 模型配置: $MODEL_PROVIDER / $MODEL_NAME"
 
 # Hermes 配置 (兼容 macOS 默认 bash 3.2)
 export GATEWAY_ALLOW_ALL_USERS=true
-export HERMES_INFERENCE_PROVIDER=deepseek
+export HERMES_INFERENCE_PROVIDER=kimi
 export DEEPSEEK_API_KEY="${API_KEY:-}"
 
 # Agent 公开端口 / Hermes 内部端口 (port+1000)

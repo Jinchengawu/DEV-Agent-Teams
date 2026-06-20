@@ -25,6 +25,7 @@ import {
 } from '@open-multi-agent/core';
 import { createSendMessageTool } from '../tools/send-message.js';
 import { registerTeam } from '../tools/team-registry.js';
+import { IntentRouter } from '../intent/IntentRouter.js';
 import type { IOrchestrator } from '../orchestrator/IOrchestrator.js';
 import type {
   TeamAgentConfig,
@@ -36,6 +37,7 @@ import type {
   MeetingProgressEvent,
   OrchestratorEvent,
   TokenUsage,
+  RoutingDecision,
 } from '../orchestrator/types.js';
 
 // Re-export types for backward compatibility
@@ -49,12 +51,24 @@ export class TeamOrchestrator implements IOrchestrator {
   private omAgent: OpenMultiAgent;
   private team: Awaited<ReturnType<OpenMultiAgent['createTeam']>>;
   private agentConfigs: Map<string, TeamAgentConfig>;
+  private intentRouter: IntentRouter;
+  private lastRoutingDecision: RoutingDecision | null = null;
 
   constructor(config: TeamOrchestratorConfig) {
     this.agentConfigs = new Map();
     for (const a of config.agents) {
       this.agentConfigs.set(a.id, a);
     }
+
+    // 初始化 IntentRouter
+    this.intentRouter = new IntentRouter(
+      {
+        model: config.defaultModel,
+        baseURL: config.baseUrl,
+        apiKey: config.apiKey,
+      },
+      config.agents,
+    );
 
     // 初始化 OpenMultiAgent — 使用 mimo provider 避免 404
     const orchestratorConfig: OmaOrchestratorConfig = {
@@ -398,6 +412,47 @@ export class TeamOrchestrator implements IOrchestrator {
     await this.omAgent.shutdown();
     console.log('[TeamOrchestrator] 已关闭');
   }
+
+  // ── 智能路由入口（新增）──
+
+  /**
+   * handleRequest — 智能路由入口
+   * 由 IntentRouter 分析用户意图，自动选择协作策略
+   */
+  async handleRequest(userQuery: string): Promise<TeamRunResult> {
+    const decision = await this.intentRouter.route(userQuery);
+    this.lastRoutingDecision = decision;
+
+    console.log(`[IntentRouter] 决策: ${decision.strategy} | 复杂度: ${decision.complexity} | 理由: ${decision.reasoning.substring(0, 80)}`);
+
+    switch (decision.strategy) {
+      case 'single': {
+        const agentId = decision.primaryAgent || 'dev-backend';
+        const agentResult = await this.runAgent(agentId, userQuery);
+        return {
+          success: agentResult.success,
+          goal: userQuery,
+          agentResults: new Map([[agentId, agentResult]]),
+          totalTokenUsage: agentResult.tokenUsage,
+        };
+      }
+      case 'team': {
+        return this.runTeam(userQuery);
+      }
+      case 'meeting': {
+        return this.runMeeting(userQuery);
+      }
+      default:
+        throw new Error(`Unknown routing strategy: ${decision.strategy}`);
+    }
+  }
+
+  /**
+   * 获取最后一次路由决策（用于调试和审计）
+   */
+  getLastRoutingDecision(): RoutingDecision | null {
+    return this.lastRoutingDecision;
+  }
 }
 
 // ============================================================================
@@ -440,6 +495,9 @@ export function createDevTeamOrchestrator(options?: {
       role: '前端开发专家 — React/Vue/TypeScript/CSS/Tailwind',
       systemPrompt: '你是前端开发专家，专注于 React、Vue、TypeScript、CSS、Tailwind。收到任务后给出具体可运行的代码方案。' + commGuide,
       model, apiKey, baseUrl,
+      expertise: ['React/Vue/Angular 组件开发', 'TypeScript 类型设计', 'CSS/Tailwind 样式系统', '前端状态管理', '响应式设计', '前端性能优化'],
+      tools: ['file_read', 'file_write', 'file_edit', 'bash', 'grep', 'glob'],
+      typicalTasks: ['创建登录表单组件', '实现响应式导航栏', '配置 Tailwind 主题', '编写自定义 Hook', '优化首屏加载性能'],
     },
     {
       id: 'dev-backend',
@@ -447,6 +505,9 @@ export function createDevTeamOrchestrator(options?: {
       role: '后端开发专家 — Python/Node.js/Go/API/数据库',
       systemPrompt: '你是后端开发专家，专注于 Python、Node.js、Go、API 设计、数据库。收到任务后给出具体可运行的代码方案。' + commGuide,
       model, apiKey, baseUrl,
+      expertise: ['Python/Node.js/Go 服务端开发', 'API 设计与 RESTful/GraphQL', '数据库设计与优化', '微服务架构', 'Redis/消息队列', '性能调优'],
+      tools: ['file_read', 'file_write', 'file_edit', 'bash', 'grep', 'glob'],
+      typicalTasks: ['设计用户认证 API', '编写数据库迁移脚本', '实现缓存策略', '配置 CI/CD 流水线', '性能瓶颈分析'],
     },
     {
       id: 'dev-testing',
@@ -454,6 +515,9 @@ export function createDevTeamOrchestrator(options?: {
       role: '测试专家 — pytest/Jest/Playwright/覆盖率',
       systemPrompt: '你是测试专家，专注于 pytest、Jest、Playwright、覆盖率。收到任务后给出具体的测试方案和用例。' + commGuide,
       model, apiKey, baseUrl,
+      expertise: ['单元测试设计', '集成测试/E2E 测试', '测试覆盖率分析', 'Mock/Stub 策略', '自动化测试框架', '性能测试'],
+      tools: ['file_read', 'file_write', 'file_edit', 'bash', 'grep', 'glob'],
+      typicalTasks: ['编写用户登录的单元测试', '设计 E2E 测试用例', '分析测试覆盖率报告', '配置 Playwright 自动化', '性能基准测试'],
     },
     {
       id: 'dev-devops',
@@ -461,6 +525,9 @@ export function createDevTeamOrchestrator(options?: {
       role: '运维专家 — Docker/K8s/CI-CD/部署',
       systemPrompt: '你是 DevOps 专家，专注于 Docker、K8s、CI/CD、部署。收到任务后给出具体的部署方案。' + commGuide,
       model, apiKey, baseUrl,
+      expertise: ['Docker 容器化', 'Kubernetes 编排', 'CI/CD 流水线', '云平台部署', '监控与日志', '基础设施即代码'],
+      tools: ['file_read', 'file_write', 'file_edit', 'bash', 'grep', 'glob'],
+      typicalTasks: ['编写 Dockerfile', '配置 K8s Deployment', '搭建 GitHub Actions 流水线', '配置 Prometheus 监控', 'Terraform 基础设施管理'],
     },
     {
       id: 'dev-pm',
@@ -468,6 +535,9 @@ export function createDevTeamOrchestrator(options?: {
       role: '产品经理 — PRD/需求分析/用户故事/产品策略',
       systemPrompt: '你是产品经理，专注于 PRD、需求分析、用户故事、产品策略。收到任务后给出结构化的产品文档。' + commGuide,
       model, apiKey, baseUrl,
+      expertise: ['需求分析', '用户故事编写', 'PRD 文档', '竞品分析', '产品路线图', '数据驱动决策'],
+      tools: ['file_read', 'file_write', 'file_edit', 'bash', 'grep', 'glob'],
+      typicalTasks: ['编写用户登录功能 PRD', '设计用户旅程地图', '竞品功能对比分析', '制定迭代计划', '用户反馈分析'],
     },
     {
       id: 'project-admin',
@@ -475,6 +545,9 @@ export function createDevTeamOrchestrator(options?: {
       role: '项目管理员 — 统筹进度、任务分配、里程碑跟踪、Agent 协作协调',
       systemPrompt: '你是项目管理员，专注于看板管理、里程碑规划、进度监控、风险识别、跨 Agent 任务协调。收到任务后给出项目管理方案和进度跟踪建议。' + commGuide,
       model, apiKey, baseUrl,
+      expertise: ['项目进度跟踪', '任务分配与优先级', '里程碑管理', '风险识别', '跨团队协调', '敏捷流程'],
+      tools: ['file_read', 'file_write', 'file_edit', 'bash', 'grep', 'glob'],
+      typicalTasks: ['创建项目里程碑计划', '分配任务给各 Agent', '跟踪项目进度', '识别项目风险', '生成项目状态报告'],
     },
   ];
 

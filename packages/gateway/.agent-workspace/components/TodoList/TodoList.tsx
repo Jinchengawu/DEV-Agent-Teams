@@ -1,312 +1,221 @@
-import React, { useState, useEffect } from 'react';
-import { Todo, TodoListProps } from './types';
+import React, { useState, useCallback } from 'react';
 
-const TodoList: React.FC<TodoListProps> = ({ 
-  initialTodos = [], 
-  onTodosChange 
-}) => {
+/** 单条待办事项的数据结构 */
+interface Todo {
+  id: number;
+  text: string;
+  completed: boolean;
+}
+
+/** 组件 Props（预留扩展能力） */
+interface TodoListProps {
+  initialTodos?: Todo[];
+}
+
+const TodoList: React.FC<TodoListProps> = ({ initialTodos = [] }) => {
   const [todos, setTodos] = useState<Todo[]>(initialTodos);
-  const [newTodoText, setNewTodoText] = useState('');
-  const [filter, setFilter] = useState<'all' | 'active' | 'completed'>('all');
+  const [inputValue, setInputValue] = useState<string>('');
+  const [nextId, setNextId] = useState<number>(1);
 
-  // 生成唯一ID
-  const generateId = (): string => {
-    return Date.now().toString(36) + Math.random().toString(36).substr(2);
-  };
+  // ───── 添加待办 ─────
+  const addTodo = useCallback(() => {
+    const trimmed = inputValue.trim();
+    if (!trimmed) return;
 
-  // 添加新的待办事项
-  const addTodo = (text: string) => {
-    if (text.trim()) {
-      const newTodo: Todo = {
-        id: generateId(),
-        text: text.trim(),
-        completed: false,
-        createdAt: new Date()
-      };
-      const updatedTodos = [...todos, newTodo];
-      setTodos(updatedTodos);
-      setNewTodoText('');
-      onTodosChange?.(updatedTodos);
-    }
-  };
+    const newTodo: Todo = { id: nextId, text: trimmed, completed: false };
+    setTodos((prev) => [...prev, newTodo]);
+    setNextId((prev) => prev + 1);
+    setInputValue('');
+  }, [inputValue, nextId]);
 
-  // 切换待办事项的完成状态
-  const toggleTodo = (id: string) => {
-    const updatedTodos = todos.map(todo =>
-      todo.id === id ? { ...todo, completed: !todo.completed } : todo
+  // ───── 切换完成状态 ─────
+  const toggleTodo = useCallback((id: number) => {
+    setTodos((prev) =>
+      prev.map((todo) =>
+        todo.id === id ? { ...todo, completed: !todo.completed } : todo,
+      ),
     );
-    setTodos(updatedTodos);
-    onTodosChange?.(updatedTodos);
+  }, []);
+
+  // ───── 删除待办 ─────
+  const deleteTodo = useCallback((id: number) => {
+    setTodos((prev) => prev.filter((todo) => todo.id !== id));
+  }, []);
+
+  // ───── 键盘回车提交 ─────
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter') addTodo();
   };
 
-  // 删除待办事项
-  const deleteTodo = (id: string) => {
-    const updatedTodos = todos.filter(todo => todo.id !== id);
-    setTodos(updatedTodos);
-    onTodosChange?.(updatedTodos);
-  };
-
-  // 编辑待办事项
-  const editTodo = (id: string, newText: string) => {
-    if (newText.trim()) {
-      const updatedTodos = todos.map(todo =>
-        todo.id === id ? { ...todo, text: newText.trim() } : todo
-      );
-      setTodos(updatedTodos);
-      onTodosChange?.(updatedTodos);
-    }
-  };
-
-  // 清除所有已完成的待办事项
-  const clearCompleted = () => {
-    const updatedTodos = todos.filter(todo => !todo.completed);
-    setTodos(updatedTodos);
-    onTodosChange?.(updatedTodos);
-  };
-
-  // 根据过滤条件显示待办事项
-  const filteredTodos = todos.filter(todo => {
-    if (filter === 'active') return !todo.completed;
-    if (filter === 'completed') return todo.completed;
-    return true;
-  });
-
-  // 统计待办事项数量
-  const activeTodosCount = todos.filter(todo => !todo.completed).length;
-  const completedTodosCount = todos.filter(todo => todo.completed).length;
-
-  // 处理表单提交
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    addTodo(newTodoText);
-  };
-
-  // 处理键盘事件
-  const handleKeyPress = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter') {
-      addTodo(newTodoText);
-    }
-  };
+  // ───── 统计 ─────
+  const totalCount = todos.length;
+  const completedCount = todos.filter((t) => t.completed).length;
+  const remainingCount = totalCount - completedCount;
 
   return (
-    <div className="max-w-md mx-auto p-6 bg-white rounded-lg shadow-md">
-      <h1 className="text-2xl font-bold text-gray-800 mb-6 text-center">
-        待办事项列表
-      </h1>
-      
-      {/* 添加新待办事项的表单 */}
-      <form onSubmit={handleSubmit} className="mb-6">
-        <div className="flex gap-2">
-          <input
-            type="text"
-            value={newTodoText}
-            onChange={(e) => setNewTodoText(e.target.value)}
-            onKeyPress={handleKeyPress}
-            placeholder="添加新的待办事项..."
-            className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-          />
-          <button
-            type="submit"
-            className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
-          >
-            添加
-          </button>
-        </div>
-      </form>
+    <div style={styles.container}>
+      <h1 style={styles.title}>📝 待办事项</h1>
 
-      {/* 过滤器 */}
-      <div className="flex justify-center gap-4 mb-4">
-        <button
-          onClick={() => setFilter('all')}
-          className={`px-3 py-1 rounded-lg text-sm font-medium ${
-            filter === 'all'
-              ? 'bg-blue-500 text-white'
-              : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
-          }`}
-        >
-          全部 ({todos.length})
-        </button>
-        <button
-          onClick={() => setFilter('active')}
-          className={`px-3 py-1 rounded-lg text-sm font-medium ${
-            filter === 'active'
-              ? 'bg-blue-500 text-white'
-              : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
-          }`}
-        >
-          进行中 ({activeTodosCount})
-        </button>
-        <button
-          onClick={() => setFilter('completed')}
-          className={`px-3 py-1 rounded-lg text-sm font-medium ${
-            filter === 'completed'
-              ? 'bg-blue-500 text-white'
-              : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
-          }`}
-        >
-          已完成 ({completedTodosCount})
+      {/* 输入区域 */}
+      <div style={styles.inputRow}>
+        <input
+          type="text"
+          value={inputValue}
+          onChange={(e) => setInputValue(e.target.value)}
+          onKeyDown={handleKeyDown}
+          placeholder="添加新的待办事项..."
+          style={styles.input}
+        />
+        <button onClick={addTodo} style={styles.addButton}>
+          添加
         </button>
       </div>
 
-      {/* 待办事项列表 */}
-      <div className="space-y-2">
-        {filteredTodos.length === 0 ? (
-          <div className="text-center py-8 text-gray-500">
-            {todos.length === 0
-              ? '暂无待办事项，请添加一个吧！'
-              : filter === 'active'
-              ? '没有进行中的待办事项'
-              : '没有已完成的待办事项'}
-          </div>
-        ) : (
-          filteredTodos.map(todo => (
-            <TodoItem
-              key={todo.id}
-              todo={todo}
-              onToggle={toggleTodo}
-              onDelete={deleteTodo}
-              onEdit={editTodo}
-            />
-          ))
-        )}
+      {/* 统计信息 */}
+      <div style={styles.stats}>
+        <span>全部: {totalCount}</span>
+        <span>已完成: {completedCount}</span>
+        <span>未完成: {remainingCount}</span>
       </div>
 
-      {/* 底部操作栏 */}
-      {todos.length > 0 && (
-        <div className="mt-6 pt-4 border-t border-gray-200 flex justify-between items-center">
-          <span className="text-sm text-gray-500">
-            {activeTodosCount} 个待办事项未完成
-          </span>
-          {completedTodosCount > 0 && (
-            <button
-              onClick={clearCompleted}
-              className="text-sm text-red-500 hover:text-red-700 focus:outline-none"
-            >
-              清除已完成
-            </button>
-          )}
-        </div>
+      {/* 待办列表 */}
+      {todos.length === 0 ? (
+        <p style={styles.emptyText}>🎉 暂无待办事项，添加一个吧！</p>
+      ) : (
+        <ul style={styles.list}>
+          {todos.map((todo) => (
+            <li key={todo.id} style={styles.listItem}>
+              <label style={styles.label}>
+                <input
+                  type="checkbox"
+                  checked={todo.completed}
+                  onChange={() => toggleTodo(todo.id)}
+                  style={styles.checkbox}
+                />
+                <span
+                  style={{
+                    ...styles.todoText,
+                    ...(todo.completed ? styles.completedText : {}),
+                  }}
+                >
+                  {todo.text}
+                </span>
+              </label>
+              <button
+                onClick={() => deleteTodo(todo.id)}
+                style={styles.deleteButton}
+                title="删除"
+              >
+                ✕
+              </button>
+            </li>
+          ))}
+        </ul>
       )}
     </div>
   );
 };
 
-// 单个待办事项组件
-interface TodoItemProps {
-  todo: Todo;
-  onToggle: (id: string) => void;
-  onDelete: (id: string) => void;
-  onEdit: (id: string, newText: string) => void;
-}
-
-const TodoItem: React.FC<TodoItemProps> = ({ 
-  todo, 
-  onToggle, 
-  onDelete, 
-  onEdit 
-}) => {
-  const [isEditing, setIsEditing] = useState(false);
-  const [editText, setEditText] = useState(todo.text);
-
-  // 处理编辑提交
-  const handleEditSubmit = () => {
-    if (editText.trim() && editText !== todo.text) {
-      onEdit(todo.id, editText);
-    }
-    setIsEditing(false);
-  };
-
-  // 处理键盘事件
-  const handleKeyPress = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter') {
-      handleEditSubmit();
-    } else if (e.key === 'Escape') {
-      setEditText(todo.text);
-      setIsEditing(false);
-    }
-  };
-
-  // 格式化日期
-  const formatDate = (date: Date): string => {
-    return new Date(date).toLocaleDateString('zh-CN', {
-      month: 'short',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit'
-    });
-  };
-
-  return (
-    <div className={`flex items-center gap-3 p-3 rounded-lg border ${
-      todo.completed 
-        ? 'bg-gray-50 border-gray-200' 
-        : 'bg-white border-gray-300'
-    }`}>
-      {/* 复选框 */}
-      <input
-        type="checkbox"
-        checked={todo.completed}
-        onChange={() => onToggle(todo.id)}
-        className="h-5 w-5 text-blue-500 rounded focus:ring-blue-500"
-      />
-      
-      {/* 内容区域 */}
-      <div className="flex-1 min-w-0">
-        {isEditing ? (
-          <input
-            type="text"
-            value={editText}
-            onChange={(e) => setEditText(e.target.value)}
-            onBlur={handleEditSubmit}
-            onKeyPress={handleKeyPress}
-            className="w-full px-2 py-1 border border-blue-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
-            autoFocus
-          />
-        ) : (
-          <div>
-            <span
-              className={`block ${
-                todo.completed
-                  ? 'line-through text-gray-500'
-                  : 'text-gray-800'
-              }`}
-            >
-              {todo.text}
-            </span>
-            <span className="text-xs text-gray-400 mt-1 block">
-              {formatDate(todo.createdAt)}
-            </span>
-          </div>
-        )}
-      </div>
-      
-      {/* 操作按钮 */}
-      <div className="flex gap-1">
-        {!isEditing && (
-          <>
-            <button
-              onClick={() => setIsEditing(true)}
-              className="p-1 text-gray-400 hover:text-blue-500 focus:outline-none"
-              title="编辑"
-            >
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-              </svg>
-            </button>
-            <button
-              onClick={() => onDelete(todo.id)}
-              className="p-1 text-gray-400 hover:text-red-500 focus:outline-none"
-              title="删除"
-            >
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-              </svg>
-            </button>
-          </>
-        )}
-      </div>
-    </div>
-  );
+// ───── 内联样式 ─────
+const styles: Record<string, React.CSSProperties> = {
+  container: {
+    maxWidth: 500,
+    margin: '40px auto',
+    padding: 24,
+    borderRadius: 12,
+    boxShadow: '0 4px 24px rgba(0,0,0,0.1)',
+    fontFamily: "'Segoe UI', sans-serif",
+    backgroundColor: '#fff',
+  },
+  title: {
+    textAlign: 'center',
+    marginBottom: 20,
+    fontSize: 28,
+    color: '#333',
+  },
+  inputRow: {
+    display: 'flex',
+    gap: 8,
+    marginBottom: 16,
+  },
+  input: {
+    flex: 1,
+    padding: '10px 14px',
+    fontSize: 16,
+    border: '2px solid #ddd',
+    borderRadius: 8,
+    outline: 'none',
+    transition: 'border-color 0.2s',
+  },
+  addButton: {
+    padding: '10px 20px',
+    fontSize: 16,
+    fontWeight: 600,
+    color: '#fff',
+    backgroundColor: '#4f46e5',
+    border: 'none',
+    borderRadius: 8,
+    cursor: 'pointer',
+    transition: 'background-color 0.2s',
+  },
+  stats: {
+    display: 'flex',
+    justifyContent: 'space-around',
+    marginBottom: 16,
+    fontSize: 14,
+    color: '#666',
+  },
+  emptyText: {
+    textAlign: 'center',
+    color: '#999',
+    fontSize: 16,
+    padding: '32px 0',
+  },
+  list: {
+    listStyle: 'none',
+    padding: 0,
+    margin: 0,
+  },
+  listItem: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: '10px 12px',
+    marginBottom: 8,
+    borderRadius: 8,
+    backgroundColor: '#f9fafb',
+    transition: 'background-color 0.15s',
+  },
+  label: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 10,
+    flex: 1,
+    cursor: 'pointer',
+  },
+  checkbox: {
+    width: 18,
+    height: 18,
+    cursor: 'pointer',
+  },
+  todoText: {
+    fontSize: 16,
+    color: '#333',
+  },
+  completedText: {
+    textDecoration: 'line-through',
+    color: '#aaa',
+  },
+  deleteButton: {
+    background: 'none',
+    border: 'none',
+    fontSize: 18,
+    color: '#ef4444',
+    cursor: 'pointer',
+    padding: '4px 8px',
+    borderRadius: 4,
+    transition: 'background-color 0.15s',
+  },
 };
 
 export default TodoList;

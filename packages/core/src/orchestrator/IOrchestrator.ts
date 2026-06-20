@@ -35,6 +35,16 @@ export interface IOrchestrator {
     onProgress: (event: MeetingProgressEvent) => void,
   ): Promise<TeamRunResult>;
 
+  // ── 智能路由入口（新增）──
+
+  /** 智能路由入口 — 自动决策协作模式
+   * 由 IntentRouter 分析用户意图，自动选择 single/team/meeting 策略
+   */
+  handleRequest(userQuery: string): Promise<TeamRunResult>;
+
+  /** 获取最后一次路由决策（用于调试和审计） */
+  getLastRoutingDecision(): import('./types.js').RoutingDecision | null;
+
   // ── 通信 ──
 
   /** 获取 Agent 间消息历史 */

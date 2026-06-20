@@ -8,6 +8,8 @@ import { Badge } from '@/components/ui/badge'
 import { useToast } from '@/components/ui/toast'
 import { AGENTS, detectAgent } from '@/lib/agents'
 import type { ChatMessage } from '@/lib/types'
+import CodePreview from '@/components/CodePreview'
+import FileUpload from '@/components/FileUpload'
 
 const AGENT_LIST = Object.entries(AGENTS).map(([, info]) => ({ ...info }))
 const MAX_INPUT_LENGTH = 10000
@@ -44,6 +46,12 @@ function loadConversations(): Record<string, ChatMessage[]> {
     const raw = localStorage.getItem(SESSION_STORAGE_KEY)
     return raw ? JSON.parse(raw) : {}
   } catch { return {} }
+}
+
+function extractCodeBlock(content: string): { code: string; lang: string } | null {
+  const match = content.match(/```(\w+)?\n([\s\S]*?)```/);
+  if (!match) return null;
+  return { code: match[2].trim(), lang: match[1] || 'html' };
 }
 
 function saveConversations(convs: Record<string, ChatMessage[]>) {
@@ -96,6 +104,9 @@ export default function ChatContent() {
       return raw ? JSON.parse(raw) : {}
     } catch { return {} }
   })
+
+  // 附件管理（每个 Agent 独立）
+  const [attachments, setAttachments] = useState<Record<string, Array<{ filename: string; originalname: string; url: string; mimetype: string }>>>({})
 
   // 每个 Agent 独立的发送状态（并发关键）
   const [sending, setSending] = useState<Record<string, boolean>>({})
@@ -224,12 +235,13 @@ export default function ChatContent() {
     addMessage(key, userMessage)
 
     const sessionId = sessions[key] || undefined
+    const currentAttachments = attachments[key] || []
 
     try {
       const res = await fetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ messages: existingHistory, agentId, sessionId }),
+        body: JSON.stringify({ messages: existingHistory, agentId, sessionId, attachments: currentAttachments }),
       })
 
       let data: Record<string, unknown> = {}
@@ -432,6 +444,11 @@ export default function ChatContent() {
                     <div className="whitespace-pre-wrap text-sm leading-relaxed">
                       {message.content}
                     </div>
+                    {/* 代码预览：只给 assistant 消息且包含代码块 */}
+                    {message.role === 'assistant' && (() => {
+                      const codeBlock = extractCodeBlock(message.content);
+                      return codeBlock ? <CodePreview code={codeBlock.code} language={codeBlock.lang} /> : null;
+                    })()}
                     <div className={`text-xs mt-2 ${message.role === 'user' ? 'text-blue-100' : 'text-gray-400'}`}>
                       {message.timestamp > 1000000000000
                         ? new Date(message.timestamp).toLocaleTimeString()
@@ -495,14 +512,43 @@ export default function ChatContent() {
                 className="flex-1 border border-slate-300 rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white shadow-sm disabled:opacity-50"
               />
               <Button
-                onClick={() => handleSendForAgent(activeAgentId, currentInput)}
+                onClick={() => {
+                  handleSendForAgent(activeAgentId, currentInput)
+                  // 发送后清除附件
+                  setAttachments(prev => {
+                    const next = { ...prev }
+                    delete next[activeAgentId]
+                    return next
+                  })
+                }}
                 disabled={!currentInput.trim() || isCurrentSending}
                 size="lg"
               >
                 Send →
               </Button>
             </div>
-            <div className="mt-3 flex flex-wrap gap-2">
+            {/* 附件显示 + 上传按钮 */}
+            {(attachments[activeAgentId]?.length ?? 0) > 0 && (
+              <div className="flex items-center gap-2 mt-2">
+                {attachments[activeAgentId].map((att, i) => (
+                  <span key={i} className="text-xs px-2 py-1 bg-blue-50 text-blue-600 rounded border border-blue-200">
+                    📎 {att.originalname}
+                  </span>
+                ))}
+                <button
+                  onClick={() => setAttachments(prev => {
+                    const next = { ...prev }
+                    delete next[activeAgentId]
+                    return next
+                  })}
+                  className="text-xs text-red-400 hover:text-red-600"
+                >
+                  清除
+                </button>
+              </div>
+            )}
+            <div className="mt-3 flex items-center justify-between">
+              <div className="flex flex-wrap gap-2">
               {[
                 { label: 'React component', text: 'Create a React login component with TypeScript and Tailwind CSS' },
                 { label: 'Design API', text: 'Design a RESTful user API endpoint with Express' },
@@ -520,6 +566,8 @@ export default function ChatContent() {
                   💡 {suggestion.label}
                 </Button>
               ))}
+              </div>
+              <FileUpload onUpload={(files) => setAttachments(prev => ({ ...prev, [activeAgentId]: files }))} />
             </div>
           </div>
         </Card>

@@ -14,6 +14,7 @@ CREATE TABLE IF NOT EXISTS messages (
   agent_id    TEXT NOT NULL DEFAULT '',
   content     TEXT NOT NULL,
   tokens      INTEGER NOT NULL DEFAULT 0,
+  attachments TEXT,                    -- JSON 数组 [{filename, path, type, size}]
   created_at  TEXT NOT NULL DEFAULT (datetime('now'))
 );
 CREATE INDEX IF NOT EXISTS idx_messages_session ON messages(session_id, created_at);
@@ -55,6 +56,30 @@ CREATE TABLE IF NOT EXISTS milestones (
 );
 CREATE INDEX IF NOT EXISTS idx_milestones_status ON milestones(status);
 CREATE INDEX IF NOT EXISTS idx_milestones_target_date ON milestones(target_date);
+
+-- 代码快照表
+CREATE TABLE IF NOT EXISTS snapshots (
+  id          TEXT PRIMARY KEY,
+  session_id  TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+  user_id     TEXT NOT NULL DEFAULT '',
+  title       TEXT NOT NULL,
+  description TEXT,
+  files       TEXT NOT NULL,                    -- JSON 数组 [{filename, content, language}]
+  commit_message TEXT,
+  external_url TEXT,
+  created_at  TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_snapshots_session ON snapshots(session_id, created_at);
+
+-- 用户表（预留）
+CREATE TABLE IF NOT EXISTS users (
+  id          TEXT PRIMARY KEY,
+  clerk_id    TEXT UNIQUE,
+  email       TEXT,
+  name        TEXT,
+  avatar      TEXT,
+  created_at  TEXT NOT NULL DEFAULT (datetime('now'))
+);
 `;
 
 export function initSchema(db: { exec: (sql: string) => void }): void {

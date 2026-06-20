@@ -11,12 +11,14 @@
  */
 
 import { createServer } from 'node:http';
-import { appendFileSync, mkdirSync, existsSync } from 'node:fs';
+import { appendFileSync, mkdirSync, existsSync, createWriteStream } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { config } from 'dotenv';
 import { createAgentApp } from '@dev-agent/core';
 import type { OrchestratorEvent, MeetingProgressEvent } from '@dev-agent/core';
+import Busboy from 'busboy';
+import { randomUUID } from 'node:crypto';
 
 // 加载项目根目录的 .env 文件
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -96,16 +98,56 @@ async function main(): Promise<void> {
     const url = new URL(req.url || '/', `http://${req.headers.host}`);
     const path = url.pathname;
 
+    // 文件上传 — 需要原始 req 流，必须在收集请求体之前处理
+    if (path === '/upload' && req.method === 'POST') {
+      const uploadDir = join(process.cwd(), 'uploads');
+      if (!existsSync(uploadDir)) mkdirSync(uploadDir, { recursive: true });
+
+      const busboy = Busboy({ headers: req.headers });
+      const files: Array<{ filename: string; originalname: string; path: string; size: number; mimetype: string }> = [];
+
+      busboy.on('file', (name, file, info) => {
+        const ext = info.filename.includes('.') ? info.filename.split('.').pop() : '';
+        const filename = `${randomUUID()}${ext ? '.' + ext : ''}`;
+        const filepath = join(uploadDir, filename);
+        const stream = createWriteStream(filepath);
+        let size = 0;
+        file.on('data', (chunk: Buffer) => { size += chunk.length; });
+        file.pipe(stream);
+        files.push({ filename, originalname: info.filename, path: filepath, size, mimetype: info.mimeType });
+      });
+
+      busboy.on('close', () => {
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ files }));
+      });
+
+      busboy.on('error', (err: Error) => {
+        res.writeHead(500, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: err.message }));
+      });
+
+      req.pipe(busboy);
+      return;
+    }
+
     // 收集请求体
     let body = '';
     for await (const chunk of req) body += chunk;
+
+    // 只解析 JSON 请求体，multipart 等非 JSON 请求体跳过
+    let parsedBody: any = {};
+    const contentType = req.headers['content-type'] || '';
+    if (contentType.includes('application/json') && body) {
+      try { parsedBody = JSON.parse(body); } catch { parsedBody = {}; }
+    }
 
     // 构造 Express 兼容的 req/res 对象，转发到 agent app
     const { app } = agentApp;
 
     // 使用 Express 的 handle 方法
     const expressReq = Object.assign(req, {
-      body: body ? JSON.parse(body) : {},
+      body: parsedBody,
       url: req.url,
       path,
     });
@@ -164,7 +206,27 @@ async function main(): Promise<void> {
 
         const lastUserMsg = [...messages].reverse().find((m: { role: string }) => m.role === 'user');
         const userContent = lastUserMsg?.content;
-        const userText = typeof userContent === 'string' ? userContent : JSON.stringify(userContent || '');
+        let userText = typeof userContent === 'string' ? userContent : JSON.stringify(userContent || '');
+
+        // 处理附件（图片转 base64）
+        if (request.attachments && Array.isArray(request.attachments)) {
+          const imageParts: string[] = [];
+          for (const att of request.attachments) {
+            if (att.mimetype?.startsWith('image/')) {
+              try {
+                const { readFile } = await import('node:fs/promises');
+                const data = await readFile(att.path);
+                const base64 = data.toString('base64');
+                imageParts.push(`![${att.originalname}](data:${att.mimetype};base64,${base64})`);
+              } catch (e) {
+                console.error('[upload] 读取文件失败:', e);
+              }
+            }
+          }
+          if (imageParts.length > 0) {
+            userText += '\n\n' + imageParts.join('\n');
+          }
+        }
 
         // 会话管理
         let sid = sessionId || '';
@@ -423,6 +485,28 @@ async function main(): Promise<void> {
         }
 
         res.end();
+        return;
+      }
+
+      // 静态文件服务 — 上传的文件访问
+      if (path.startsWith('/uploads/')) {
+        const filename = path.replace('/uploads/', '');
+        const filepath = join(process.cwd(), 'uploads', filename);
+        try {
+          const data = await import('node:fs').then(m => m.promises.readFile(filepath));
+          const ext = filename.split('.').pop() || '';
+          const mimeTypes: Record<string, string> = {
+            png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', gif: 'image/gif',
+            svg: 'image/svg+xml', pdf: 'application/pdf', txt: 'text/plain',
+            md: 'text/markdown', json: 'application/json', csv: 'text/csv',
+            sql: 'text/plain', yaml: 'text/yaml', yml: 'text/yaml',
+          };
+          res.writeHead(200, { 'Content-Type': mimeTypes[ext] || 'application/octet-stream' });
+          res.end(data);
+        } catch {
+          res.writeHead(404, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: 'File not found' }));
+        }
         return;
       }
 
