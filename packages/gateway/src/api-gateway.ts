@@ -24,6 +24,17 @@ import { randomUUID } from 'node:crypto';
 const __dirname = dirname(fileURLToPath(import.meta.url));
 config({ path: resolve(__dirname, '../../../.env') });
 
+// 从 AgentRunResult 中提取格式化输出（兼容多种 content 格式）
+function extractOutput(agentResult: { output: string; toolCalls: { toolName: string }[]; success: boolean }): string {
+  const parts: string[] = [];
+  if (agentResult.output) parts.push(agentResult.output);
+  if (agentResult.toolCalls.length > 0) {
+    const toolNames = [...new Set(agentResult.toolCalls.map((tc) => tc.toolName))];
+    parts.push(`📊 执行了 ${agentResult.toolCalls.length} 个操作 (${toolNames.join(', ')})`);
+  }
+  return parts.join('\n') || (agentResult.success ? '✅ 任务完成' : '❌ 任务失败');
+}
+
 // ============================================================================
 // Config
 // ============================================================================
@@ -257,36 +268,6 @@ async function main(): Promise<void> {
           // 如果需要多 Agent 协作，runTeam 内部会自动分解
           const teamResult = await agentApp.orchestrator.runTeam(userText);
 
-          // 从 AgentRunResult 中提取文本输出
-          function extractOutput(agentResult: { output: string; messages: { role: string; content: { type: string; text?: string }[] }[]; toolCalls: { toolName: string; input: Record<string, unknown>; output: string }[] }): string {
-            // 收集所有 assistant 消息中的文本（包括 reasoning 和 text 类型）
-            const allText: string[] = [];
-            for (const msg of agentResult.messages) {
-              if (msg.role === 'assistant') {
-                for (const block of msg.content) {
-                  if ((block.type === 'text' || block.type === 'reasoning') && block.text) {
-                    allText.push(block.text);
-                  }
-                }
-              }
-            }
-            const combined = allText.join('\n').trim();
-
-            // 构建结果
-            const parts: string[] = [];
-            if (combined) {
-              parts.push(combined);
-            }
-
-            // 补充 tool call 摘要
-            if (agentResult.toolCalls.length > 0) {
-              const toolNames = [...new Set(agentResult.toolCalls.map((tc) => tc.toolName))];
-              parts.push(`\n📊 执行了 ${agentResult.toolCalls.length} 个操作 (${toolNames.join(', ')})`);
-            }
-
-            return parts.join('\n') || (agentResult.success ? '✅ 任务完成' : '❌ 任务失败');
-          }
-
           // 构建结构化输出：汇总协调员结论 + 各 Agent 贡献
           const parts: string[] = [];
           const coordinatorResult = teamResult.agentResults.get('coordinator');
@@ -312,20 +293,6 @@ async function main(): Promise<void> {
           // 圆桌会议模式 — 所有 Agent 顺序发言
           const meetingResult = await agentApp.orchestrator.runMeeting(userText);
 
-          function extractOutput(agentResult: { output: string; messages: { role: string; content: { type: string; text?: string }[] }[]; toolCalls: { toolName: string; input: Record<string, unknown>; output: string }[] }): string {
-            const allText: string[] = [];
-            for (const msg of agentResult.messages) {
-              if (msg.role === 'assistant') {
-                for (const block of msg.content) {
-                  if ((block.type === 'text' || block.type === 'reasoning') && block.text) {
-                    allText.push(block.text);
-                  }
-                }
-              }
-            }
-            return allText.join('\n').trim() || agentResult.output || (agentResult.success ? '✅ 任务完成' : '❌ 任务失败');
-          }
-
           const meetingParts: string[] = [];
           for (const [name, agentResult] of meetingResult.agentResults) {
             const output = extractOutput(agentResult);
@@ -337,11 +304,28 @@ async function main(): Promise<void> {
           result = { output: meetingParts.join('\n') || '会议完成', agent: 'meeting' };
           routedBy = 'meeting-orchestrator';
         } else {
-          // 单 Agent 模式 — 优先使用请求指定的 agentId，否则自动检测
-          const agentId = normalizeAgentId(requestedAgentId) || detectAgent(userText);
-          const agentResult = await agentApp.orchestrator.runAgent(agentId, userText);
-          result = { output: agentResult.output, agent: agentId };
-          routedBy = requestedAgentId ? 'client-specified' : 'intent-router';
+          // 智能路由模式 — 由 IntentRouter 自动决策协作策略
+          const teamResult = await agentApp.orchestrator.handleRequest(userText);
+          const decision = agentApp.orchestrator.getLastRoutingDecision();
+
+          // 构建结构化输出
+          const parts: string[] = [];
+          if (decision) {
+            parts.push(`🎯 路由决策: ${decision.strategy} | 复杂度: ${decision.complexity}\n理由: ${decision.reasoning}\n`);
+          }
+
+          for (const [name, agentResult] of teamResult.agentResults) {
+            const output = extractOutput(agentResult);
+            if (output) {
+              parts.push(`\n---\n## ${name}\n${output}`);
+            }
+          }
+
+          const output = parts.join('\n');
+          const agentName = decision?.primaryAgent || decision?.involvedAgents?.[0] || 'team';
+
+          result = { output, agent: agentName };
+          routedBy = 'intent-router';
         }
 
         // 保存助手回复
@@ -446,20 +430,6 @@ async function main(): Promise<void> {
           );
 
           // 组装最终输出
-          function extractOutput(agentResult: { output: string; messages: { role: string; content: { type: string; text?: string }[] }[]; toolCalls: { toolName: string; input: Record<string, unknown>; output: string }[] }): string {
-            const allText: string[] = [];
-            for (const msg of agentResult.messages) {
-              if (msg.role === 'assistant') {
-                for (const block of msg.content) {
-                  if ((block.type === 'text' || block.type === 'reasoning') && block.text) {
-                    allText.push(block.text);
-                  }
-                }
-              }
-            }
-            return allText.join('\n').trim() || agentResult.output || (agentResult.success ? '✅ 任务完成' : '❌ 任务失败');
-          }
-
           const parts: string[] = [];
           for (const [name, agentResult] of meetingResult.agentResults) {
             const output = extractOutput(agentResult);
@@ -557,10 +527,6 @@ async function main(): Promise<void> {
   });
 }
 
-// ============================================================================
-// 简意图路由
-// ============================================================================
-
 // Agent ID 映射 — 处理 Dashboard 可能发送的短格式
 const AGENT_ID_MAP: Record<string, string> = {
   'frontend': 'dev-frontend',
@@ -578,27 +544,6 @@ const AGENT_ID_MAP: Record<string, string> = {
 
 function normalizeAgentId(agentId: string): string {
   return AGENT_ID_MAP[agentId] || agentId;
-}
-
-function detectAgent(message: string): string {
-  const lower = message.toLowerCase();
-
-  const rules: [string[], string][] = [
-    [['react', 'vue', 'component', 'ui', 'css', 'tailwind', '前端', '界面', '组件', '样式'], 'dev-frontend'],
-    [['api', 'database', 'server', 'python', 'node', 'go', '后端', '接口', '数据库', '服务器'], 'dev-backend'],
-    [['test', 'unit', 'e2e', 'coverage', 'jest', 'pytest', '测试', '单元测试', '覆盖率'], 'dev-testing'],
-    [['docker', 'k8s', 'deploy', 'ci/cd', 'devops', '运维', '容器', '部署'], 'dev-devops'],
-    [['prd', 'requirement', 'product', 'strategy', 'user-story', 'pm', '产品', '需求'], 'dev-pm'],
-    [['project', 'admin', 'kanban', 'milestone', '进度', '里程碑', '看板', '任务管理'], 'project-admin'],
-  ];
-
-  for (const [keywords, agentId] of rules) {
-    for (const kw of keywords) {
-      if (lower.includes(kw)) return agentId;
-    }
-  }
-
-  return 'dev-backend';
 }
 
 main().catch((error) => {

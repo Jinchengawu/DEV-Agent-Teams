@@ -34,6 +34,32 @@ export interface AgentApp {
   close: () => Promise<void>;
 }
 
+// 从 AgentRunResult 中提取格式化输出（兼容 content 为 string 或 block[]）
+function extractOutput(agentResult: { output: string; success: boolean; messages: { role: string; content: string | { type: string; text?: string }[] }[]; toolCalls: { toolName: string; input: Record<string, unknown>; output: string }[] }): string {
+  const allText: string[] = [];
+  for (const msg of agentResult.messages) {
+    if (msg.role === 'assistant') {
+      if (typeof msg.content === 'string') {
+        allText.push(msg.content);
+      } else {
+        for (const block of msg.content) {
+          if ((block.type === 'text' || block.type === 'reasoning') && block.text) {
+            allText.push(block.text);
+          }
+        }
+      }
+    }
+  }
+  const combined = allText.join('\n').trim();
+  const parts: string[] = [];
+  if (combined) parts.push(combined);
+  if (agentResult.toolCalls.length > 0) {
+    const toolNames = [...new Set(agentResult.toolCalls.map((tc) => tc.toolName))];
+    parts.push(`\n📊 执行了 ${agentResult.toolCalls.length} 个操作 (${toolNames.join(', ')})`);
+  }
+  return parts.join('\n') || (agentResult.success ? '✅ 任务完成' : '❌ 任务失败');
+}
+
 // ============================================================================
 // Factory
 // ============================================================================
@@ -117,32 +143,6 @@ export function createAgentApp(config: AgentAppConfig = {}): AgentApp {
 
       // 委托给 TeamOrchestrator — 智能路由（自动决策协作模式）
       let result: { output: string; agent: string };
-
-      // 从 AgentRunResult 中提取文本输出
-      function extractOutput(agentResult: { output: string; success: boolean; messages: { role: string; content: string | { type: string; text?: string }[] }[]; toolCalls: { toolName: string; input: Record<string, unknown>; output: string }[] }): string {
-          const allText: string[] = [];
-          for (const msg of agentResult.messages) {
-            if (msg.role === 'assistant') {
-              if (typeof msg.content === 'string') {
-                allText.push(msg.content);
-              } else {
-                for (const block of msg.content) {
-                  if ((block.type === 'text' || block.type === 'reasoning') && block.text) {
-                    allText.push(block.text);
-                  }
-                }
-              }
-            }
-          }
-          const combined = allText.join('\n').trim();
-          const parts: string[] = [];
-          if (combined) parts.push(combined);
-          if (agentResult.toolCalls.length > 0) {
-            const toolNames = [...new Set(agentResult.toolCalls.map((tc) => tc.toolName))];
-            parts.push(`\n📊 执行了 ${agentResult.toolCalls.length} 个操作 (${toolNames.join(', ')})`);
-          }
-          return parts.join('\n') || (agentResult.success ? '✅ 任务完成' : '❌ 任务失败');
-      }
 
       // 支持显式 mode（客户端可覆盖），否则走智能路由
       if (mode === 'team') {
