@@ -8,6 +8,7 @@
 import { defineTool } from '@open-multi-agent/core';
 import { z } from 'zod';
 import { getTeam } from './team-registry.js';
+import { getGlobalMessageBus } from '../event/MessageBus.js';
 
 export function createSendMessageTool(teamId: string) {
   return defineTool({
@@ -32,11 +33,39 @@ export function createSendMessageTool(teamId: string) {
       const from = context.agent.name;
 
       if (input.to === '*') {
+        // 同步广播（兼容） + 异步广播（MessageBus）
         team.broadcast(from, input.content);
+        
+        // 异步 MessageBus 广播（不阻塞）
+        try {
+          const bus = getGlobalMessageBus();
+          await bus.broadcast({
+            from,
+            type: 'chat',
+            content: input.content,
+          });
+        } catch (err) {
+          console.warn('[send_message] MessageBus 广播失败:', err);
+        }
+        
         return { data: `已广播给所有 Agent`, isError: false };
       }
 
       team.sendMessage(from, input.to, input.content);
+      
+      // 异步 MessageBus 发送（不阻塞）
+      try {
+        const bus = getGlobalMessageBus();
+        await bus.send(input.to, {
+          from,
+          to: input.to,
+          type: 'chat',
+          content: input.content,
+        });
+      } catch (err) {
+        console.warn('[send_message] MessageBus 发送失败:', err);
+      }
+      
       return { data: `已发送给 ${input.to}`, isError: false };
     },
   });

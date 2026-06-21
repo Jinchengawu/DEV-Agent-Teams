@@ -27,6 +27,7 @@ import { createSendMessageTool } from '../tools/send-message.js';
 import { registerTeam } from '../tools/team-registry.js';
 import { IntentRouter } from '../intent/IntentRouter.js';
 import { eventBus } from '../event/EventBus.js';
+import { getGlobalMessageBus } from '../event/MessageBus.js';
 import type { IOrchestrator } from '../orchestrator/IOrchestrator.js';
 import type {
   TeamAgentConfig,
@@ -70,6 +71,18 @@ export class TeamOrchestrator implements IOrchestrator {
       },
       config.agents,
     );
+
+    // 初始化 MessageBus
+    const messageBus = getGlobalMessageBus({ verbose: true });
+
+    // 注册所有 Agent 到 MessageBus
+    for (const agent of config.agents) {
+      messageBus.registerAgent(agent.id, async (msg) => {
+        console.log(`[MessageBus] ${msg.from} → ${msg.to}: ${msg.content.substring(0, 50)}...`);
+      });
+    }
+
+    console.log(`[TeamOrchestrator] 已注册 ${config.agents.length} 个 Agent 到 MessageBus`);
 
     // 初始化 OpenMultiAgent — 使用 mimo provider 避免 404
     const orchestratorConfig: OmaOrchestratorConfig = {
@@ -473,10 +486,33 @@ export class TeamOrchestrator implements IOrchestrator {
   }
 
   /**
-   * 广播消息给所有 Agent
+   * 广播消息给所有 Agent（同步 + 异步）
    */
   broadcast(from: string, content: string) {
+    // 同步广播（兼容 OpenMultiAgent）
     this.team.broadcast(from, content);
+
+    // 异步 MessageBus 广播（不阻塞）
+    const messageBus = getGlobalMessageBus();
+    messageBus.broadcast({
+      from,
+      type: 'chat',
+      content,
+    }).catch((err) => {
+      console.warn('[TeamOrchestrator] MessageBus 广播失败:', err);
+    });
+  }
+
+  /**
+   * 异步广播 — 仅使用 MessageBus（真正的异步）
+   */
+  async asyncBroadcast(from: string, content: string): Promise<void> {
+    const messageBus = getGlobalMessageBus();
+    await messageBus.broadcast({
+      from,
+      type: 'chat',
+      content,
+    });
   }
 
   /**

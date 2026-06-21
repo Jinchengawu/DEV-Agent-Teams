@@ -51,6 +51,10 @@ export type {
   MeetingHandlerDeps,
 } from './event/handlers';
 
+// ── 消息总线（新增 — Phase 3: 异步通信）──
+export { MessageBus, getGlobalMessageBus, resetGlobalMessageBus } from './event/MessageBus';
+export type { AgentMessage, MessageBusOptions } from './event/MessageBus';
+
 // ── HTTP API 层 ──
 export { createAgentApp } from './agent-factory';
 export type { AgentAppConfig, AgentApp } from './agent-factory';
