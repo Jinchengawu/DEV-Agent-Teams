@@ -26,6 +26,7 @@ import {
 import { createSendMessageTool } from '../tools/send-message.js';
 import { registerTeam } from '../tools/team-registry.js';
 import { IntentRouter } from '../intent/IntentRouter.js';
+import { eventBus } from '../event/EventBus.js';
 import type { IOrchestrator } from '../orchestrator/IOrchestrator.js';
 import type {
   TeamAgentConfig,
@@ -119,8 +120,51 @@ export class TeamOrchestrator implements IOrchestrator {
    */
   async runTeam(goal: string, options?: { maxRounds?: number }): Promise<TeamRunResult> {
     console.log(`[TeamOrchestrator] runTeam: "${goal.substring(0, 60)}..."`);
-    const result = await this.omAgent.runTeam(this.team, goal, options as OmaRunTeamOptions);
-    return result as unknown as TeamRunResult;
+    const workflowId = `team-${Date.now()}`;
+    
+    // 发布工作流开始事件
+    eventBus.emit({
+      type: 'workflow.started',
+      source: 'workflow',
+      timestamp: Date.now(),
+      payload: { workflowId, taskId: goal.substring(0, 50) },
+    });
+
+    try {
+      const result = await this.omAgent.runTeam(this.team, goal, options as OmaRunTeamOptions);
+      const teamResult = result as unknown as TeamRunResult;
+      
+      // 发布工作流完成事件
+      eventBus.emit({
+        type: 'workflow.completed',
+        source: 'workflow',
+        timestamp: Date.now(),
+        payload: {
+          workflowId,
+          taskId: goal.substring(0, 50),
+          output: teamResult.output?.substring(0, 200),
+          tokenUsage: teamResult.totalTokenUsage,
+        },
+      });
+      
+      return teamResult;
+    } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : 'Unknown error';
+      
+      // 发布工作流失败事件
+      eventBus.emit({
+        type: 'workflow.failed',
+        source: 'workflow',
+        timestamp: Date.now(),
+        payload: {
+          workflowId,
+          taskId: goal.substring(0, 50),
+          error: errorMsg,
+        },
+      });
+      
+      throw error;
+    }
   }
 
   /**
@@ -209,12 +253,28 @@ export class TeamOrchestrator implements IOrchestrator {
       console.log(`[TeamOrchestrator] meeting: ${config.id} 已发言`);
     }
 
-    return {
+    const meetingResult: TeamRunResult = {
       success: true,
       goal,
       agentResults,
       totalTokenUsage: totalTokenUsage as TokenUsage,
     };
+
+    // 发布会议完成事件
+    eventBus.emit({
+      type: 'meeting.completed',
+      source: 'meeting',
+      timestamp: Date.now(),
+      payload: {
+        meetingId: `meeting-${Date.now()}`,
+        topic: goal.substring(0, 100),
+        participants: this.team.getAgents().map((a) => a.name),
+        summary: discussion.join('\n\n').substring(0, 500),
+        actionItems: [], // 可以由 LLM 解析生成
+      },
+    });
+
+    return meetingResult;
   }
 
   /**
@@ -228,8 +288,21 @@ export class TeamOrchestrator implements IOrchestrator {
     const MAX_CONCURRENT = 2; // 并发限制
     const MAX_RETRIES = 3;    // 最大重试次数
     const BASE_DELAY = 2000;  // 基础延迟 2s
+    const meetingId = `meeting-${Date.now()}`;
 
-    console.log(`[TeamOrchestrator] runMeetingWithProgress (concurrency=${MAX_CONCURRENT}): "${goal.substring(0, 60)}..."`);
+    // 发布会议开始事件
+    eventBus.emit({
+      type: 'meeting.started',
+      source: 'meeting',
+      timestamp: Date.now(),
+      payload: {
+        meetingId,
+        topic: goal.substring(0, 100),
+        participants: this.team.getAgents().map((a) => a.name),
+      },
+    });
+
+    console.log(`[TeamOrchestrator] runMeetingWithProgress (concurrency=${MAX_CONCURRENT}): "${goal.substring(0, 60)}..." (meetingId: ${meetingId})`);
 
     const agents = this.team.getAgents();
     const agentResults = new Map<string, AgentRunResult>();
@@ -366,6 +439,20 @@ export class TeamOrchestrator implements IOrchestrator {
     }
 
     onProgress({ type: 'done' });
+
+    // 发布会议完成事件
+    eventBus.emit({
+      type: 'meeting.completed',
+      source: 'meeting',
+      timestamp: Date.now(),
+      payload: {
+        meetingId: `meeting-${Date.now()}`,
+        topic: goal.substring(0, 100),
+        participants: this.team.getAgents().map((a) => a.name),
+        summary: '会议已完成（详见各 Agent 输出）',
+        actionItems: [],
+      },
+    });
 
     return {
       success: true,

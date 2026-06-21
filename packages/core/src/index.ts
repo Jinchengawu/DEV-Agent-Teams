@@ -26,6 +26,31 @@ export type {
 // ── 意图路由（新增）──
 export { IntentRouter } from './intent/IntentRouter';
 
+// ── 事件总线（新增 — Phase 1: 打通孤岛）──
+export { EventBus, eventBus } from './event/EventBus';
+export type { AnyEvent } from './event/EventBus';
+export type {
+  KanbanEvent,
+  WorkflowEvent,
+  MeetingEvent,
+  SystemEvent,
+  ActionItem,
+  TaskStatus,
+  EventHandler,
+} from './event/types';
+export {
+  registerAllHandlers,
+  registerKanbanHandlers,
+  registerWorkflowHandlers,
+  registerMeetingHandlers,
+} from './event/handlers';
+export type {
+  AllHandlerDeps,
+  KanbanHandlerDeps,
+  WorkflowHandlerDeps,
+  MeetingHandlerDeps,
+} from './event/handlers';
+
 // ── HTTP API 层 ──
 export { createAgentApp } from './agent-factory';
 export type { AgentAppConfig, AgentApp } from './agent-factory';
