@@ -11,7 +11,7 @@
  */
 
 import { createServer } from 'node:http';
-import { appendFileSync, mkdirSync, existsSync, createWriteStream } from 'node:fs';
+import { mkdirSync, existsSync, createWriteStream } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { config } from 'dotenv';
@@ -19,6 +19,9 @@ import { createAgentApp } from '@dev-agent/core';
 import type { OrchestratorEvent, MeetingProgressEvent } from '@dev-agent/core';
 import Busboy from 'busboy';
 import { randomUUID } from 'node:crypto';
+import { loadGatewayConfig } from './config/types.js';
+import { writeAuditLog } from './middleware/auditLogger.js';
+import { executeRoute } from './router/index.js';
 
 // 加载项目根目录的 .env 文件
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -36,57 +39,11 @@ function extractOutput(agentResult: { output: string; toolCalls: { toolName: str
 }
 
 // ============================================================================
-// Config
-// ============================================================================
-
-interface GatewayConfig {
-  host: string;
-  port: number;
-  auditFile: string;
-}
-
-function loadConfig(): GatewayConfig {
-  return {
-    host: process.env.GATEWAY_HOST || '127.0.0.1',
-    port: parseInt(process.env.GATEWAY_PORT || '8400', 10),
-    auditFile: process.env.AUDIT_FILE || join(
-      process.env.HOME || '~',
-      '.dev-agent/logs/audit.log',
-    ),
-  };
-}
-
-// ============================================================================
-// Audit Logger
-// ============================================================================
-
-interface AuditEntry {
-  timestamp: string;
-  method: string;
-  path: string;
-  status: number;
-  latencyMs: number;
-  agent?: string;
-  mode?: string;
-  error?: string;
-}
-
-function writeAuditLog(entry: AuditEntry, file: string): void {
-  try {
-    const dir = dirname(file);
-    if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
-    appendFileSync(file, JSON.stringify(entry) + '\n');
-  } catch (err) {
-    console.error('[audit] 写入失败:', err);
-  }
-}
-
-// ============================================================================
 // Main
 // ============================================================================
 
 async function main(): Promise<void> {
-  const config = loadConfig();
+  const config = loadGatewayConfig();
 
   console.log('🧠 DEV-Agent-Teams Gateway');
   console.log('==========================');
@@ -258,75 +215,13 @@ async function main(): Promise<void> {
           agentApp.sessionManager.updateSession(sid, { title: userText.substring(0, 100) });
         }
 
-        // 委托给编排器
-        let result: { output: string; agent: string };
-        let routedBy: string;
-
-        if (mode === 'team') {
-          // 先用 runTeam 让协调员分析目标
-          // 如果协调员短路到单个 Agent，结果已经足够好
-          // 如果需要多 Agent 协作，runTeam 内部会自动分解
-          const teamResult = await agentApp.orchestrator.runTeam(userText);
-
-          // 构建结构化输出：汇总协调员结论 + 各 Agent 贡献
-          const parts: string[] = [];
-          const coordinatorResult = teamResult.agentResults.get('coordinator');
-          if (coordinatorResult) {
-            const coordinatorOutput = extractOutput(coordinatorResult);
-            if (coordinatorOutput) parts.push(coordinatorOutput);
-          }
-          for (const [name, agentResult] of teamResult.agentResults) {
-            if (name !== 'coordinator') {
-              const agentOutput = extractOutput(agentResult);
-              if (agentOutput) {
-                parts.push(`\n---\n## ${name}\n${agentOutput}`);
-              }
-            }
-          }
-          const output = parts.length > 0
-            ? parts.join('\n')
-            : JSON.stringify({ success: teamResult.success, totalTokenUsage: teamResult.totalTokenUsage });
-
-          result = { output, agent: 'team' };
-          routedBy = 'team-orchestrator';
-        } else if (mode === 'meeting') {
-          // 圆桌会议模式 — 所有 Agent 顺序发言
-          const meetingResult = await agentApp.orchestrator.runMeeting(userText);
-
-          const meetingParts: string[] = [];
-          for (const [name, agentResult] of meetingResult.agentResults) {
-            const output = extractOutput(agentResult);
-            if (output) {
-              const agentConf = agentApp.orchestrator.getStatus().teamAgents.find((a: { name: string }) => a.name === name);
-              meetingParts.push(`\n---\n## 🧑‍💼 ${name}${agentConf ? `（${agentConf.model}）` : ''}\n${output}`);
-            }
-          }
-          result = { output: meetingParts.join('\n') || '会议完成', agent: 'meeting' };
-          routedBy = 'meeting-orchestrator';
-        } else {
-          // 智能路由模式 — 由 IntentRouter 自动决策协作策略
-          const teamResult = await agentApp.orchestrator.handleRequest(userText);
-          const decision = agentApp.orchestrator.getLastRoutingDecision();
-
-          // 构建结构化输出
-          const parts: string[] = [];
-          if (decision) {
-            parts.push(`🎯 路由决策: ${decision.strategy} | 复杂度: ${decision.complexity}\n理由: ${decision.reasoning}\n`);
-          }
-
-          for (const [name, agentResult] of teamResult.agentResults) {
-            const output = extractOutput(agentResult);
-            if (output) {
-              parts.push(`\n---\n## ${name}\n${output}`);
-            }
-          }
-
-          const output = parts.join('\n');
-          const agentName = decision?.primaryAgent || decision?.involvedAgents?.[0] || 'team';
-
-          result = { output, agent: agentName };
-          routedBy = 'intent-router';
-        }
+        // 委托给路由模块
+        const result = await executeRoute({
+          mode,
+          agentId: requestedAgentId,
+          userText,
+          agentApp,
+        });
 
         // 保存助手回复
         agentApp.sessionManager.addMessage(sid, 'assistant', result.output, result.agent);
@@ -343,7 +238,7 @@ async function main(): Promise<void> {
             finish_reason: 'stop',
           }],
           instance: result.agent,
-          routedBy,
+          routedBy: result.routedBy,
         };
 
         res.writeHead(200, { 'Content-Type': 'application/json' });
