@@ -14,6 +14,7 @@ import { mkdirSync } from 'node:fs';
 import express from 'express';
 import { SessionManager } from './session/SessionManager';
 import { WorkflowStateManager } from './session/WorkflowStateManager';
+import { TokenBudgetManager } from './telemetry/TokenBudgetManager';
 import { TeamOrchestrator, createDevTeamOrchestrator } from './team/TeamOrchestrator';
 import type { OrchestratorEvent } from './orchestrator/types.js';
 
@@ -32,6 +33,7 @@ export interface AgentApp {
   app: express.Application;
   sessionManager: SessionManager;
   orchestrator: TeamOrchestrator;
+  tokenBudgetManager: TokenBudgetManager;
   close: () => Promise<void>;
 }
 
@@ -72,9 +74,14 @@ export function createAgentApp(config: AgentAppConfig = {}): AgentApp {
 
   const sessionManager = new SessionManager(dbPath);
   const workflowStateManager = new WorkflowStateManager(sessionManager.getDb());
+  const tokenBudgetManager = new TokenBudgetManager({ 
+    defaultMaxTokens: parseInt(process.env.DEFAULT_TOKEN_BUDGET || '100000', 10),
+    defaultAlertThreshold: 0.8,
+  });
   const orchestrator = createDevTeamOrchestrator({ 
     onProgress: config.onProgress,
     workflowStateManager,
+    tokenBudgetManager,
   });
 
   const app = express();
@@ -268,5 +275,5 @@ export function createAgentApp(config: AgentAppConfig = {}): AgentApp {
     sessionManager.close();
   };
 
-  return { app, sessionManager, orchestrator, close };
+  return { app, sessionManager, orchestrator, tokenBudgetManager, close };
 }

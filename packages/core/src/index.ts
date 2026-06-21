@@ -57,6 +57,10 @@ export type {
 export { MessageBus, getGlobalMessageBus, resetGlobalMessageBus } from './event/MessageBus';
 export type { AgentMessage, MessageBusOptions } from './event/MessageBus';
 
+// ── Token 预算管理（新增 — Phase 5: 成本控制）──
+export { TokenBudgetManager, getGlobalTokenBudgetManager, resetGlobalTokenBudgetManager } from './telemetry/TokenBudgetManager';
+export type { TokenBudget, BudgetCheckResult } from './telemetry/TokenBudgetManager';
+
 // ── HTTP API 层 ──
 export { createAgentApp } from './agent-factory';
 export type { AgentAppConfig, AgentApp } from './agent-factory';

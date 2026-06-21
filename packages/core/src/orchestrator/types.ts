@@ -117,6 +117,8 @@ export interface TeamOrchestratorConfig {
   onProgress?: (event: OrchestratorEvent) => void;
   /** 工作流状态管理器（可选 — 用于断点续传） */
   workflowStateManager?: import('../session/WorkflowStateManager.js').WorkflowStateManager;
+  /** Token 预算管理器（可选 — 用于成本控制） */
+  tokenBudgetManager?: import('../telemetry/TokenBudgetManager.js').TokenBudgetManager;
 }
 
 // ============================================================================

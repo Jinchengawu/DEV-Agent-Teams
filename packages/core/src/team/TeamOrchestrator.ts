@@ -56,6 +56,7 @@ export class TeamOrchestrator implements IOrchestrator {
   private intentRouter: IntentRouter;
   private lastRoutingDecision: RoutingDecision | null = null;
   private workflowStateManager?: import('../session/WorkflowStateManager.js').WorkflowStateManager;
+  private tokenBudgetManager?: import('../telemetry/TokenBudgetManager.js').TokenBudgetManager;
 
   constructor(config: TeamOrchestratorConfig) {
     this.agentConfigs = new Map();
@@ -64,6 +65,7 @@ export class TeamOrchestrator implements IOrchestrator {
     }
 
     this.workflowStateManager = config.workflowStateManager;
+    this.tokenBudgetManager = config.tokenBudgetManager;
 
     // 初始化 IntentRouter
     this.intentRouter = new IntentRouter(
@@ -153,6 +155,9 @@ export class TeamOrchestrator implements IOrchestrator {
     try {
       const result = await this.omAgent.runTeam(this.team, goal, options as OmaRunTeamOptions);
       const teamResult = result as unknown as TeamRunResult;
+      
+      // 跟踪 Token 使用
+      this.trackTokenUsage('runTeam', teamResult.totalTokenUsage || { input_tokens: 0, output_tokens: 0 });
       
       // 标记工作流完成
       if (stateManager && wfState) {
@@ -252,6 +257,43 @@ export class TeamOrchestrator implements IOrchestrator {
   }
 
   /**
+   * checkBudget — Token 预算检查
+   * 在 LLM 调用前检查预算是否充足
+   */
+  private checkBudget(sessionId: string, estimatedTokens: number = 5000): void {
+    const manager = this.tokenBudgetManager;
+    if (!manager) return;
+
+    const result = manager.checkBudget(sessionId, estimatedTokens);
+    if (!result.allowed) {
+      throw new Error(`Token预算已耗尽: ${result.message}`);
+    }
+    if (result.status === 'warning') {
+      console.warn(`[TokenBudget] ${result.message}`);
+      // 触发告警事件
+      eventBus.emit({
+        type: 'system.token_alert',
+        source: 'system',
+        timestamp: Date.now(),
+        payload: {
+          sessionId,
+          message: result.message,
+          severity: 'warning',
+        },
+      });
+    }
+  }
+
+  /**
+   * trackTokenUsage — 记录 Token 使用
+   */
+  private trackTokenUsage(sessionId: string, tokenUsage: { input_tokens: number; output_tokens: number }): void {
+    const manager = this.tokenBudgetManager;
+    if (!manager) return;
+    manager.trackUsage(sessionId, tokenUsage.input_tokens + tokenUsage.output_tokens);
+  }
+
+  /**
    * runAgent — 单 Agent 执行
    * 用于简单任务，不需要多 Agent 协作
    */
@@ -260,6 +302,9 @@ export class TeamOrchestrator implements IOrchestrator {
     if (!config) throw new Error(`Agent "${agentId}" not found`);
 
     console.log(`[TeamOrchestrator] runAgent: ${agentId} → "${goal.substring(0, 60)}..."`);
+
+    // 检查预算
+    this.checkBudget(agentId, 5000);
 
     const result = await this.omAgent.runAgent(
       {
@@ -274,6 +319,10 @@ export class TeamOrchestrator implements IOrchestrator {
       },
       goal,
     );
+
+    // 跟踪 Token 使用
+    this.trackTokenUsage(agentId, (result as any).tokenUsage || { input_tokens: 0, output_tokens: 0 });
+
     return result as unknown as AgentRunResult;
   }
 
@@ -296,6 +345,10 @@ export class TeamOrchestrator implements IOrchestrator {
    */
   async runMeeting(goal: string): Promise<TeamRunResult> {
     console.log(`[TeamOrchestrator] runMeeting: "${goal.substring(0, 60)}..."`);
+    
+    // 检查预算（估算：每个 Agent 约 3000 token）
+    const agentCount = this.team.getAgents().length;
+    this.checkBudget('runMeeting', agentCount * 3000);
 
     const agents = this.team.getAgents();
     const agentResults = new Map<string, AgentRunResult>();
@@ -614,6 +667,9 @@ export class TeamOrchestrator implements IOrchestrator {
    * 由 IntentRouter 分析用户意图，自动选择协作策略
    */
   async handleRequest(userQuery: string): Promise<TeamRunResult> {
+    // 检查预算
+    this.checkBudget('handleRequest', 10000);
+
     const decision = await this.intentRouter.route(userQuery);
     this.lastRoutingDecision = decision;
 
@@ -676,6 +732,7 @@ export function createTeamOrchestrator(
 export function createDevTeamOrchestrator(options?: {
   onProgress?: (event: OrchestratorEvent) => void;
   workflowStateManager?: import('../session/WorkflowStateManager.js').WorkflowStateManager;
+  tokenBudgetManager?: import('../telemetry/TokenBudgetManager.js').TokenBudgetManager;
 }): TeamOrchestrator {
   const model = process.env.MODEL_NAME || 'mimo-v2.5-pro';
   const apiKey = process.env.API_KEY || '';
@@ -746,5 +803,5 @@ export function createDevTeamOrchestrator(options?: {
     },
   ];
 
-  return new TeamOrchestrator({ agents, defaultModel: model, apiKey, baseUrl, onProgress: options?.onProgress, workflowStateManager: options?.workflowStateManager });
+  return new TeamOrchestrator({ agents, defaultModel: model, apiKey, baseUrl, onProgress: options?.onProgress, workflowStateManager: options?.workflowStateManager, tokenBudgetManager: options?.tokenBudgetManager });
 }
