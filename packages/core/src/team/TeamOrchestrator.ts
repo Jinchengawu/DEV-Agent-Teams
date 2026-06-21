@@ -55,12 +55,15 @@ export class TeamOrchestrator implements IOrchestrator {
   private agentConfigs: Map<string, TeamAgentConfig>;
   private intentRouter: IntentRouter;
   private lastRoutingDecision: RoutingDecision | null = null;
+  private workflowStateManager?: import('../session/WorkflowStateManager.js').WorkflowStateManager;
 
   constructor(config: TeamOrchestratorConfig) {
     this.agentConfigs = new Map();
     for (const a of config.agents) {
       this.agentConfigs.set(a.id, a);
     }
+
+    this.workflowStateManager = config.workflowStateManager;
 
     // 初始化 IntentRouter
     this.intentRouter = new IntentRouter(
@@ -135,17 +138,26 @@ export class TeamOrchestrator implements IOrchestrator {
     console.log(`[TeamOrchestrator] runTeam: "${goal.substring(0, 60)}..."`);
     const workflowId = `team-${Date.now()}`;
     
+    // 创建持久化状态（如果提供了 WorkflowStateManager）
+    const stateManager = this.workflowStateManager;
+    let wfState = stateManager ? stateManager.createState(goal, 1) : null;
+    
     // 发布工作流开始事件
     eventBus.emit({
       type: 'workflow.started',
       source: 'workflow',
       timestamp: Date.now(),
-      payload: { workflowId, taskId: goal.substring(0, 50) },
+      payload: { workflowId: wfState?.id || workflowId, taskId: goal.substring(0, 50) },
     });
 
     try {
       const result = await this.omAgent.runTeam(this.team, goal, options as OmaRunTeamOptions);
       const teamResult = result as unknown as TeamRunResult;
+      
+      // 标记工作流完成
+      if (stateManager && wfState) {
+        stateManager.complete(wfState.id, teamResult.output);
+      }
       
       // 发布工作流完成事件
       eventBus.emit({
@@ -153,7 +165,7 @@ export class TeamOrchestrator implements IOrchestrator {
         source: 'workflow',
         timestamp: Date.now(),
         payload: {
-          workflowId,
+          workflowId: wfState?.id || workflowId,
           taskId: goal.substring(0, 50),
           output: teamResult.output?.substring(0, 200),
           tokenUsage: teamResult.totalTokenUsage,
@@ -164,13 +176,18 @@ export class TeamOrchestrator implements IOrchestrator {
     } catch (error) {
       const errorMsg = error instanceof Error ? error.message : 'Unknown error';
       
+      // 标记工作流失败
+      if (stateManager && wfState) {
+        stateManager.fail(wfState.id, errorMsg);
+      }
+      
       // 发布工作流失败事件
       eventBus.emit({
         type: 'workflow.failed',
         source: 'workflow',
         timestamp: Date.now(),
         payload: {
-          workflowId,
+          workflowId: wfState?.id || workflowId,
           taskId: goal.substring(0, 50),
           error: errorMsg,
         },
@@ -178,6 +195,60 @@ export class TeamOrchestrator implements IOrchestrator {
       
       throw error;
     }
+  }
+
+  /**
+   * resumeWorkflow — 从断点续传工作流
+   * 加载已保存的工作流状态，继续执行未完成的步骤
+   */
+  async resumeWorkflow(workflowId: string): Promise<TeamRunResult> {
+    const stateManager = this.workflowStateManager;
+    if (!stateManager) {
+      throw new Error('WorkflowStateManager 未配置，无法断点续传');
+    }
+
+    const state = stateManager.load(workflowId);
+    if (!state) {
+      throw new Error(`工作流 ${workflowId} 不存在`);
+    }
+
+    if (state.status === 'completed') {
+      return {
+        success: true,
+        goal: state.goal,
+        agentResults: new Map(),
+        totalTokenUsage: state.tokenUsage,
+      };
+    }
+
+    console.log(`[TeamOrchestrator] resumeWorkflow: ${workflowId} (step ${state.currentStep}/${state.totalSteps})`);
+
+    try {
+      const result = await this.omAgent.runTeam(this.team, state.goal);
+      const teamResult = result as unknown as TeamRunResult;
+      
+      stateManager.complete(workflowId, teamResult.output);
+      
+      return teamResult;
+    } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : 'Unknown error';
+      stateManager.fail(workflowId, errorMsg);
+      throw error;
+    }
+  }
+
+  /**
+   * listWorkflows — 列出所有工作流状态
+   */
+  listWorkflows(limit?: number, offset?: number) {
+    return this.workflowStateManager?.listWorkflows(limit, offset) || [];
+  }
+
+  /**
+   * getRunningWorkflows — 获取正在运行的工作流
+   */
+  getRunningWorkflows() {
+    return this.workflowStateManager?.getRunningWorkflows() || [];
   }
 
   /**
@@ -604,6 +675,7 @@ export function createTeamOrchestrator(
  */
 export function createDevTeamOrchestrator(options?: {
   onProgress?: (event: OrchestratorEvent) => void;
+  workflowStateManager?: import('../session/WorkflowStateManager.js').WorkflowStateManager;
 }): TeamOrchestrator {
   const model = process.env.MODEL_NAME || 'mimo-v2.5-pro';
   const apiKey = process.env.API_KEY || '';
@@ -674,5 +746,5 @@ export function createDevTeamOrchestrator(options?: {
     },
   ];
 
-  return new TeamOrchestrator({ agents, defaultModel: model, apiKey, baseUrl, onProgress: options?.onProgress });
+  return new TeamOrchestrator({ agents, defaultModel: model, apiKey, baseUrl, onProgress: options?.onProgress, workflowStateManager: options?.workflowStateManager });
 }

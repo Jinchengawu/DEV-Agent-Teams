@@ -80,6 +80,23 @@ CREATE TABLE IF NOT EXISTS users (
   avatar      TEXT,
   created_at  TEXT NOT NULL DEFAULT (datetime('now'))
 );
+
+-- 工作流状态表（Phase 4: 断点续传）
+CREATE TABLE IF NOT EXISTS workflow_states (
+  id          TEXT PRIMARY KEY,
+  goal        TEXT NOT NULL,
+  status      TEXT NOT NULL DEFAULT 'running' CHECK(status IN ('running', 'paused', 'completed', 'failed')),
+  current_step INTEGER NOT NULL DEFAULT 0,
+  total_steps INTEGER NOT NULL DEFAULT 0,
+  steps       TEXT NOT NULL DEFAULT '[]',       -- JSON 数组 [{index, agentId, goal, output, status}]
+  context     TEXT NOT NULL DEFAULT '{}',       -- JSON 对象 {sharedMemory, discussion}
+  token_usage TEXT NOT NULL DEFAULT '{}',       -- JSON 对象 {input_tokens, output_tokens}
+  error       TEXT,
+  created_at  TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at  TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_workflow_states_status ON workflow_states(status);
+CREATE INDEX IF NOT EXISTS idx_workflow_states_created ON workflow_states(created_at);
 `;
 
 export function initSchema(db: { exec: (sql: string) => void }): void {

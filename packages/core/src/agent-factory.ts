@@ -13,6 +13,7 @@ import path from 'node:path';
 import { mkdirSync } from 'node:fs';
 import express from 'express';
 import { SessionManager } from './session/SessionManager';
+import { WorkflowStateManager } from './session/WorkflowStateManager';
 import { TeamOrchestrator, createDevTeamOrchestrator } from './team/TeamOrchestrator';
 import type { OrchestratorEvent } from './orchestrator/types.js';
 
@@ -70,7 +71,11 @@ export function createAgentApp(config: AgentAppConfig = {}): AgentApp {
   const dbPath = path.join(dataDir, 'sessions.db');
 
   const sessionManager = new SessionManager(dbPath);
-  const orchestrator = createDevTeamOrchestrator({ onProgress: config.onProgress });
+  const workflowStateManager = new WorkflowStateManager(sessionManager.getDb());
+  const orchestrator = createDevTeamOrchestrator({ 
+    onProgress: config.onProgress,
+    workflowStateManager,
+  });
 
   const app = express();
   app.use(express.json({ limit: '1mb' }));

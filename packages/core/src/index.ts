@@ -1,8 +1,10 @@
 // @dev-agent/core — 基于 @open-multi-agent/core 的多 Agent 协作框架
 
-// ── 会话管理（保留，框架不覆盖）──
+// ── 会话管理 ──
 export { SessionManager } from './session/SessionManager';
 export { initSchema } from './session/schema';
+export { WorkflowStateManager } from './session/WorkflowStateManager';
+export type { WorkflowState, WorkflowStepState, WorkflowContext } from './session/WorkflowStateManager';
 
 // ── 编排器（核心）──
 export { TeamOrchestrator, createTeamOrchestrator, createDevTeamOrchestrator } from './team/TeamOrchestrator';

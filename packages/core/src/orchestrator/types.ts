@@ -115,6 +115,8 @@ export interface TeamOrchestratorConfig {
   maxConcurrency?: number;
   maxDelegationDepth?: number;
   onProgress?: (event: OrchestratorEvent) => void;
+  /** 工作流状态管理器（可选 — 用于断点续传） */
+  workflowStateManager?: import('../session/WorkflowStateManager.js').WorkflowStateManager;
 }
 
 // ============================================================================
