@@ -38,7 +38,7 @@ export function createKanbanTools() {
         tags: z.string().optional().describe('标签（逗号分隔）'),
         due_date: z.string().optional().describe('截止日期（ISO 格式，如 2026-06-30）'),
       }),
-      execute: async (input) => {
+      execute: async (input, _context) => {
         try {
           const db = getDb();
           const taskId = randomUUID();
@@ -79,7 +79,7 @@ export function createKanbanTools() {
         status: z.enum(['todo', 'in_progress', 'review', 'done', 'blocked']).describe('新状态'),
         progress: z.number().min(0).max(100).optional().describe('进度百分比（0-100）'),
       }),
-      execute: async (input) => {
+      execute: async (input, _context) => {
         try {
           const db = getDb();
           const updates: string[] = ['status = ?'];
@@ -121,7 +121,7 @@ export function createKanbanTools() {
         assignee: z.string().optional().describe('筛选负责人'),
         limit: z.number().default(50).describe('返回数量限制'),
       }),
-      execute: async (input) => {
+      execute: async (input, _context) => {
         try {
           const db = getDb();
           let sql = 'SELECT * FROM tasks WHERE 1=1';
@@ -169,7 +169,7 @@ export function createKanbanTools() {
         task_id: z.string().describe('任务 ID'),
         assignee: z.string().describe('负责人 Agent ID'),
       }),
-      execute: async (input) => {
+      execute: async (input, _context) => {
         try {
           const db = getDb();
           db.prepare('UPDATE tasks SET assignee = ?, updated_at = datetime(\'now\') WHERE id = ?')

@@ -109,6 +109,9 @@ export class TeamOrchestrator implements IOrchestrator {
     const customTools = [sendMessageTool, ...(config.extraCustomTools || [])];
     this.extraCustomTools = customTools;
 
+    console.log(`[TeamOrchestrator] customTools 数量: ${customTools.length}`);
+    console.log(`[TeamOrchestrator] customTools 名称: ${customTools.map((t: any) => t.name || t.toolName || 'unknown').join(', ')}`);
+
     // 创建团队 — 每个 DEV Agent 映射为一个 open-multi-agent Agent
     const teamAgents: OmaAgentConfig[] = config.agents.map((a) => ({
       name: a.id,

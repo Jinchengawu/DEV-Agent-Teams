@@ -23,7 +23,7 @@ export function createDocumentTools() {
         content: z.string().describe('文档内容（Markdown 格式）'),
         title: z.string().optional().describe('文档标题'),
       }),
-      execute: async (input) => {
+      execute: async (input, _context) => {
         try {
           const fullPath = join(DOC_DIR, input.path);
           const dir = dirname(fullPath);
@@ -54,7 +54,7 @@ export function createDocumentTools() {
         path: z.string().describe('文档路径'),
         content: z.string().describe('追加内容'),
       }),
-      execute: async (input) => {
+      execute: async (input, _context) => {
         try {
           const fullPath = join(DOC_DIR, input.path);
           const { appendFileSync } = await import('node:fs');
