@@ -201,6 +201,35 @@ async function main(): Promise<void> {
         return;
       }
 
+      // 列出所有 Pipeline 定义
+      if (path === '/pipelines' && req.method === 'GET') {
+        const pipelines = agentApp.pipelineOrchestrator.listPipelines();
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ pipelines }));
+        return;
+      }
+
+      // 获取 Pipeline 实例状态
+      if (path.startsWith('/pipeline-instances/') && req.method === 'GET') {
+        const instanceId = path.split('/')[2];
+        const instance = agentApp.pipelineOrchestrator.getStatus(instanceId);
+        if (!instance) {
+          res.writeHead(404, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: 'Instance not found' }));
+          return;
+        }
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({
+          instanceId: instance.id,
+          pipelineId: instance.pipelineId,
+          status: instance.status,
+          surfaceResults: Object.fromEntries(instance.surfaceResults),
+          startedAt: instance.startedAt,
+          completedAt: instance.completedAt,
+        }));
+        return;
+      }
+
       // Chat Completions
       if (path === '/v1/chat/completions' && req.method === 'POST') {
         const request = body ? JSON.parse(body) : {};
