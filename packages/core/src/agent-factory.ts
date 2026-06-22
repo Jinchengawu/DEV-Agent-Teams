@@ -19,6 +19,7 @@ import { TeamOrchestrator, createDevTeamOrchestrator } from './team/TeamOrchestr
 import type { OrchestratorEvent } from './orchestrator/types.js';
 import { setKanbanDatabase, createKanbanTools } from './tools/kanban-tools.js';
 import { createDocumentTools } from './tools/document-tools.js';
+import { createPipelineOrchestrator } from './pipeline/Orchestrator.js';
 
 // ============================================================================
 // Types
@@ -36,6 +37,7 @@ export interface AgentApp {
   sessionManager: SessionManager;
   orchestrator: TeamOrchestrator;
   tokenBudgetManager: TokenBudgetManager;
+  pipelineOrchestrator: import('./pipeline/Orchestrator.js').PipelineOrchestrator;
   close: () => Promise<void>;
 }
 
@@ -69,7 +71,7 @@ function extractOutput(agentResult: { output: string; success: boolean; messages
 // Factory
 // ============================================================================
 
-export function createAgentApp(config: AgentAppConfig = {}): AgentApp {
+export async function createAgentApp(config: AgentAppConfig = {}): Promise<AgentApp> {
   const dataDir = config.dataDir || process.env.AGENT_DB_PATH || path.join(os.homedir(), '.dev-agent/data');
   mkdirSync(dataDir, { recursive: true });
   const dbPath = path.join(dataDir, 'sessions.db');
@@ -91,6 +93,10 @@ export function createAgentApp(config: AgentAppConfig = {}): AgentApp {
     tokenBudgetManager,
     extraCustomTools,
   });
+
+  // 创建 Pipeline 编排器
+  const { PipelineOrchestrator } = await import('./pipeline/Orchestrator.js');
+  const pipelineOrchestrator = new PipelineOrchestrator(orchestrator, workflowStateManager);
 
   const app = express();
   app.use(express.json({ limit: '1mb' }));
@@ -283,5 +289,5 @@ export function createAgentApp(config: AgentAppConfig = {}): AgentApp {
     sessionManager.close();
   };
 
-  return { app, sessionManager, orchestrator, tokenBudgetManager, close };
+  return { app, sessionManager, orchestrator, tokenBudgetManager, pipelineOrchestrator, close };
 }

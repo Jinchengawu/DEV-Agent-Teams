@@ -51,8 +51,8 @@ async function main(): Promise<void> {
   console.log(`🔗 端口: ${config.host}:${config.port}`);
   console.log('');
 
-  // 创建 agent app（内含 TeamOrchestrator + SessionManager + Express 路由）
-  const agentApp = createAgentApp({
+  // 创建 agent app（内含 TeamOrchestrator + SessionManager + Express 路由 + PipelineOrchestrator）
+  const agentApp = await createAgentApp({
     onProgress: (event: OrchestratorEvent) => {
       if (event.type === 'task_start' || event.type === 'task_complete') {
         console.log(`[progress] ${event.type}: ${event.task ?? ''}`);
@@ -158,6 +158,35 @@ async function main(): Promise<void> {
           status: 200,
           latencyMs: Date.now() - startTime,
         }, config.auditFile);
+        return;
+      }
+
+      // Pipeline 执行
+      if (path === '/v1/pipeline/execute' && req.method === 'POST') {
+        const request = body ? JSON.parse(body) : {};
+        const { pipelineId, initialInput } = request;
+
+        if (!pipelineId) {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: 'pipelineId is required' }));
+          return;
+        }
+
+        try {
+          const instance = await agentApp.pipelineOrchestrator.execute(pipelineId, initialInput);
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({
+            instanceId: instance.id,
+            status: instance.status,
+            surfaceResults: Object.fromEntries(instance.surfaceResults),
+            startedAt: instance.startedAt,
+            completedAt: instance.completedAt,
+          }));
+        } catch (error) {
+          const errorMsg = error instanceof Error ? error.message : 'Unknown error';
+          res.writeHead(500, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: errorMsg }));
+        }
         return;
       }
 
