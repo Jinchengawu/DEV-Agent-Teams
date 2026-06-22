@@ -57,6 +57,7 @@ export class TeamOrchestrator implements IOrchestrator {
   private lastRoutingDecision: RoutingDecision | null = null;
   private workflowStateManager?: import('../session/WorkflowStateManager.js').WorkflowStateManager;
   private tokenBudgetManager?: import('../telemetry/TokenBudgetManager.js').TokenBudgetManager;
+  private extraCustomTools: any[] = [];
 
   constructor(config: TeamOrchestratorConfig) {
     this.agentConfigs = new Map();
@@ -106,6 +107,7 @@ export class TeamOrchestrator implements IOrchestrator {
     const teamId = 'dev-agent-team';
     const sendMessageTool = createSendMessageTool(teamId);
     const customTools = [sendMessageTool, ...(config.extraCustomTools || [])];
+    this.extraCustomTools = customTools;
 
     // 创建团队 — 每个 DEV Agent 映射为一个 open-multi-agent Agent
     const teamAgents: OmaAgentConfig[] = config.agents.map((a) => ({
@@ -316,7 +318,7 @@ export class TeamOrchestrator implements IOrchestrator {
         apiKey: config.apiKey,
         systemPrompt: config.systemPrompt,
         tools: ['file_read', 'file_write', 'file_edit', 'bash', 'grep', 'glob', 'send_message'],
-        customTools: [createSendMessageTool('dev-agent-team')],
+        customTools: this.extraCustomTools,
       },
       goal,
     );
@@ -375,7 +377,7 @@ export class TeamOrchestrator implements IOrchestrator {
           apiKey: config.apiKey,
           systemPrompt: config.systemPrompt,
           tools: ['file_read', 'file_write', 'file_edit', 'bash', 'grep', 'glob', 'send_message'],
-          customTools: [createSendMessageTool('dev-agent-team')],
+          customTools: this.extraCustomTools,
         },
         prompt,
       );
@@ -482,7 +484,7 @@ export class TeamOrchestrator implements IOrchestrator {
             apiKey: config.apiKey,
             systemPrompt: config.systemPrompt,
             tools: ['file_read', 'file_write', 'file_edit', 'bash', 'grep', 'glob', 'send_message'],
-            customTools: [createSendMessageTool('dev-agent-team')],
+            customTools: this.extraCustomTools,
           },
           prompt,
         );
