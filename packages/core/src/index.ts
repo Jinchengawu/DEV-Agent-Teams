@@ -53,7 +53,25 @@ export type {
   MeetingHandlerDeps,
 } from './event/handlers';
 
-// ── 消息总线（新增 — Phase 3: 异步通信）──
+// ── Pipeline 引擎（新增 — 面编排）──
+export {
+  Surface,
+  createSurface,
+  PipelineOrchestrator,
+  createPipelineOrchestrator,
+} from './pipeline';
+export type {
+  PipelineDefinition,
+  PipelineInstance,
+  PipelineStatus,
+  SurfaceDefinition,
+  SurfaceResult,
+  SurfaceStatus,
+  InputContract,
+  OutputContract,
+  Edge,
+  GateDefinition,
+} from './pipeline';
 export { MessageBus, getGlobalMessageBus, resetGlobalMessageBus } from './event/MessageBus';
 export type { AgentMessage, MessageBusOptions } from './event/MessageBus';
 
