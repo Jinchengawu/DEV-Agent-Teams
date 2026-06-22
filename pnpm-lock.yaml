@@ -310,6 +310,9 @@ importers:
       dotenv:
         specifier: ^17.4.2
         version: 17.4.2
+      yaml:
+        specifier: ^2.9.0
+        version: 2.9.0
     devDependencies:
       '@types/busboy':
         specifier: ^1.5.4

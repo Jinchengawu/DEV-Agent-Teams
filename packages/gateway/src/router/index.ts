@@ -113,6 +113,43 @@ async function routeSingle(agentId: string, userText: string, agentApp: AgentApp
  * Intent 模式 — 智能路由（LLM-based）
  */
 async function routeIntent(userText: string, agentApp: AgentApp): Promise<RouteResult> {
+  // 检测 Pipeline 执行请求
+  const pipelineMatch = userText.match(/执行\s+(.+?)\s*Pipeline|pipeline\s+(.+)/i);
+  if (pipelineMatch && agentApp.pipelineOrchestrator) {
+    const pipelineName = pipelineMatch[1] || pipelineMatch[2];
+    // 尝试查找 Pipeline
+    const pipelines = agentApp.pipelineOrchestrator.listPipelines();
+    const matched = pipelines.find((p) =>
+      p.name.toLowerCase().includes(pipelineName.toLowerCase()) ||
+      p.id.toLowerCase().includes(pipelineName.toLowerCase())
+    );
+
+    if (matched) {
+      try {
+        const instance = await agentApp.pipelineOrchestrator.execute(matched.id);
+        const surfaceResults = Array.from(instance.surfaceResults.entries())
+          .map(([id, result]) => {
+            const status = result.status === 'completed' ? '✅' : result.status === 'failed' ? '❌' : '🔄';
+            return `${status} ${id}: ${result.status}${result.error ? ` (${result.error})` : ''}`;
+          })
+          .join('\n');
+
+        return {
+          output: `🚀 Pipeline "${matched.name}" 执行完成！\n\n状态: ${instance.status}\n实例ID: ${instance.id}\n\n各面执行结果:\n${surfaceResults || '暂无结果'}`,
+          agent: 'pipeline',
+          routedBy: 'pipeline-orchestrator',
+        };
+      } catch (err) {
+        const errorMsg = err instanceof Error ? err.message : 'Unknown error';
+        return {
+          output: `❌ Pipeline 执行失败: ${errorMsg}`,
+          agent: 'pipeline',
+          routedBy: 'pipeline-orchestrator',
+        };
+      }
+    }
+  }
+
   const teamResult = await agentApp.orchestrator.handleRequest(userText);
   const decision = agentApp.orchestrator.getLastRoutingDecision();
 

@@ -60,7 +60,18 @@ async function main(): Promise<void> {
     },
   });
 
-  // 将 agent app 的路由挂载到 Gateway
+  // 加载示例 Pipeline
+  try {
+    const { readFileSync } = await import('node:fs');
+    const { parse } = await import('yaml');
+    const yamlPath = resolve(__dirname, '../../core/src/pipeline/examples/stock-analysis.yaml');
+    const yamlContent = readFileSync(yamlPath, 'utf-8');
+    const pipelineDef = parse(yamlContent) as import('@dev-agent/core').PipelineDefinition;
+    agentApp.pipelineOrchestrator.loadPipeline(pipelineDef);
+    console.log(`[Gateway] Pipeline "${pipelineDef.name}" 已加载`);
+  } catch (err) {
+    console.warn('[Gateway] Pipeline 加载失败:', err);
+  }
   const server = createServer(async (req, res) => {
     const startTime = Date.now();
     const url = new URL(req.url || '/', `http://${req.headers.host}`);
