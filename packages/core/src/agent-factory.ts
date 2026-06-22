@@ -17,6 +17,8 @@ import { WorkflowStateManager } from './session/WorkflowStateManager';
 import { TokenBudgetManager } from './telemetry/TokenBudgetManager';
 import { TeamOrchestrator, createDevTeamOrchestrator } from './team/TeamOrchestrator';
 import type { OrchestratorEvent } from './orchestrator/types.js';
+import { setKanbanDatabase, createKanbanTools } from './tools/kanban-tools.js';
+import { createDocumentTools } from './tools/document-tools.js';
 
 // ============================================================================
 // Types
@@ -78,10 +80,16 @@ export function createAgentApp(config: AgentAppConfig = {}): AgentApp {
     defaultMaxTokens: parseInt(process.env.DEFAULT_TOKEN_BUDGET || '100000', 10),
     defaultAlertThreshold: 0.8,
   });
+
+  // 初始化看板工具的数据库连接
+  setKanbanDatabase(sessionManager.getDb());
+  const extraCustomTools = [...createDocumentTools(), ...createKanbanTools()];
+
   const orchestrator = createDevTeamOrchestrator({ 
     onProgress: config.onProgress,
     workflowStateManager,
     tokenBudgetManager,
+    extraCustomTools,
   });
 
   const app = express();

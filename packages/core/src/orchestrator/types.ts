@@ -119,6 +119,8 @@ export interface TeamOrchestratorConfig {
   workflowStateManager?: import('../session/WorkflowStateManager.js').WorkflowStateManager;
   /** Token 预算管理器（可选 — 用于成本控制） */
   tokenBudgetManager?: import('../telemetry/TokenBudgetManager.js').TokenBudgetManager;
+  /** 额外的自定义工具（如文档工具、看板工具） */
+  extraCustomTools?: any[];
 }
 
 // ============================================================================

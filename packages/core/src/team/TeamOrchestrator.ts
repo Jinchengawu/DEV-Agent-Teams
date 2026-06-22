@@ -105,6 +105,7 @@ export class TeamOrchestrator implements IOrchestrator {
     // 创建 send_message 自定义工具（通过 teamId 引用，execute 时才查找 Team 实例）
     const teamId = 'dev-agent-team';
     const sendMessageTool = createSendMessageTool(teamId);
+    const customTools = [sendMessageTool, ...(config.extraCustomTools || [])];
 
     // 创建团队 — 每个 DEV Agent 映射为一个 open-multi-agent Agent
     const teamAgents: OmaAgentConfig[] = config.agents.map((a) => ({
@@ -115,7 +116,7 @@ export class TeamOrchestrator implements IOrchestrator {
       apiKey: config.apiKey,
       systemPrompt: a.systemPrompt,
       tools: ['file_read', 'file_write', 'file_edit', 'bash', 'grep', 'glob', 'send_message'],
-      customTools: [sendMessageTool],
+      customTools: customTools,
     }));
 
     const teamConfig: OmaTeamConfig = {
@@ -733,12 +734,16 @@ export function createDevTeamOrchestrator(options?: {
   onProgress?: (event: OrchestratorEvent) => void;
   workflowStateManager?: import('../session/WorkflowStateManager.js').WorkflowStateManager;
   tokenBudgetManager?: import('../telemetry/TokenBudgetManager.js').TokenBudgetManager;
+  extraCustomTools?: any[];
 }): TeamOrchestrator {
   const model = process.env.MODEL_NAME || 'mimo-v2.5-pro';
   const apiKey = process.env.API_KEY || '';
   const baseUrl = process.env.MODEL_BASE_URL || 'https://token-plan-cn.xiaomimimo.com/v1';
 
   const commGuide = '\n\n团队通信：你可以使用 send_message 工具与其他 Agent 对话。\n- send_message({ to: "dev-backend", content: "..." }) — 发送给指定 Agent\n- send_message({ to: "*", content: "..." }) — 广播给所有 Agent\n可用的团队成员: dev-frontend, dev-backend, dev-testing, dev-devops, dev-pm, project-admin\n收到其他 Agent 的消息时，直接用 send_message 回复，不需要搜索文件系统。';
+
+  // 产品文档和看板工具
+  const docKanbanTools = options?.extraCustomTools || [];
 
   const agents: TeamAgentConfig[] = [
     {
@@ -785,23 +790,23 @@ export function createDevTeamOrchestrator(options?: {
       id: 'dev-pm',
       name: 'PM Agent',
       role: '产品经理 — PRD/需求分析/用户故事/产品策略',
-      systemPrompt: '你是产品经理，专注于 PRD、需求分析、用户故事、产品策略。收到任务后给出结构化的产品文档。' + commGuide,
+      systemPrompt: '你是产品经理，专注于 PRD、需求分析、用户故事、产品策略。收到任务后给出结构化的产品文档。\n\n**你可以使用以下工具**：\n- create_document({ path: "prd/xxx.md", content: "...", title: "..." }) — 将 PRD 写入文件系统（路径用 docs/ 开头）\n- append_document({ path: "prd/xxx.md", content: "..." }) — 追加内容到文档\n- create_task({ title: "...", description: "...", assignee: "dev-frontend", priority: "high" }) — 创建看板任务\n- list_tasks({ status: "todo" }) — 查询看板任务\n\n会议结束后，你应该使用 create_document 沉淀最终 PRD，然后用 create_task 将任务拆分到看板。' + commGuide,
       model, apiKey, baseUrl,
       expertise: ['需求分析', '用户故事编写', 'PRD 文档', '竞品分析', '产品路线图', '数据驱动决策'],
-      tools: ['file_read', 'file_write', 'file_edit', 'bash', 'grep', 'glob'],
+      tools: ['file_read', 'file_write', 'file_edit', 'bash', 'grep', 'glob', 'create_document', 'append_document', 'create_task', 'list_tasks'],
       typicalTasks: ['编写用户登录功能 PRD', '设计用户旅程地图', '竞品功能对比分析', '制定迭代计划', '用户反馈分析'],
     },
     {
       id: 'project-admin',
       name: 'Project Admin',
       role: '项目管理员 — 统筹进度、任务分配、里程碑跟踪、Agent 协作协调',
-      systemPrompt: '你是项目管理员，专注于看板管理、里程碑规划、进度监控、风险识别、跨 Agent 任务协调。收到任务后给出项目管理方案和进度跟踪建议。' + commGuide,
+      systemPrompt: '你是项目管理员，专注于看板管理、里程碑规划、进度监控、风险识别、跨 Agent 任务协调。收到任务后给出项目管理方案和进度跟踪建议。\n\n**你可以使用以下工具**：\n- create_task({ title: "...", description: "...", assignee: "dev-frontend", priority: "high", task_type: "feature" }) — 创建看板任务\n- update_task_status({ task_id: "...", status: "in_progress" }) — 更新任务状态\n- assign_task({ task_id: "...", assignee: "dev-backend" }) — 分配任务给 Agent\n- list_tasks({ status: "todo" }) — 查询待办任务\n\n你是 PM 的搭档，负责将产品文档拆分为可执行的任务并分配到看板。当 PM 产出 PRD 后，你应该使用 create_task 将每个功能点拆分为独立任务。' + commGuide,
       model, apiKey, baseUrl,
       expertise: ['项目进度跟踪', '任务分配与优先级', '里程碑管理', '风险识别', '跨团队协调', '敏捷流程'],
-      tools: ['file_read', 'file_write', 'file_edit', 'bash', 'grep', 'glob'],
+      tools: ['file_read', 'file_write', 'file_edit', 'bash', 'grep', 'glob', 'create_task', 'update_task_status', 'assign_task', 'list_tasks'],
       typicalTasks: ['创建项目里程碑计划', '分配任务给各 Agent', '跟踪项目进度', '识别项目风险', '生成项目状态报告'],
     },
   ];
 
-  return new TeamOrchestrator({ agents, defaultModel: model, apiKey, baseUrl, onProgress: options?.onProgress, workflowStateManager: options?.workflowStateManager, tokenBudgetManager: options?.tokenBudgetManager });
+  return new TeamOrchestrator({ agents, defaultModel: model, apiKey, baseUrl, onProgress: options?.onProgress, workflowStateManager: options?.workflowStateManager, tokenBudgetManager: options?.tokenBudgetManager, extraCustomTools: docKanbanTools });
 }
