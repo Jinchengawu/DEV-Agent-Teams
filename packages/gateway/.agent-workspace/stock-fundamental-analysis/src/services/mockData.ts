@@ -4,7 +4,8 @@
 import type {
   Stock, StockQuote, FinancialData, IncomeStatement,
   BalanceSheet, CashFlowStatement, KeyRatios, DueDiligenceReport,
-  ComparisonData,
+  ComparisonData, AnomalySignal, AnomalyPanel, RiskAssessment,
+  RiskDimension, RiskItem, PEHistoryBand, PEHistoryPoint, DCFResult,
 } from '../types';
 
 // ---------- 股票列表 ----------
@@ -262,6 +263,233 @@ export const MOCK_REPORT: DueDiligenceReport = {
   conclusion: '贵州茅台具备极强的品牌护城河、优异的盈利能力和稳健的财务结构，是A股市场稀缺的优质核心资产。当前估值处于合理区间，建议长期持有。',
   rating: '推荐',
 };
+
+// ---------- 异常信号数据 ----------
+import type { AnomalyPanel, RiskAssessment, PEHistoryBand, DCFResult } from '../types';
+
+export const MOCK_ANOMALY_PANELS: Record<string, AnomalyPanel> = {
+  '600519': {
+    stockCode: '600519', stockName: '贵州茅台',
+    signals: [
+      { id: 's1', name: '收入/现金流背离', description: '收入增长 vs 经营现金流增长是否匹配', level: 'green', detail: '营收增速16.5%，经营现金流增速18.2%，两者方向一致且现金流增速略高于营收，经营质量优秀。', currentValue: '经营现金流/净利润 = 1.12', threshold: '> 0.8 为健康', category: '收益质量' },
+      { id: 's2', name: '存货增速 vs 收入增速背离', description: '存货增速显著高于收入增速可能预示滞销', level: 'green', detail: '存货增速8.3% < 营收增速16.5%，存货消化正常，无需担心滞销。', currentValue: '存货增速 8.3%', threshold: '< 营收增速 16.5%', category: '收益质量' },
+      { id: 's3', name: '应收账款/收入比异常', description: '应收占比突增可能意味着虚增收入或回款困难', level: 'green', detail: '应收账款/营收比例仅0.3%，几乎为零，先款后货的商业模式极为健康。', currentValue: '应收/营收 = 0.3%', threshold: '< 5% 为健康', category: '收益质量' },
+      { id: 's4', name: '毛利率骤降/骤升', description: '毛利率异常波动需关注竞争力和会计政策', level: 'green', detail: '毛利率5年维持在90.1%-91.5%，极为稳定，品牌定价权极强。', currentValue: '91.5%（近5年波动<2%）', threshold: '波动 < 5% 为稳定', category: '收益质量' },
+      { id: 's5', name: '非经常性损益占比过高', description: '利润过度依赖一次性收益则质量差', level: 'green', detail: '非经常性损益仅占净利润0.3%，利润几乎全部来自主营业务，质量极高。', currentValue: '非经常/净利润 = 0.3%', threshold: '< 10% 为健康', category: '收益质量' },
+      { id: 's6', name: '商誉/净资产比超阈值', description: '商誉过高存在减值暴雷风险', level: 'green', detail: '商誉占比几乎为零，无并购暴雷风险。', currentValue: '商誉/净资产 ≈ 0%', threshold: '< 20% 为安全', category: '治理风险' },
+      { id: 's7', name: '研发资本化率异常', description: '过度资本化研发支出可能虚增利润', level: 'green', detail: '研发支出占比极低（0.4%），且基本费用化处理，不存在资本化操纵利润的问题。', currentValue: '研发/营收 = 0.4%', threshold: '< 3% 或全额费用化', category: '收益质量' },
+      { id: 's8', name: '关联交易占比突增', description: '关联交易占比过高可能存在利益输送', level: 'green', detail: '关联交易占比12%，在白酒行业属正常水平，且定价公允。', currentValue: '关联交易/营收 = 12%', threshold: '< 20% 为正常', category: '治理风险' },
+    ],
+    summary: '贵州茅台在8项异常检测中全部亮绿灯，财务质量极其优良。公司具备极强的品牌护城河、议价能力和现金流创造能力。当前主要关注点在于营收增速从高位回落趋势。',
+    verdict: '🟢可深研',
+    score: 8,
+  },
+  '002594': {
+    stockCode: '002594', stockName: '比亚迪',
+    signals: [
+      { id: 's1', name: '收入/现金流背离', description: '收入增长 vs 经营现金流增长是否匹配', level: 'yellow', detail: '营收增速42.5%但经营现金流增速仅28.3%，现金流增速落后于营收，需关注回款情况。', currentValue: '经营现金流/净利润 = 1.65', threshold: '> 0.8 为健康', category: '收益质量' },
+      { id: 's2', name: '存货增速 vs 收入增速背离', description: '存货增速显著高于收入增速可能预示滞销', level: 'green', detail: '存货增速35.2% < 营收增速42.5%，存货消化正常。', currentValue: '存货增速 35.2%', threshold: '< 营收增速 42.5%', category: '收益质量' },
+      { id: 's3', name: '应收账款/收入比异常', description: '应收占比突增可能意味着虚增收入或回款困难', level: 'yellow', detail: '应收账款/营收比例约12.5%，处于制造业中等水平，但需持续关注账龄结构。', currentValue: '应收/营收 = 12.5%', threshold: '< 10% 为优秀', category: '收益质量' },
+      { id: 's4', name: '毛利率骤降/骤升', description: '毛利率异常波动需关注竞争力和会计政策', level: 'green', detail: '毛利率从15.5%逐步提升至20.1%，规模效应显现，趋势向好。', currentValue: '20.1%（持续改善中）', threshold: '波动 < 5% 为稳定', category: '收益质量' },
+      { id: 's5', name: '非经常性损益占比过高', description: '利润过度依赖一次性收益则质量差', level: 'yellow', detail: '非经常性损益占比约8.5%，主要来自政府补贴（新能源产业政策支持），需关注补贴退坡影响。', currentValue: '非经常/净利润 = 8.5%', threshold: '< 10% 为健康', category: '收益质量' },
+      { id: 's6', name: '商誉/净资产比超阈值', description: '商誉过高存在减值暴雷风险', level: 'green', detail: '商誉/净资产约3.2%，风险极低。', currentValue: '商誉/净资产 = 3.2%', threshold: '< 20% 为安全', category: '治理风险' },
+      { id: 's7', name: '研发资本化率异常', description: '过度资本化研发支出可能虚增利润', level: 'green', detail: '研发投入占营收5.8%，资本化率约35%，在科技制造行业属合理水平。', currentValue: '研发/营收 = 5.8%，资本化35%', threshold: '资本化 < 50%', category: '收益质量' },
+      { id: 's8', name: '关联交易占比突增', description: '关联交易占比过高可能存在利益输送', level: 'green', detail: '关联交易占比约8%，主要为供应链上下游交易，价格公允。', currentValue: '关联交易/营收 = 8%', threshold: '< 20% 为正常', category: '治理风险' },
+    ],
+    summary: '比亚迪在8项检测中有5绿3黄，整体财务健康但存在一些需关注的信号。经营现金流增速落后于营收增速，政府补贴占比较高需关注行业政策变化。高增长阶段财务特征明显。',
+    verdict: '🟡有疑点',
+    score: 32,
+  },
+};
+
+// 为所有股票生成默认异常面板
+MOCK_STOCKS.forEach(stock => {
+  if (!MOCK_ANOMALY_PANELS[stock.code]) {
+    const signals: AnomalySignal[] = [
+      { id: 's1', name: '收入/现金流背离', description: '收入增长 vs 经营现金流增长', level: Math.random() > 0.6 ? 'yellow' : 'green', detail: '', currentValue: '', threshold: '', category: '收益质量' },
+      { id: 's2', name: '存货增速 vs 收入增速背离', description: '存货异常', level: Math.random() > 0.7 ? 'red' : Math.random() > 0.4 ? 'yellow' : 'green', detail: '', currentValue: '', threshold: '', category: '收益质量' },
+      { id: 's3', name: '应收账款/收入比异常', description: '应收异常', level: Math.random() > 0.5 ? 'yellow' : 'green', detail: '', currentValue: '', threshold: '', category: '收益质量' },
+      { id: 's4', name: '毛利率骤降/骤升', description: '毛利率异动', level: 'green', detail: '', currentValue: '', threshold: '', category: '收益质量' },
+      { id: 's5', name: '非经常性损益占比过高', description: '非经常损益', level: Math.random() > 0.5 ? 'yellow' : 'green', detail: '', currentValue: '', threshold: '', category: '收益质量' },
+      { id: 's6', name: '商誉/净资产比超阈值', description: '商誉超标', level: Math.random() > 0.7 ? 'red' : 'green', detail: '', currentValue: '', threshold: '', category: '治理风险' },
+      { id: 's7', name: '研发资本化率异常', description: '研发资本化', level: 'green', detail: '', currentValue: '', threshold: '', category: '收益质量' },
+      { id: 's8', name: '关联交易占比突增', description: '关联交易', level: Math.random() > 0.6 ? 'yellow' : 'green', detail: '', currentValue: '', threshold: '', category: '治理风险' },
+    ];
+    const redCount = signals.filter(s => s.level === 'red').length;
+    const yellowCount = signals.filter(s => s.level === 'yellow').length;
+    MOCK_ANOMALY_PANELS[stock.code] = {
+      stockCode: stock.code, stockName: stock.name, signals,
+      summary: `共检测到 ${redCount} 项红灯、${yellowCount} 项黄灯。`,
+      verdict: redCount > 0 ? '🔴建议规避' : yellowCount > 2 ? '🟡有疑点' : '🟢可深研',
+      score: redCount * 20 + yellowCount * 5 + Math.floor(Math.random() * 10),
+    };
+  }
+});
+
+// ---------- 风险评估数据 ----------
+export const MOCK_RISK_ASSESSMENTS: Record<string, RiskAssessment> = {
+  '600519': {
+    stockCode: '600519', stockName: '贵州茅台',
+    totalScore: 22, totalLabel: '低风险',
+    dimensions: [
+      { name: '财务风险', score: 18, label: '低风险',
+        items: [
+          { name: 'OCF/净利润', status: 'pass', currentValue: '0.89', threshold: '>0.8', description: '经营现金流对利润的覆盖度' },
+          { name: '资产负债率', status: 'pass', currentValue: '21.8%', threshold: '<60%', description: '整体杠杆水平' },
+          { name: '流动比率', status: 'pass', currentValue: '4.26', threshold: '>1.5', description: '短期偿债能力' },
+          { name: '有息负债率', status: 'pass', currentValue: '0%', threshold: '<30%', description: '有息负债风险' },
+        ],
+      },
+      { name: '经营风险', score: 25, label: '低风险',
+        items: [
+          { name: '客户集中度', status: 'pass', currentValue: '分散', threshold: 'CR5<30%', description: '前5大客户营收占比' },
+          { name: '供应商集中度', status: 'pass', currentValue: '分散', threshold: 'SR5<30%', description: '前5大供应商采购占比' },
+          { name: '行业竞争烈度', status: 'pass', currentValue: '低', threshold: '', description: '白酒行业格局稳定' },
+        ],
+      },
+      { name: '监管风险', score: 30, label: '中低风险',
+        items: [
+          { name: '政策敏感性', status: 'warn', currentValue: '白酒消费税', threshold: '', description: '消费税改革可能带来成本上升' },
+          { name: '合规记录', status: 'pass', currentValue: '良好', threshold: '', description: '近期无重大违规' },
+        ],
+      },
+      { name: '宏观风险', score: 20, label: '低风险',
+        items: [
+          { name: '经济周期敏感度', status: 'pass', currentValue: '低', threshold: '', description: '高端白酒需求刚性较强' },
+          { name: '汇率敞口', status: 'pass', currentValue: '几乎为零', threshold: '', description: '以内销为主' },
+        ],
+      },
+    ],
+    beneishMScore: -2.85, beneishConclusion: '低舞弊概率 ✅',
+    altmanZScore: 8.5, altmanConclusion: '安全区 ✅',
+  },
+  '002594': {
+    stockCode: '002594', stockName: '比亚迪',
+    totalScore: 48, totalLabel: '中风险',
+    dimensions: [
+      { name: '财务风险', score: 45, label: '中风险',
+        items: [
+          { name: 'OCF/净利润', status: 'pass', currentValue: '1.65', threshold: '>0.8', description: '经营现金流质量' },
+          { name: '资产负债率', status: 'warn', currentValue: '68.5%', threshold: '<60%', description: '整体杠杆水平偏高' },
+          { name: '流动比率', status: 'warn', currentValue: '1.15', threshold: '>1.5', description: '短期偿债压力' },
+        ],
+      },
+      { name: '经营风险', score: 50, label: '中风险',
+        items: [
+          { name: '客户集中度', status: 'pass', currentValue: '中等', threshold: '', description: '客户分布合理' },
+          { name: '行业竞争烈度', status: 'warn', currentValue: '高', threshold: '', description: '新能源汽车竞争白热化' },
+        ],
+      },
+      { name: '监管风险', score: 42, label: '中风险',
+        items: [
+          { name: '政策依赖性', status: 'warn', currentValue: '新能源补贴', threshold: '', description: '补贴退坡影响盈利' },
+          { name: '合规记录', status: 'pass', currentValue: '良好', threshold: '', description: '' },
+        ],
+      },
+      { name: '宏观风险', score: 55, label: '中风险',
+        items: [
+          { name: '经济周期敏感度', status: 'warn', currentValue: '中高', threshold: '', description: '汽车消费受经济影响大' },
+          { name: '汇率敞口', status: 'pass', currentValue: '中等', threshold: '', description: '海外业务占比提升' },
+        ],
+      },
+    ],
+    beneishMScore: -1.52, beneishConclusion: '灰色区间 ⚠️',
+    altmanZScore: 3.2, altmanConclusion: '安全区 ✅',
+  },
+};
+
+// 默认风险评估
+MOCK_STOCKS.forEach(stock => {
+  if (!MOCK_RISK_ASSESSMENTS[stock.code]) {
+    const dims: RiskDimension[] = [
+      { name: '财务风险', score: 25 + Math.random() * 50, label: Math.random() > 0.5 ? '中风险' : '低风险', items: [] },
+      { name: '经营风险', score: 20 + Math.random() * 55, label: Math.random() > 0.5 ? '中风险' : '低风险', items: [] },
+      { name: '监管风险', score: 15 + Math.random() * 40, label: '低风险', items: [] },
+      { name: '宏观风险', score: 20 + Math.random() * 45, label: Math.random() > 0.5 ? '中风险' : '低风险', items: [] },
+    ];
+    MOCK_RISK_ASSESSMENTS[stock.code] = {
+      stockCode: stock.code, stockName: stock.name,
+      totalScore: Math.round(dims.reduce((a, d) => a + d.score, 0) / 4),
+      totalLabel: dims.reduce((a, d) => a + d.score, 0) / 4 > 50 ? '中风险' : '低风险',
+      dimensions: dims, beneishMScore: -2.0 + Math.random() * 1.5,
+      beneishConclusion: Math.random() > 0.5 ? '低舞弊概率 ✅' : '灰色区间 ⚠️',
+      altmanZScore: 2 + Math.random() * 6,
+      altmanConclusion: Math.random() > 0.5 ? '安全区 ✅' : '灰色区',
+    };
+  }
+});
+
+// ---------- PE历史分位数据 ----------
+export function generatePEHistory(code: string): PEHistoryBand {
+  const quote = MOCK_QUOTES.find(q => q.code === code) || MOCK_QUOTES[0];
+  const history: PEHistoryPoint[] = [];
+  const now = new Date();
+  const basePE = quote.pe;
+  for (let i = 0; i < 250; i++) {
+    const d = new Date(now);
+    d.setDate(d.getDate() - (250 - i) * 1);
+    const noise = (Math.random() - 0.5) * basePE * 0.4;
+    history.push({ date: d.toISOString().slice(0, 10), pe: +(basePE + noise).toFixed(1), price: 0 });
+  }
+  const allPEs = history.map(h => h.pe).sort((a, b) => a - b);
+  const currentPE = history[history.length - 1]?.pe || basePE;
+  const percentile = +(allPEs.filter(pe => pe <= currentPE).length / allPEs.length * 100).toFixed(1);
+  
+  return {
+    stockCode: code, stockName: quote.name,
+    currentPE, percentile, minPE: allPEs[0], maxPE: allPEs[allPEs.length - 1], medianPE: allPEs[Math.floor(allPEs.length / 2)],
+    history,
+    peers: MOCK_STOCKS.filter(s => s.industry === MOCK_STOCKS.find(st => st.code === code)?.industry).slice(0, 5).map(s => {
+      const q = MOCK_QUOTES.find(qq => qq.code === s.code);
+      return { name: s.name, pe: q?.pe || 20, pb: q?.pb || 3, roe: 15 + Math.random() * 20 };
+    }),
+  };
+}
+
+// ---------- DCF 数据 ----------
+const defaultDCFParams = { revenueCAGR: 15, netMargin: 50, capexRate: 5, wcChangeRate: 2, terminalGrowth: 3, wacc: 9, stage1Years: 5 };
+
+export function calculateDCF(params: Partial<typeof defaultDCFParams> = {}): DCFResult {
+  const p = { ...defaultDCFParams, ...params };
+  const baseRevenue = 1505.6; // 亿
+  const cashFlows: DCFResult['cashFlows'] = [];
+  let cumulativePV = 0;
+  
+  for (let i = 1; i <= p.stage1Years; i++) {
+    const revenue = baseRevenue * Math.pow(1 + p.revenueCAGR / 100, i);
+    const netProfit = revenue * p.netMargin / 100;
+    const capex = revenue * p.capexRate / 100;
+    const wcChange = revenue * p.wcChangeRate / 100;
+    const fcf = netProfit - capex - wcChange;
+    const discountFactor = Math.pow(1 + p.wacc / 100, i);
+    const discountedFCF = fcf / discountFactor;
+    cumulativePV += discountedFCF;
+    cashFlows.push({ year: 2024 + i - 1, revenue: Math.round(revenue), fcf: Math.round(fcf), discountedFCF: Math.round(discountedFCF), cumulativePV: Math.round(cumulativePV) });
+  }
+  
+  const lastFCF = cashFlows[cashFlows.length - 1].fcf;
+  const terminalValue = (lastFCF * (1 + p.terminalGrowth / 100)) / (p.wacc / 100 - p.terminalGrowth / 100);
+  const terminalPV = terminalValue / Math.pow(1 + p.wacc / 100, p.stage1Years);
+  const enterpriseValue = cumulativePV + terminalPV;
+  const netDebt = -280;
+  const equityValue = enterpriseValue - netDebt;
+  const perShareValue = equityValue / 12.562;
+  const currentPrice = 1688;
+  const safetyMargin = +((perShareValue - currentPrice) / currentPrice * 100).toFixed(1);
+  
+  // 敏感性分析
+  const waccRange = [7, 8, 9, 10, 11];
+  const growthRange = [2.0, 2.5, 3.0, 3.5, 4.0];
+  const sensitivity = waccRange.map(w => 
+    growthRange.map(g => {
+      const tv2 = (lastFCF * (1 + g / 100)) / (w / 100 - g / 100);
+      const ev2 = cumulativePV + tv2 / Math.pow(1 + w / 100, p.stage1Years);
+      return { wacc: w, growth: g, value: Math.round((ev2 - netDebt) / 12.562) };
+    })
+  );
+  
+  return { enterpriseValue: Math.round(enterpriseValue), netDebt, equityValue: Math.round(equityValue), perShareValue: +perShareValue.toFixed(0), currentPrice, safetyMargin, cashFlows, terminalValue: Math.round(terminalValue), sensitivity };
+}
 
 // ---------- 对比数据 ----------
 export const MOCK_COMPARISON: ComparisonData = {

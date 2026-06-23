@@ -5,7 +5,7 @@ const GATEWAY_URL = process.env.GATEWAY_URL || 'http://127.0.0.1:8400';
 export async function GET(_request: NextRequest, { params }: { params: { id: string } }) {
   try {
     const { id } = params;
-    const res = await fetch(`${GATEWAY_URL}/pipeline-instances/${id}`);
+    const res = await fetch(`${GATEWAY_URL}/pipeline-instances/${id}`, { cache: 'no-store' });
     if (!res.ok) {
       return NextResponse.json({ error: 'Failed to fetch instance' }, { status: res.status });
     }
