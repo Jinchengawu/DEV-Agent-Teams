@@ -303,14 +303,16 @@ export class TeamOrchestrator implements IOrchestrator {
    * runAgent — 单 Agent 执行
    * 用于简单任务，不需要多 Agent 协作
    */
-  async runAgent(agentId: string, goal: string): Promise<AgentRunResult> {
+  async runAgent(agentId: string, goal: string, sessionId?: string): Promise<AgentRunResult> {
     const config = this.agentConfigs.get(agentId);
     if (!config) throw new Error(`Agent "${agentId}" not found`);
 
     console.log(`[TeamOrchestrator] runAgent: ${agentId} → "${goal.substring(0, 60)}..."`);
 
+    const budgetSessionId = sessionId || agentId;
+
     // 检查预算
-    this.checkBudget(agentId, 5000);
+    this.checkBudget(budgetSessionId, 5000);
 
     const result = await this.omAgent.runAgent(
       {
@@ -327,7 +329,7 @@ export class TeamOrchestrator implements IOrchestrator {
     );
 
     // 跟踪 Token 使用
-    this.trackTokenUsage(agentId, (result as any).tokenUsage || { input_tokens: 0, output_tokens: 0 });
+    this.trackTokenUsage(budgetSessionId, (result as any).tokenUsage || { input_tokens: 0, output_tokens: 0 });
 
     return result as unknown as AgentRunResult;
   }

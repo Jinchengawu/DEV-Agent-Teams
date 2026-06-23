@@ -79,8 +79,8 @@ export async function createAgentApp(config: AgentAppConfig = {}): Promise<Agent
   const sessionManager = new SessionManager(dbPath);
   const workflowStateManager = new WorkflowStateManager(sessionManager.getDb());
   const tokenBudgetManager = new TokenBudgetManager({ 
-    defaultMaxTokens: parseInt(process.env.DEFAULT_TOKEN_BUDGET || '100000', 10),
-    defaultAlertThreshold: 0.8,
+    defaultMaxTokens: parseInt(process.env.DEFAULT_TOKEN_BUDGET || '5000000', 10),
+    defaultAlertThreshold: 0.9,
   });
 
   // 初始化看板工具的数据库连接

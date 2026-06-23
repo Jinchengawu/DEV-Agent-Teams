@@ -28,10 +28,13 @@ export class Surface {
   private orchestrator: TeamOrchestrator;
   private inputArtifacts: Map<string, any> = new Map();
 
-  constructor(def: SurfaceDefinition, orchestrator: TeamOrchestrator) {
+  constructor(def: SurfaceDefinition, orchestrator: TeamOrchestrator, sessionId?: string) {
     this.definition = def;
     this.orchestrator = orchestrator;
+    this.sessionId = sessionId || `surface-${def.id}`;
   }
+
+  private sessionId: string;
 
   /**
    * 获取面 ID
@@ -148,7 +151,7 @@ export class Surface {
       console.log(`[Surface] ${this.id} 执行: ${goal.substring(0, 100)}...`);
 
       // 3. 调用 Agent 执行
-      const agentResult = await this.orchestrator.runAgent(this.agent, goal);
+      const agentResult = await this.orchestrator.runAgent(this.agent, goal, this.sessionId);
 
       // 4. 提取输出产物
       result.artifacts = {
@@ -232,12 +235,15 @@ export class Surface {
       goal += `\n\n上下文: ${context}`;
     }
 
-    // 添加输入产物
+    // 添加输入产物（截断长内容，避免 token 爆炸）
     if (this.inputArtifacts.size > 0) {
       goal += '\n\n输入产物:';
       for (const [key, value] of this.inputArtifacts) {
-        const preview = typeof value === 'string' ? value.substring(0, 200) : JSON.stringify(value).substring(0, 200);
-        goal += `\n- ${key}: ${preview}...`;
+        const strValue = typeof value === 'string' ? value : JSON.stringify(value);
+        const preview = strValue.length > 2000 
+          ? strValue.substring(0, 2000) + `... [${strValue.length} chars total, truncated]`
+          : strValue;
+        goal += `\n- ${key}: ${preview}`;
       }
     }
 
@@ -324,6 +330,7 @@ export class Surface {
 export function createSurface(
   definition: SurfaceDefinition,
   orchestrator: TeamOrchestrator,
+  sessionId?: string,
 ): Surface {
-  return new Surface(definition, orchestrator);
+  return new Surface(definition, orchestrator, sessionId);
 }

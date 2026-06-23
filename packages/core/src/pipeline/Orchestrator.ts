@@ -324,8 +324,8 @@ export class PipelineOrchestrator {
     console.log(`[PipelineOrchestrator] 执行面: ${surfaceId} (${surfaceDef.name})`);
     instance.currentSurface = surfaceId;
 
-    // 创建面实例
-    const surface = createSurface(surfaceDef, this.teamOrchestrator);
+    // 创建面实例（使用 Pipeline instance ID 作为统一预算 session）
+    const surface = createSurface(surfaceDef, this.teamOrchestrator, instance.id);
 
     // 2. 上游面的输出（先定义，后使用）
     const upstreamEdges = pipeline.edges.filter((e) => {
