@@ -83,7 +83,7 @@ surfaces:
     name: E2E测试
     agent: dev-testing
     input:
-      required: [frontend_code]
+      required: [output]
       from: fe
     output:
       artifacts: [test_report, coverage_report]
@@ -104,7 +104,7 @@ surfaces:
     name: Code Review
     agent: dev-backend
     input:
-      required: [code]
+      required: [output]
       from: fe
     output:
       artifacts: [review_report, merged_code]
@@ -127,7 +127,7 @@ surfaces:
     name: 质量控制
     agent: project-admin
     input:
-      required: [merged_code]
+      required: [output]
       from: cr
     output:
       artifacts: [release_package]

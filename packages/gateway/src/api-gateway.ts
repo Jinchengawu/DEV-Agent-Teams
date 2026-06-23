@@ -209,6 +209,16 @@ async function main(): Promise<void> {
         return;
       }
 
+      // 列出所有 Pipeline 实例
+      if (path === '/pipeline-instances' && req.method === 'GET') {
+        const instances = agentApp.pipelineOrchestrator.listInstances();
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({
+          instances: instances.map((i) => agentApp.pipelineOrchestrator.serializeInstance(i)),
+        }));
+        return;
+      }
+
       // 获取 Pipeline 实例状态
       if (path.startsWith('/pipeline-instances/') && req.method === 'GET') {
         const instanceId = path.split('/')[2];
@@ -219,14 +229,7 @@ async function main(): Promise<void> {
           return;
         }
         res.writeHead(200, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({
-          instanceId: instance.id,
-          pipelineId: instance.pipelineId,
-          status: instance.status,
-          surfaceResults: Object.fromEntries(instance.surfaceResults),
-          startedAt: instance.startedAt,
-          completedAt: instance.completedAt,
-        }));
+        res.end(JSON.stringify(agentApp.pipelineOrchestrator.serializeInstance(instance)));
         return;
       }
 

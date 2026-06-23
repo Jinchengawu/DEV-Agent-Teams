@@ -83,6 +83,13 @@ export class Surface {
   }
 
   /**
+   * 获取所有输入产物键
+   */
+  getInputKeys(): string[] {
+    return Array.from(this.inputArtifacts.keys());
+  }
+
+  /**
    * 检查输入是否满足契约
    */
   validateInput(): { valid: boolean; missing: string[] } {

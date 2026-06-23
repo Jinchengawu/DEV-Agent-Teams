@@ -168,6 +168,27 @@ export class PipelineOrchestrator {
   }
 
   /**
+   * 列出所有实例（包括已完成和失败的）
+   */
+  listInstances(): PipelineInstance[] {
+    return [...this.instances.values()];
+  }
+
+  /**
+   * 将实例转换为可序列化对象
+   */
+  serializeInstance(instance: PipelineInstance): any {
+    const surfaceResults: Record<string, SurfaceResult> = {};
+    for (const [key, value] of instance.surfaceResults) {
+      surfaceResults[key] = value;
+    }
+    return {
+      ...instance,
+      surfaceResults,
+    };
+  }
+
+  /**
    * 列出所有 Pipeline 定义
    */
   listPipelines(): PipelineDefinition[] {
@@ -306,28 +327,37 @@ export class PipelineOrchestrator {
     // 创建面实例
     const surface = createSurface(surfaceDef, this.teamOrchestrator);
 
-    // 准备输入
-    // 1. 初始输入
-    if (initialInput && surfaceDef.input?.from === undefined) {
-      for (const [key, value] of Object.entries(initialInput)) {
-        surface.setInput(key, value);
-      }
-    }
-
-    // 2. 上游面的输出
+    // 2. 上游面的输出（先定义，后使用）
     const upstreamEdges = pipeline.edges.filter((e) => {
       const downstream = Array.isArray(e.to) ? e.to : [e.to];
       return downstream.includes(surfaceId);
     });
 
+    // 准备输入 - 添加详细调试日志
+    console.log(`[PipelineOrchestrator] 准备面 ${surfaceId} 的输入:`);
+    console.log(`  - 上游面: [${upstreamEdges.map(e => e.from).join(', ')}]`);
+    console.log(`  - 指定来源: ${surfaceDef.input?.from || '无'}`);
+    console.log(`  - 已有结果: [${Array.from(instance.surfaceResults.keys()).join(', ')}]`);
+
+    // 1. 初始输入
+    if (initialInput && surfaceDef.input?.from === undefined) {
+      for (const [key, value] of Object.entries(initialInput)) {
+        surface.setInput(key, value);
+        console.log(`  ✓ 初始输入: ${key}`);
+      }
+    }
+
+    // 2. 上游面的输出
     for (const edge of upstreamEdges) {
       const upstreamResult = instance.surfaceResults.get(edge.from);
+      console.log(`  - 上游面 ${edge.from} 结果: ${upstreamResult ? '存在' : '不存在'}, artifacts: ${upstreamResult?.artifacts ? '有' : '无'}`);
       if (upstreamResult?.artifacts) {
-        // 将上游面的 artifacts 直接作为输入（用原始 key）
+        const artifactKeys = Object.keys(upstreamResult.artifacts);
+        console.log(`  - 上游面 ${edge.from} artifacts keys: [${artifactKeys.join(', ')}]`);
         for (const [key, value] of Object.entries(upstreamResult.artifacts)) {
           surface.setInput(key, value);
-          // 同时保留带前缀的版本（便于调试）
           surface.setInput(`${edge.from}.${key}`, value);
+          console.log(`  ✓ 从 ${edge.from} 传入: ${key}`);
         }
       }
     }
@@ -336,22 +366,29 @@ export class PipelineOrchestrator {
     if (surfaceDef.input?.from) {
       const fromSurfaceId = surfaceDef.input.from;
       const fromResult = instance.surfaceResults.get(fromSurfaceId);
+      console.log(`  - 指定来源 ${fromSurfaceId} 结果: ${fromResult ? '存在' : '不存在'}`);
       if (fromResult?.artifacts) {
-        // 将上游面的 prd/output 作为当前面的 prd 输入
+        const artifactKeys = Object.keys(fromResult.artifacts);
+        console.log(`  - 指定来源 ${fromSurfaceId} artifacts keys: [${artifactKeys.join(', ')}]`);
         if (fromResult.artifacts.prd) {
           surface.setInput('prd', fromResult.artifacts.prd);
+          console.log(`  ✓ 从 ${fromSurfaceId} 传入 prd`);
         }
         if (fromResult.artifacts.output) {
           surface.setInput('output', fromResult.artifacts.output);
+          console.log(`  ✓ 从 ${fromSurfaceId} 传入 output`);
         }
-        // 将所有 artifacts 都传入
         for (const [key, value] of Object.entries(fromResult.artifacts)) {
           if (!surface.getInput(key)) {
             surface.setInput(key, value);
+            console.log(`  ✓ 从 ${fromSurfaceId} 传入: ${key}`);
           }
         }
       }
     }
+
+    // 打印最终输入
+    console.log(`  → 面 ${surfaceId} 最终输入 keys: [${Array.from(surface.getInputKeys()).join(', ')}]`);
 
     // 执行面
     const result = await surface.execute();
