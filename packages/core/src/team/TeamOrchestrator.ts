@@ -139,9 +139,10 @@ export class TeamOrchestrator implements IOrchestrator {
    * runTeam — 多 Agent 协作执行
    * 由 IntentRouter 分析目标，决定哪些 Agent 参与，然后并行/串行调用 Hermes
    */
-  async runTeam(goal: string, options?: { maxRounds?: number }): Promise<TeamRunResult> {
-    console.log(`[TeamOrchestrator] runTeam: "${goal.substring(0, 60)}..."`);
+  async runTeam(goal: string, options?: { maxRounds?: number; sessionId?: string }): Promise<TeamRunResult> {
+    console.log(`[TeamOrchestrator] runTeam: "${goal.substring(0, 60)}..." | sessionId: ${options?.sessionId || 'none'}`);
     const workflowId = `team-${Date.now()}`;
+    const sessionId = options?.sessionId;
 
     const stateManager = this.workflowStateManager;
     let wfState = stateManager ? stateManager.createState(goal, 1) : null;
@@ -166,7 +167,7 @@ export class TeamOrchestrator implements IOrchestrator {
 
       const promises = involvedAgents.map(async (agentId) => {
         if (!agentId) return;
-        const result = await this.runAgent(agentId, goal);
+        const result = await this.runAgent(agentId, goal, sessionId);
         agentResults.set(agentId, result);
         totalTokenUsage.input_tokens += result.tokenUsage.input_tokens;
         totalTokenUsage.output_tokens += result.tokenUsage.output_tokens;
@@ -267,11 +268,11 @@ export class TeamOrchestrator implements IOrchestrator {
    * runMeeting — 圆桌会议模式
    * 所有 Agent 顺序执行，共享上下文，每人从自己的专业角度发表意见
    */
-  async runMeeting(goal: string): Promise<TeamRunResult> {
-    console.log(`[TeamOrchestrator] runMeeting: "${goal.substring(0, 60)}..."`);
+  async runMeeting(goal: string, sessionId?: string): Promise<TeamRunResult> {
+    console.log(`[TeamOrchestrator] runMeeting: "${goal.substring(0, 60)}..." | sessionId: ${sessionId || 'none'}`);
 
     const agentCount = this.agentConfigs.size;
-    this.checkBudget('runMeeting', agentCount * 3000);
+    this.checkBudget(sessionId || 'runMeeting', agentCount * 3000);
 
     const agentIds = Array.from(this.agentConfigs.keys());
     const agentResults = new Map<string, AgentRunResult>();
@@ -287,7 +288,7 @@ export class TeamOrchestrator implements IOrchestrator {
         : '';
       const prompt = `## 会议议题\n${goal}${contextSection}\n\n请从你的专业角度（${config.role}）发表意见。简洁有力，突出重点。`;
 
-      const result = await this.runAgent(agentId, prompt);
+      const result = await this.runAgent(agentId, prompt, sessionId);
       agentResults.set(agentId, result);
 
       discussion.push(`### ${config.name}（${config.role}）\n${result.output}`);
@@ -631,8 +632,8 @@ export class TeamOrchestrator implements IOrchestrator {
   // 智能路由入口
   // ============================================================================
 
-  async handleRequest(userQuery: string): Promise<TeamRunResult> {
-    this.checkBudget('handleRequest', 10000);
+  async handleRequest(userQuery: string, sessionId?: string): Promise<TeamRunResult> {
+    this.checkBudget(sessionId || 'handleRequest', 10000);
 
     const decision = await this.intentRouter.route(userQuery);
     this.lastRoutingDecision = decision;
@@ -642,7 +643,7 @@ export class TeamOrchestrator implements IOrchestrator {
     switch (decision.strategy) {
       case 'single': {
         const agentId = decision.primaryAgent || 'dev-backend';
-        const agentResult = await this.runAgent(agentId, userQuery);
+        const agentResult = await this.runAgent(agentId, userQuery, sessionId);
         return {
           success: agentResult.success,
           goal: userQuery,
@@ -651,10 +652,10 @@ export class TeamOrchestrator implements IOrchestrator {
         };
       }
       case 'team': {
-        return this.runTeam(userQuery);
+        return this.runTeam(userQuery, { sessionId });
       }
       case 'meeting': {
-        return this.runMeeting(userQuery);
+        return this.runMeeting(userQuery, sessionId);
       }
       default:
         throw new Error(`Unknown routing strategy: ${decision.strategy}`);

@@ -292,6 +292,7 @@ async function main(): Promise<void> {
           mode,
           agentId: requestedAgentId,
           userText,
+          sessionId: sid,
           agentApp,
         });
 

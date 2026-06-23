@@ -31,6 +31,7 @@ export interface RouteContext {
   mode?: string;
   agentId?: string;
   userText: string;
+  sessionId?: string;
   agentApp: AgentApp;
 }
 
@@ -38,29 +39,29 @@ export interface RouteContext {
  * 执行路由 — 根据模式选择编排策略
  */
 export async function executeRoute(ctx: RouteContext): Promise<RouteResult> {
-  const { mode, agentId: requestedAgentId, userText, agentApp } = ctx;
+  const { mode, agentId: requestedAgentId, userText, sessionId, agentApp } = ctx;
 
   if (mode === 'team') {
-    return await routeTeam(userText, agentApp);
+    return await routeTeam(userText, sessionId, agentApp);
   }
 
   if (mode === 'meeting') {
-    return await routeMeeting(userText, agentApp);
+    return await routeMeeting(userText, sessionId, agentApp);
   }
 
   if (mode === 'single' && requestedAgentId) {
-    return await routeSingle(requestedAgentId, userText, agentApp);
+    return await routeSingle(requestedAgentId, userText, sessionId, agentApp);
   }
 
   // 默认：智能路由
-  return await routeIntent(userText, agentApp);
+  return await routeIntent(userText, sessionId, agentApp);
 }
 
 /**
  * Team 模式 — 协调员分解 + 多 Agent 并行执行
  */
-async function routeTeam(userText: string, agentApp: AgentApp): Promise<RouteResult> {
-  const teamResult = await agentApp.orchestrator.runTeam(userText);
+async function routeTeam(userText: string, sessionId: string | undefined, agentApp: AgentApp): Promise<RouteResult> {
+  const teamResult = await agentApp.orchestrator.runTeam(userText, { sessionId });
 
   const parts: string[] = [];
   const coordinatorResult = teamResult.agentResults.get('coordinator');
@@ -86,8 +87,8 @@ async function routeTeam(userText: string, agentApp: AgentApp): Promise<RouteRes
 /**
  * Meeting 模式 — 圆桌会议，所有 Agent 顺序发言
  */
-async function routeMeeting(userText: string, agentApp: AgentApp): Promise<RouteResult> {
-  const meetingResult = await agentApp.orchestrator.runMeeting(userText);
+async function routeMeeting(userText: string, sessionId: string | undefined, agentApp: AgentApp): Promise<RouteResult> {
+  const meetingResult = await agentApp.orchestrator.runMeeting(userText, sessionId);
 
   const meetingParts: string[] = [];
   for (const [name, agentResult] of meetingResult.agentResults) {
@@ -104,15 +105,15 @@ async function routeMeeting(userText: string, agentApp: AgentApp): Promise<Route
 /**
  * Single 模式 — 指定 Agent 执行
  */
-async function routeSingle(agentId: string, userText: string, agentApp: AgentApp): Promise<RouteResult> {
-  const agentResult = await agentApp.orchestrator.runAgent(agentId, userText);
+async function routeSingle(agentId: string, userText: string, sessionId: string | undefined, agentApp: AgentApp): Promise<RouteResult> {
+  const agentResult = await agentApp.orchestrator.runAgent(agentId, userText, sessionId);
   return { output: agentResult.output, agent: agentId, routedBy: 'client-specified' };
 }
 
 /**
  * Intent 模式 — 智能路由（LLM-based）
  */
-async function routeIntent(userText: string, agentApp: AgentApp): Promise<RouteResult> {
+async function routeIntent(userText: string, sessionId: string | undefined, agentApp: AgentApp): Promise<RouteResult> {
   // 检测 Pipeline 执行请求
   const pipelineMatch = userText.match(/执行\s+(.+?)\s*Pipeline|pipeline\s+(.+)/i);
   if (pipelineMatch && agentApp.pipelineOrchestrator) {
@@ -150,7 +151,7 @@ async function routeIntent(userText: string, agentApp: AgentApp): Promise<RouteR
     }
   }
 
-  const teamResult = await agentApp.orchestrator.handleRequest(userText);
+  const teamResult = await agentApp.orchestrator.handleRequest(userText, sessionId);
   const decision = agentApp.orchestrator.getLastRoutingDecision();
 
   const parts: string[] = [];
