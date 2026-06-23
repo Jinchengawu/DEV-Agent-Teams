@@ -192,9 +192,12 @@ export function createAgentServer(config: AgentServerConfig) {
       // 构建完整消息列表：system + 历史 + 当前
       const messages: ChatMessage[] = [];
       
-      // 注入系统提示（如果还没有）
+      // 注入系统提示（增强版：声明记忆能力）
+      const memoryNotice = `\n\n💡 你有记忆能力：当前对话的历史记录会自动保留，你可以参考之前的对话内容回答问题。`;
+      const systemPrompt = config.systemPrompt + memoryNotice;
+      
       if (!history.some((m) => m.role === 'system') && !currentMessages.some((m) => m.role === 'system')) {
-        messages.push({ role: 'system', content: config.systemPrompt });
+        messages.push({ role: 'system', content: systemPrompt });
       }
       
       // 添加历史（排除 system，因为上面已经加了）
