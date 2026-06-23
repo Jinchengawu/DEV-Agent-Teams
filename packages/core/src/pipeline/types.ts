@@ -7,6 +7,8 @@
  * - 编排（Orchestration）：面与面的连接（串联/并联）
  */
 
+import type { TokenUsage } from '../orchestrator/types.js';
+
 // ============================================================================
 // 输入/输出契约
 // ============================================================================
@@ -162,7 +164,7 @@ export interface SurfaceResult {
   /** 错误信息 */
   error?: string;
   /** Token 使用 */
-  tokenUsage?: { input: number; output: number };
+  tokenUsage?: TokenUsage;
 }
 
 /** Pipeline 执行实例 */

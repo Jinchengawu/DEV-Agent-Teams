@@ -1,30 +1,13 @@
 /**
- * TeamOrchestrator — 基于 @open-multi-agent/core 的多 Agent 协作编排器
+ * TeamOrchestrator — 基于 Hermes Agent 集群的多 Agent 协作编排器
  *
- * 实现 IOrchestrator 接口，对外不暴露 @open-multi-agent/core 的类型。
- *
- * 核心能力：
- * - runTeam(): 自动拆解目标 → DAG 并行执行 → 结果汇总
- * - runAgent(): 单 Agent 执行简单任务
- * - runTasks(): 显式任务列表（用户指定具体步骤时）
- * - SharedMemory: 团队共享上下文
- * - MessageBus: Agent 间消息传递
- * - delegate_to_agent: 内置工具（带循环检测 + 深度限制）
+ * 重构说明：
+ * - 移除对 @open-multi-agent/core 的依赖
+ * - 使用 HermesAgentClient 通过 HTTP 调用 Hermes 实例（端口 8201-8205）
+ * - Hermes 已自带工具、记忆、RAG，平台层只负责编排和通信
  */
 
-import {
-  OpenMultiAgent,
-  type AgentConfig as OmaAgentConfig,
-  type TeamConfig as OmaTeamConfig,
-  type TeamRunResult as OmaTeamRunResult,
-  type AgentRunResult as OmaAgentRunResult,
-  type OrchestratorConfig as OmaOrchestratorConfig,
-  type RunTeamOptions as OmaRunTeamOptions,
-  type OrchestratorEvent as OmaOrchestratorEvent,
-  type TokenUsage as OmaTokenUsage,
-} from '@open-multi-agent/core';
-import { createSendMessageTool } from '../tools/send-message.js';
-import { registerTeam } from '../tools/team-registry.js';
+import { HermesAgentClient } from '../hermes/HermesAgentClient.js';
 import { IntentRouter } from '../intent/IntentRouter.js';
 import { eventBus } from '../event/EventBus.js';
 import { getGlobalMessageBus } from '../event/MessageBus.js';
@@ -40,6 +23,7 @@ import type {
   OrchestratorEvent,
   TokenUsage,
   RoutingDecision,
+  ToolCallRecord,
 } from '../orchestrator/types.js';
 
 // Re-export types for backward compatibility
@@ -50,14 +34,16 @@ export type { TeamAgentConfig, TeamOrchestratorConfig, MeetingProgressEvent, Orc
 // ============================================================================
 
 export class TeamOrchestrator implements IOrchestrator {
-  private omAgent: OpenMultiAgent;
-  private team: Awaited<ReturnType<OpenMultiAgent['createTeam']>>;
+  private hermesClient: HermesAgentClient;
   private agentConfigs: Map<string, TeamAgentConfig>;
   private intentRouter: IntentRouter;
   private lastRoutingDecision: RoutingDecision | null = null;
   private workflowStateManager?: import('../session/WorkflowStateManager.js').WorkflowStateManager;
   private tokenBudgetManager?: import('../telemetry/TokenBudgetManager.js').TokenBudgetManager;
   private extraCustomTools: any[] = [];
+  private maxConcurrency: number;
+  private maxDelegationDepth: number;
+  private onProgress?: (event: OrchestratorEvent) => void;
 
   constructor(config: TeamOrchestratorConfig) {
     this.agentConfigs = new Map();
@@ -67,8 +53,15 @@ export class TeamOrchestrator implements IOrchestrator {
 
     this.workflowStateManager = config.workflowStateManager;
     this.tokenBudgetManager = config.tokenBudgetManager;
+    this.maxConcurrency = config.maxConcurrency ?? 5;
+    this.maxDelegationDepth = config.maxDelegationDepth ?? 3;
+    this.onProgress = config.onProgress as ((event: OrchestratorEvent) => void) | undefined;
+    this.extraCustomTools = config.extraCustomTools || [];
 
-    // 初始化 IntentRouter
+    // 初始化 Hermes Agent Client
+    this.hermesClient = new HermesAgentClient();
+
+    // 初始化 IntentRouter（用于路由决策）
     this.intentRouter = new IntentRouter(
       {
         model: config.defaultModel,
@@ -89,68 +82,70 @@ export class TeamOrchestrator implements IOrchestrator {
     }
 
     console.log(`[TeamOrchestrator] 已注册 ${config.agents.length} 个 Agent 到 MessageBus`);
-
-    // 初始化 OpenMultiAgent — 使用 mimo provider 避免 404
-    const orchestratorConfig: OmaOrchestratorConfig = {
-      defaultModel: config.defaultModel,
-      defaultProvider: 'mimo',
-      defaultBaseURL: config.baseUrl,
-      defaultApiKey: config.apiKey,
-      maxConcurrency: config.maxConcurrency ?? 5,
-      maxDelegationDepth: config.maxDelegationDepth ?? 3,
-      onProgress: config.onProgress as ((event: OmaOrchestratorEvent) => void) | undefined,
-    };
-
-    this.omAgent = new OpenMultiAgent(orchestratorConfig);
-
-    // 创建 send_message 自定义工具（通过 teamId 引用，execute 时才查找 Team 实例）
-    const teamId = 'dev-agent-team';
-    const sendMessageTool = createSendMessageTool(teamId);
-    const customTools = [sendMessageTool, ...(config.extraCustomTools || [])];
-    this.extraCustomTools = customTools;
-
-    console.log(`[TeamOrchestrator] customTools 数量: ${customTools.length}`);
-    console.log(`[TeamOrchestrator] customTools 名称: ${customTools.map((t: any) => t.name || t.toolName || 'unknown').join(', ')}`);
-
-    // 创建团队 — 每个 DEV Agent 映射为一个 open-multi-agent Agent
-    const teamAgents: OmaAgentConfig[] = config.agents.map((a) => ({
-      name: a.id,
-      model: config.defaultModel,
-      provider: 'mimo' as const,
-      baseURL: config.baseUrl,
-      apiKey: config.apiKey,
-      systemPrompt: a.systemPrompt,
-      tools: a.tools || ['file_read', 'file_write', 'file_edit', 'bash', 'grep', 'glob', 'send_message'],
-      customTools: customTools,
-    }));
-
-    const teamConfig: OmaTeamConfig = {
-      name: 'DEV-Agent-Team',
-      agents: teamAgents,
-      sharedMemory: true,
-    };
-
-    this.team = this.omAgent.createTeam(teamId, teamConfig);
-
-    // 注册 Team 到全局注册表，供 send_message 工具在 execute 时查找
-    registerTeam(teamId, this.team);
-
-    console.log(`[TeamOrchestrator] 团队已创建: ${teamAgents.length} 成员, sharedMemory=true`);
+    console.log(`[TeamOrchestrator] 使用 Hermes Agent Client (端口 8201-8205)`);
+    console.log(`[TeamOrchestrator] customTools 数量: ${this.extraCustomTools.length}`);
+    console.log(`[TeamOrchestrator] customTools 名称: ${this.extraCustomTools.map((t: any) => t.name || t.toolName || 'unknown').join(', ')}`);
   }
 
+  // ============================================================================
+  // 单 Agent 执行
+  // ============================================================================
+
   /**
-   * runTeam — 自动编排多 Agent 协作
-   * 协调员分析目标 → 拆解为任务 DAG → 并行执行无依赖任务 → 汇总结果
+   * runAgent — 单 Agent 执行
+   * 直接调用 Hermes Agent 实例，让 Hermes 处理工具、记忆、RAG
+   */
+  async runAgent(agentId: string, goal: string, sessionId?: string): Promise<AgentRunResult> {
+    const config = this.agentConfigs.get(agentId);
+    if (!config) throw new Error(`Agent "${agentId}" not found`);
+
+    console.log(`[TeamOrchestrator] runAgent: ${agentId} → "${goal.substring(0, 60)}..."`);
+
+    const budgetSessionId = sessionId || agentId;
+    this.checkBudget(budgetSessionId, 5000);
+
+    const hermesResult = await this.hermesClient.callAgent(agentId, goal, {
+      systemPrompt: config.systemPrompt,
+      maxTokens: 4000,
+    });
+
+    // 跟踪 Token 使用
+    this.trackTokenUsage(budgetSessionId, hermesResult.tokenUsage);
+
+    // 转换为平台标准格式
+    const agentResult: AgentRunResult = {
+      success: hermesResult.success,
+      output: hermesResult.output,
+      messages: hermesResult.messages.map((m) => ({
+        role: m.role as 'system' | 'user' | 'assistant' | 'tool',
+        content: m.content,
+      })),
+      tokenUsage: hermesResult.tokenUsage,
+      toolCalls: hermesResult.toolCalls.map((tc) => ({
+        toolName: tc.toolName,
+        input: {},
+        output: tc.result || '',
+      })),
+    };
+
+    return agentResult;
+  }
+
+  // ============================================================================
+  // Team 模式（多 Agent 并行/串行）
+  // ============================================================================
+
+  /**
+   * runTeam — 多 Agent 协作执行
+   * 由 IntentRouter 分析目标，决定哪些 Agent 参与，然后并行/串行调用 Hermes
    */
   async runTeam(goal: string, options?: { maxRounds?: number }): Promise<TeamRunResult> {
     console.log(`[TeamOrchestrator] runTeam: "${goal.substring(0, 60)}..."`);
     const workflowId = `team-${Date.now()}`;
-    
-    // 创建持久化状态（如果提供了 WorkflowStateManager）
+
     const stateManager = this.workflowStateManager;
     let wfState = stateManager ? stateManager.createState(goal, 1) : null;
-    
-    // 发布工作流开始事件
+
     eventBus.emit({
       type: 'workflow.started',
       source: 'workflow',
@@ -159,18 +154,42 @@ export class TeamOrchestrator implements IOrchestrator {
     });
 
     try {
-      const result = await this.omAgent.runTeam(this.team, goal, options as OmaRunTeamOptions);
-      const teamResult = result as unknown as TeamRunResult;
-      
-      // 跟踪 Token 使用
-      this.trackTokenUsage('runTeam', teamResult.totalTokenUsage || { input_tokens: 0, output_tokens: 0 });
-      
-      // 标记工作流完成
+      // 1. 路由决策：决定哪些 Agent 参与
+      const decision = await this.intentRouter.route(goal);
+      this.lastRoutingDecision = decision;
+      const involvedAgents = decision.involvedAgents || [decision.primaryAgent || 'dev-backend'];
+      console.log(`[TeamOrchestrator] runTeam 路由决策: ${decision.strategy} | 参与 Agent: ${involvedAgents.join(', ')}`);
+
+      // 2. 并行调用所有参与 Agent
+      const agentResults = new Map<string, AgentRunResult>();
+      const totalTokenUsage = { input_tokens: 0, output_tokens: 0 };
+
+      const promises = involvedAgents.map(async (agentId) => {
+        if (!agentId) return;
+        const result = await this.runAgent(agentId, goal);
+        agentResults.set(agentId, result);
+        totalTokenUsage.input_tokens += result.tokenUsage.input_tokens;
+        totalTokenUsage.output_tokens += result.tokenUsage.output_tokens;
+      });
+
+      await Promise.all(promises);
+
+      // 3. 汇总结果
+      const outputs = Array.from(agentResults.entries())
+        .map(([id, result]) => `## ${id}\n${result.output}`)
+        .join('\n\n---\n\n');
+
+      const teamResult: TeamRunResult = {
+        success: Array.from(agentResults.values()).every((r) => r.success),
+        goal,
+        agentResults,
+        totalTokenUsage,
+      };
+
       if (stateManager && wfState) {
-        stateManager.complete(wfState.id, teamResult.output);
+        stateManager.complete(wfState.id, outputs);
       }
-      
-      // 发布工作流完成事件
+
       eventBus.emit({
         type: 'workflow.completed',
         source: 'workflow',
@@ -178,21 +197,17 @@ export class TeamOrchestrator implements IOrchestrator {
         payload: {
           workflowId: wfState?.id || workflowId,
           taskId: goal.substring(0, 50),
-          output: teamResult.output?.substring(0, 200),
-          tokenUsage: teamResult.totalTokenUsage,
+          output: outputs.substring(0, 200),
+          tokenUsage: totalTokenUsage,
         },
       });
-      
+
       return teamResult;
     } catch (error) {
       const errorMsg = error instanceof Error ? error.message : 'Unknown error';
-      
-      // 标记工作流失败
       if (stateManager && wfState) {
         stateManager.fail(wfState.id, errorMsg);
       }
-      
-      // 发布工作流失败事件
       eventBus.emit({
         type: 'workflow.failed',
         source: 'workflow',
@@ -203,14 +218,277 @@ export class TeamOrchestrator implements IOrchestrator {
           error: errorMsg,
         },
       });
-      
       throw error;
     }
   }
 
+  // ============================================================================
+  // 任务列表模式
+  // ============================================================================
+
+  /**
+   * runTasks — 显式任务列表（串行执行）
+   */
+  async runTasks(tasks: TaskDefinition[]): Promise<TeamRunResult> {
+    console.log(`[TeamOrchestrator] runTasks: ${tasks.length} 个任务`);
+
+    const agentResults = new Map<string, AgentRunResult>();
+    const totalTokenUsage = { input_tokens: 0, output_tokens: 0 };
+    const outputs: string[] = [];
+
+    for (const task of tasks) {
+      const agentId = task.assignee || 'dev-backend';
+      const prompt = `任务: ${task.title}\n\n描述: ${task.description}`;
+
+      const result = await this.runAgent(agentId, prompt);
+      agentResults.set(`${agentId}-${task.title}`, result);
+      totalTokenUsage.input_tokens += result.tokenUsage.input_tokens;
+      totalTokenUsage.output_tokens += result.tokenUsage.output_tokens;
+      outputs.push(result.output);
+
+      if (this.onProgress) {
+        this.onProgress({ type: 'task_complete', task: task.title });
+      }
+    }
+
+    return {
+      success: Array.from(agentResults.values()).every((r) => r.success),
+      goal: tasks.map((t) => t.title).join(', '),
+      agentResults,
+      totalTokenUsage,
+    };
+  }
+
+  // ============================================================================
+  // 圆桌会议模式
+  // ============================================================================
+
+  /**
+   * runMeeting — 圆桌会议模式
+   * 所有 Agent 顺序执行，共享上下文，每人从自己的专业角度发表意见
+   */
+  async runMeeting(goal: string): Promise<TeamRunResult> {
+    console.log(`[TeamOrchestrator] runMeeting: "${goal.substring(0, 60)}..."`);
+
+    const agentCount = this.agentConfigs.size;
+    this.checkBudget('runMeeting', agentCount * 3000);
+
+    const agentIds = Array.from(this.agentConfigs.keys());
+    const agentResults = new Map<string, AgentRunResult>();
+    const discussion: string[] = [];
+    const totalTokenUsage = { input_tokens: 0, output_tokens: 0 };
+
+    for (const agentId of agentIds) {
+      const config = this.agentConfigs.get(agentId);
+      if (!config) continue;
+
+      const contextSection = discussion.length > 0
+        ? `\n\n## 会议讨论记录（之前的发言）\n${discussion.join('\n\n')}`
+        : '';
+      const prompt = `## 会议议题\n${goal}${contextSection}\n\n请从你的专业角度（${config.role}）发表意见。简洁有力，突出重点。`;
+
+      const result = await this.runAgent(agentId, prompt);
+      agentResults.set(agentId, result);
+
+      discussion.push(`### ${config.name}（${config.role}）\n${result.output}`);
+      totalTokenUsage.input_tokens += result.tokenUsage.input_tokens;
+      totalTokenUsage.output_tokens += result.tokenUsage.output_tokens;
+
+      console.log(`[TeamOrchestrator] meeting: ${config.id} 已发言`);
+    }
+
+    const meetingResult: TeamRunResult = {
+      success: true,
+      goal,
+      agentResults,
+      totalTokenUsage: totalTokenUsage as TokenUsage,
+    };
+
+    eventBus.emit({
+      type: 'meeting.completed',
+      source: 'meeting',
+      timestamp: Date.now(),
+      payload: {
+        meetingId: `meeting-${Date.now()}`,
+        topic: goal.substring(0, 100),
+        participants: agentIds,
+        summary: discussion.join('\n\n').substring(0, 500),
+        actionItems: [],
+      },
+    });
+
+    return meetingResult;
+  }
+
+  /**
+   * runMeetingWithProgress — 带实时进度的圆桌会议（并发控制 + 重试）
+   */
+  async runMeetingWithProgress(
+    goal: string,
+    onProgress: (event: MeetingProgressEvent) => void,
+  ): Promise<TeamRunResult> {
+    const MAX_CONCURRENT = 2;
+    const MAX_RETRIES = 3;
+    const BASE_DELAY = 2000;
+    const meetingId = `meeting-${Date.now()}`;
+
+    eventBus.emit({
+      type: 'meeting.started',
+      source: 'meeting',
+      timestamp: Date.now(),
+      payload: {
+        meetingId,
+        topic: goal.substring(0, 100),
+        participants: Array.from(this.agentConfigs.keys()),
+      },
+    });
+
+    console.log(`[TeamOrchestrator] runMeetingWithProgress (concurrency=${MAX_CONCURRENT}): "${goal.substring(0, 60)}..." (meetingId: ${meetingId})`);
+
+    const agentIds = Array.from(this.agentConfigs.keys());
+    const agentResults = new Map<string, AgentRunResult>();
+    const totalTokenUsage = { input_tokens: 0, output_tokens: 0 };
+
+    const configs = agentIds
+      .map((id, i) => ({ id, config: this.agentConfigs.get(id), index: i }))
+      .filter((a): a is { id: string; config: NonNullable<typeof a.config>; index: number } => !!a.config);
+
+    for (const { config, index } of configs) {
+      onProgress({
+        type: 'agent_start',
+        agent: config.id,
+        name: config.name,
+        role: config.role,
+        index,
+        total: configs.length,
+      });
+      onProgress({
+        type: 'thinking',
+        agent: config.id,
+        name: config.name,
+        message: `${config.name} 正在排队...`,
+      });
+    }
+
+    const prompt = `## 会议议题\n${goal}\n\n请从你的专业角度发表意见。简洁有力，突出重点。`;
+
+    const runWithRetry = async (config: typeof configs[0]['config'], attempt = 1): Promise<AgentRunResult> => {
+      try {
+        return await this.runAgent(config.id, prompt);
+      } catch (err) {
+        const is429 = err instanceof Error && (err.message.includes('429') || err.message.includes('Too many requests'));
+        if (is429 && attempt < MAX_RETRIES) {
+          const delay = BASE_DELAY * Math.pow(2, attempt - 1);
+          console.log(`[TeamOrchestrator] ${config.id} 触发限流，${delay}ms 后重试 (${attempt}/${MAX_RETRIES})`);
+          await new Promise((r) => setTimeout(r, delay));
+          return runWithRetry(config, attempt + 1);
+        }
+        throw err;
+      }
+    };
+
+    // 并发控制
+    let running = 0;
+    const queue: (() => void)[] = [];
+
+    const acquire = () => new Promise<void>((resolve) => {
+      if (running < MAX_CONCURRENT) {
+        running++;
+        resolve();
+      } else {
+        queue.push(resolve);
+      }
+    });
+
+    const release = () => {
+      if (queue.length > 0) {
+        const next = queue.shift()!;
+        next();
+      } else {
+        running--;
+      }
+    };
+
+    const results = await Promise.allSettled(
+      configs.map(async ({ config }) => {
+        await acquire();
+        try {
+          return await runWithRetry(config);
+        } finally {
+          release();
+        }
+      }),
+    );
+
+    for (let i = 0; i < results.length; i++) {
+      const { config, index } = configs[i];
+      const outcome = results[i];
+
+      if (outcome.status === 'fulfilled') {
+        const result = outcome.value;
+        agentResults.set(config.id, result);
+        totalTokenUsage.input_tokens += result.tokenUsage.input_tokens;
+        totalTokenUsage.output_tokens += result.tokenUsage.output_tokens;
+
+        onProgress({
+          type: 'output',
+          agent: config.id,
+          name: config.name,
+          role: config.role,
+          output: result.output,
+          toolCalls: result.toolCalls.length,
+          index,
+          total: configs.length,
+        });
+      } else {
+        const errorMsg = outcome.reason instanceof Error ? outcome.reason.message : 'Unknown error';
+        console.error(`[TeamOrchestrator] meeting: ${config.id} 失败:`, errorMsg);
+        onProgress({
+          type: 'error',
+          agent: config.id,
+          name: config.name,
+          error: errorMsg,
+        });
+
+        agentResults.set(config.id, {
+          success: false,
+          output: `❌ 执行失败: ${errorMsg}`,
+          messages: [],
+          tokenUsage: { input_tokens: 0, output_tokens: 0 },
+          toolCalls: [],
+        });
+      }
+    }
+
+    onProgress({ type: 'done' });
+
+    eventBus.emit({
+      type: 'meeting.completed',
+      source: 'meeting',
+      timestamp: Date.now(),
+      payload: {
+        meetingId: `meeting-${Date.now()}`,
+        topic: goal.substring(0, 100),
+        participants: agentIds,
+        summary: '会议已完成（详见各 Agent 输出）',
+        actionItems: [],
+      },
+    });
+
+    return {
+      success: true,
+      goal,
+      agentResults,
+      totalTokenUsage: totalTokenUsage as TokenUsage,
+    };
+  }
+
+  // ============================================================================
+  // 工作流管理
+  // ============================================================================
+
   /**
    * resumeWorkflow — 从断点续传工作流
-   * 加载已保存的工作流状态，继续执行未完成的步骤
    */
   async resumeWorkflow(workflowId: string): Promise<TeamRunResult> {
     const stateManager = this.workflowStateManager;
@@ -235,12 +513,9 @@ export class TeamOrchestrator implements IOrchestrator {
     console.log(`[TeamOrchestrator] resumeWorkflow: ${workflowId} (step ${state.currentStep}/${state.totalSteps})`);
 
     try {
-      const result = await this.omAgent.runTeam(this.team, state.goal);
-      const teamResult = result as unknown as TeamRunResult;
-      
-      stateManager.complete(workflowId, teamResult.output);
-      
-      return teamResult;
+      const result = await this.runTeam(state.goal);
+      stateManager.complete(workflowId, result.goal);
+      return result;
     } catch (error) {
       const errorMsg = error instanceof Error ? error.message : 'Unknown error';
       stateManager.fail(workflowId, errorMsg);
@@ -248,24 +523,18 @@ export class TeamOrchestrator implements IOrchestrator {
     }
   }
 
-  /**
-   * listWorkflows — 列出所有工作流状态
-   */
   listWorkflows(limit?: number, offset?: number) {
     return this.workflowStateManager?.listWorkflows(limit, offset) || [];
   }
 
-  /**
-   * getRunningWorkflows — 获取正在运行的工作流
-   */
   getRunningWorkflows() {
     return this.workflowStateManager?.getRunningWorkflows() || [];
   }
 
-  /**
-   * checkBudget — Token 预算检查
-   * 在 LLM 调用前检查预算是否充足
-   */
+  // ============================================================================
+  // 预算管理
+  // ============================================================================
+
   private checkBudget(sessionId: string, estimatedTokens: number = 5000): void {
     const manager = this.tokenBudgetManager;
     if (!manager) return;
@@ -276,355 +545,45 @@ export class TeamOrchestrator implements IOrchestrator {
     }
     if (result.status === 'warning') {
       console.warn(`[TokenBudget] ${result.message}`);
-      // 触发告警事件
       eventBus.emit({
         type: 'system.token_alert',
         source: 'system',
         timestamp: Date.now(),
-        payload: {
-          sessionId,
-          message: result.message,
-          severity: 'warning',
-        },
+        payload: { sessionId, message: result.message, severity: 'warning' },
       });
     }
   }
 
-  /**
-   * trackTokenUsage — 记录 Token 使用
-   */
   private trackTokenUsage(sessionId: string, tokenUsage: { input_tokens: number; output_tokens: number }): void {
     const manager = this.tokenBudgetManager;
     if (!manager) return;
     manager.trackUsage(sessionId, tokenUsage.input_tokens + tokenUsage.output_tokens);
   }
 
-  /**
-   * runAgent — 单 Agent 执行
-   * 用于简单任务，不需要多 Agent 协作
-   */
-  async runAgent(agentId: string, goal: string, sessionId?: string): Promise<AgentRunResult> {
-    const config = this.agentConfigs.get(agentId);
-    if (!config) throw new Error(`Agent "${agentId}" not found`);
-
-    console.log(`[TeamOrchestrator] runAgent: ${agentId} → "${goal.substring(0, 60)}..."`);
-
-    const budgetSessionId = sessionId || agentId;
-
-    // 检查预算
-    this.checkBudget(budgetSessionId, 5000);
-
-    const result = await this.omAgent.runAgent(
-      {
-        name: config.id,
-        model: config.model,
-        provider: 'mimo' as const,
-        baseURL: config.baseUrl,
-        apiKey: config.apiKey,
-        systemPrompt: config.systemPrompt,
-        tools: config.tools || ['file_read', 'file_write', 'file_edit', 'bash', 'grep', 'glob', 'send_message'],
-        customTools: this.extraCustomTools,
-      },
-      goal,
-    );
-
-    // 跟踪 Token 使用
-    this.trackTokenUsage(budgetSessionId, (result as any).tokenUsage || { input_tokens: 0, output_tokens: 0 });
-
-    return result as unknown as AgentRunResult;
-  }
-
-  /**
-   * runTasks — 显式任务列表
-   * 当用户指定具体步骤时使用，不经过协调员分解
-   */
-  async runTasks(tasks: TaskDefinition[]): Promise<TeamRunResult> {
-    console.log(`[TeamOrchestrator] runTasks: ${tasks.length} 个任务`);
-    const result = await this.omAgent.runTasks(
-      this.team,
-      tasks as unknown as Parameters<typeof this.omAgent.runTasks>[1],
-    );
-    return result as unknown as TeamRunResult;
-  }
-
-  /**
-   * runMeeting — 圆桌会议模式
-   * 所有 Agent 顺序执行，共享上下文，每人从自己的专业角度发表意见
-   */
-  async runMeeting(goal: string): Promise<TeamRunResult> {
-    console.log(`[TeamOrchestrator] runMeeting: "${goal.substring(0, 60)}..."`);
-    
-    // 检查预算（估算：每个 Agent 约 3000 token）
-    const agentCount = this.team.getAgents().length;
-    this.checkBudget('runMeeting', agentCount * 3000);
-
-    const agents = this.team.getAgents();
-    const agentResults = new Map<string, AgentRunResult>();
-    const discussion: string[] = [];
-    const totalTokenUsage = { input_tokens: 0, output_tokens: 0 };
-
-    for (const agent of agents) {
-      const config = this.agentConfigs.get(agent.name);
-      if (!config) continue;
-
-      // 构建带上下文的 prompt：原始目标 + 之前所有 Agent 的发言
-      const contextSection = discussion.length > 0
-        ? `\n\n## 会议讨论记录（之前的发言）\n${discussion.join('\n\n')}`
-        : '';
-      const prompt = `## 会议议题\n${goal}${contextSection}\n\n请从你的专业角度（${config.role}）发表意见。简洁有力，突出重点。`;
-
-      const result = await this.omAgent.runAgent(
-        {
-          name: config.id,
-          model: config.model,
-          provider: 'mimo' as const,
-          baseURL: config.baseUrl,
-          apiKey: config.apiKey,
-          systemPrompt: config.systemPrompt,
-          tools: config.tools || ['file_read', 'file_write', 'file_edit', 'bash', 'grep', 'glob', 'send_message'],
-          customTools: this.extraCustomTools,
-        },
-        prompt,
-      );
-
-      const typedResult = result as unknown as AgentRunResult;
-      agentResults.set(agent.name, typedResult);
-
-      // 累积上下文和 token 用量
-      discussion.push(`### ${config.name}（${config.role}）\n${typedResult.output}`);
-      totalTokenUsage.input_tokens += typedResult.tokenUsage.input_tokens;
-      totalTokenUsage.output_tokens += typedResult.tokenUsage.output_tokens;
-
-      console.log(`[TeamOrchestrator] meeting: ${config.id} 已发言`);
-    }
-
-    const meetingResult: TeamRunResult = {
-      success: true,
-      goal,
-      agentResults,
-      totalTokenUsage: totalTokenUsage as TokenUsage,
-    };
-
-    // 发布会议完成事件
-    eventBus.emit({
-      type: 'meeting.completed',
-      source: 'meeting',
-      timestamp: Date.now(),
-      payload: {
-        meetingId: `meeting-${Date.now()}`,
-        topic: goal.substring(0, 100),
-        participants: this.team.getAgents().map((a) => a.name),
-        summary: discussion.join('\n\n').substring(0, 500),
-        actionItems: [], // 可以由 LLM 解析生成
-      },
-    });
-
-    return meetingResult;
-  }
-
-  /**
-   * runMeetingWithProgress — 带实时进度的圆桌会议（并发控制 + 重试）
-   * 最多 MAX_CONCURRENT 个 Agent 同时执行，429 错误自动重试
-   */
-  async runMeetingWithProgress(
-    goal: string,
-    onProgress: (event: MeetingProgressEvent) => void,
-  ): Promise<TeamRunResult> {
-    const MAX_CONCURRENT = 2; // 并发限制
-    const MAX_RETRIES = 3;    // 最大重试次数
-    const BASE_DELAY = 2000;  // 基础延迟 2s
-    const meetingId = `meeting-${Date.now()}`;
-
-    // 发布会议开始事件
-    eventBus.emit({
-      type: 'meeting.started',
-      source: 'meeting',
-      timestamp: Date.now(),
-      payload: {
-        meetingId,
-        topic: goal.substring(0, 100),
-        participants: this.team.getAgents().map((a) => a.name),
-      },
-    });
-
-    console.log(`[TeamOrchestrator] runMeetingWithProgress (concurrency=${MAX_CONCURRENT}): "${goal.substring(0, 60)}..." (meetingId: ${meetingId})`);
-
-    const agents = this.team.getAgents();
-    const agentResults = new Map<string, AgentRunResult>();
-    const totalTokenUsage = { input_tokens: 0, output_tokens: 0 };
-
-    // 通知所有 Agent 开始
-    const agentConfigs = agents
-      .map((agent, i) => ({ agent, config: this.agentConfigs.get(agent.name), index: i }))
-      .filter((a): a is { agent: typeof a.agent; config: NonNullable<typeof a.config>; index: number } => !!a.config);
-
-    for (const { config, index } of agentConfigs) {
-      onProgress({
-        type: 'agent_start',
-        agent: config.id,
-        name: config.name,
-        role: config.role,
-        index,
-        total: agents.length,
-      });
-      onProgress({
-        type: 'thinking',
-        agent: config.id,
-        name: config.name,
-        message: `${config.name} 正在排队...`,
-      });
-    }
-
-    // 带重试的 Agent 执行函数
-    const prompt = `## 会议议题\n${goal}\n\n请从你的专业角度发表意见。简洁有力，突出重点。`;
-
-    const runWithRetry = async (config: typeof agentConfigs[0]['config'], attempt = 1): Promise<AgentRunResult> => {
-      try {
-        const result = await this.omAgent.runAgent(
-          {
-            name: config.id,
-            model: config.model,
-            provider: 'mimo' as const,
-            baseURL: config.baseUrl,
-            apiKey: config.apiKey,
-            systemPrompt: config.systemPrompt,
-            tools: config.tools || ['file_read', 'file_write', 'file_edit', 'bash', 'grep', 'glob', 'send_message'],
-            customTools: this.extraCustomTools,
-          },
-          prompt,
-        );
-        return result as unknown as AgentRunResult;
-      } catch (err) {
-        const is429 = err instanceof Error && (err.message.includes('429') || err.message.includes('Too many requests'));
-        if (is429 && attempt < MAX_RETRIES) {
-          const delay = BASE_DELAY * Math.pow(2, attempt - 1); // 指数退避
-          console.log(`[TeamOrchestrator] ${config.id} 触发限流，${delay}ms 后重试 (${attempt}/${MAX_RETRIES})`);
-          await new Promise(r => setTimeout(r, delay));
-          return runWithRetry(config, attempt + 1);
-        }
-        throw err;
-      }
-    };
-
-    // 并发控制：使用信号量限制同时执行的 Agent 数量
-    let running = 0;
-    const queue: (() => void)[] = [];
-
-    const acquire = () => new Promise<void>(resolve => {
-      if (running < MAX_CONCURRENT) {
-        running++;
-        resolve();
-      } else {
-        queue.push(resolve);
-      }
-    });
-
-    const release = () => {
-      if (queue.length > 0) {
-        const next = queue.shift()!;
-        next();
-      } else {
-        running--;
-      }
-    };
-
-    // 并发执行所有 Agent（受信号量控制）
-    const results = await Promise.allSettled(
-      agentConfigs.map(async ({ config }) => {
-        await acquire();
-        try {
-          const result = await runWithRetry(config);
-          return { config, result };
-        } finally {
-          release();
-        }
-      }),
-    );
-
-    // 收集结果并发送进度事件
-    for (let i = 0; i < results.length; i++) {
-      const { config, index } = agentConfigs[i];
-      const outcome = results[i];
-
-      if (outcome.status === 'fulfilled') {
-        const { result } = outcome.value;
-        agentResults.set(config.name, result);
-        totalTokenUsage.input_tokens += result.tokenUsage.input_tokens;
-        totalTokenUsage.output_tokens += result.tokenUsage.output_tokens;
-
-        onProgress({
-          type: 'output',
-          agent: config.id,
-          name: config.name,
-          role: config.role,
-          output: result.output,
-          toolCalls: result.toolCalls.length,
-          index,
-          total: agents.length,
-        });
-      } else {
-        const errorMsg = outcome.reason instanceof Error ? outcome.reason.message : 'Unknown error';
-        console.error(`[TeamOrchestrator] meeting: ${config.id} 失败:`, errorMsg);
-
-        onProgress({
-          type: 'error',
-          agent: config.id,
-          name: config.name,
-          error: errorMsg,
-        });
-
-        agentResults.set(config.name, {
-          success: false,
-          output: `❌ 执行失败: ${errorMsg}`,
-          messages: [],
-          tokenUsage: { input_tokens: 0, output_tokens: 0 },
-          toolCalls: [],
-        });
-      }
-    }
-
-    onProgress({ type: 'done' });
-
-    // 发布会议完成事件
-    eventBus.emit({
-      type: 'meeting.completed',
-      source: 'meeting',
-      timestamp: Date.now(),
-      payload: {
-        meetingId: `meeting-${Date.now()}`,
-        topic: goal.substring(0, 100),
-        participants: this.team.getAgents().map((a) => a.name),
-        summary: '会议已完成（详见各 Agent 输出）',
-        actionItems: [],
-      },
-    });
-
-    return {
-      success: true,
-      goal,
-      agentResults,
-      totalTokenUsage: totalTokenUsage as TokenUsage,
-    };
-  }
+  // ============================================================================
+  // 通信（基于 MessageBus）
+  // ============================================================================
 
   /**
    * 获取 Agent 间消息历史
    */
   getMessages(agentName?: string) {
+    const messageBus = getGlobalMessageBus();
     if (agentName) {
-      return this.team.getMessages(agentName);
+      return messageBus.getHistory(agentName);
     }
-    return this.team.getAgents().flatMap((a) => this.team.getMessages(a.name));
+    // 获取所有 Agent 的消息历史
+    const allMessages: any[] = [];
+    for (const agentId of this.agentConfigs.keys()) {
+      allMessages.push(...messageBus.getHistory(agentId));
+    }
+    return allMessages;
   }
 
   /**
    * 广播消息给所有 Agent（同步 + 异步）
    */
   broadcast(from: string, content: string) {
-    // 同步广播（兼容 OpenMultiAgent）
-    this.team.broadcast(from, content);
-
-    // 异步 MessageBus 广播（不阻塞）
     const messageBus = getGlobalMessageBus();
     messageBus.broadcast({
       from,
@@ -636,7 +595,7 @@ export class TeamOrchestrator implements IOrchestrator {
   }
 
   /**
-   * 异步广播 — 仅使用 MessageBus（真正的异步）
+   * 异步广播 — 仅使用 MessageBus
    */
   async asyncBroadcast(from: string, content: string): Promise<void> {
     const messageBus = getGlobalMessageBus();
@@ -647,16 +606,17 @@ export class TeamOrchestrator implements IOrchestrator {
     });
   }
 
-  /**
-   * 获取团队状态（不暴露上游类型）
-   */
+  // ============================================================================
+  // 状态查询
+  // ============================================================================
+
   getStatus(): OrchestratorStatus {
     return {
-      teamAgents: this.team.getAgents().map((a) => ({
-        name: a.name,
+      teamAgents: Array.from(this.agentConfigs.values()).map((a) => ({
+        name: a.id,
         model: a.model || 'default',
       })),
-      sharedMemory: !!this.team.config?.sharedMemory,
+      sharedMemory: true, // MessageBus 提供共享通信能力
     };
   }
 
@@ -664,18 +624,14 @@ export class TeamOrchestrator implements IOrchestrator {
    * 关闭编排器
    */
   async shutdown() {
-    await this.omAgent.shutdown();
     console.log('[TeamOrchestrator] 已关闭');
   }
 
-  // ── 智能路由入口（新增）──
+  // ============================================================================
+  // 智能路由入口
+  // ============================================================================
 
-  /**
-   * handleRequest — 智能路由入口
-   * 由 IntentRouter 分析用户意图，自动选择协作策略
-   */
   async handleRequest(userQuery: string): Promise<TeamRunResult> {
-    // 检查预算
     this.checkBudget('handleRequest', 10000);
 
     const decision = await this.intentRouter.route(userQuery);
@@ -705,9 +661,6 @@ export class TeamOrchestrator implements IOrchestrator {
     }
   }
 
-  /**
-   * 获取最后一次路由决策（用于调试和审计）
-   */
   getLastRoutingDecision(): RoutingDecision | null {
     return this.lastRoutingDecision;
   }
@@ -717,9 +670,6 @@ export class TeamOrchestrator implements IOrchestrator {
 // 便捷工厂
 // ============================================================================
 
-/**
- * 用 DEV-Agent-Teams 的 Agent 配置创建编排器
- */
 export function createTeamOrchestrator(
   agents: TeamAgentConfig[],
   model?: string,
@@ -734,9 +684,6 @@ export function createTeamOrchestrator(
   });
 }
 
-/**
- * 从环境变量创建 DEV-Agent-Teams 标准团队
- */
 export function createDevTeamOrchestrator(options?: {
   onProgress?: (event: OrchestratorEvent) => void;
   workflowStateManager?: import('../session/WorkflowStateManager.js').WorkflowStateManager;
@@ -749,7 +696,6 @@ export function createDevTeamOrchestrator(options?: {
 
   const commGuide = '\n\n团队通信：你可以使用 send_message 工具与其他 Agent 对话。\n- send_message({ to: "dev-backend", content: "..." }) — 发送给指定 Agent\n- send_message({ to: "*", content: "..." }) — 广播给所有 Agent\n可用的团队成员: dev-frontend, dev-backend, dev-testing, dev-devops, dev-pm, project-admin\n收到其他 Agent 的消息时，直接用 send_message 回复，不需要搜索文件系统。';
 
-  // 产品文档和看板工具
   const docKanbanTools = options?.extraCustomTools || [];
 
   const agents: TeamAgentConfig[] = [
@@ -815,5 +761,14 @@ export function createDevTeamOrchestrator(options?: {
     },
   ];
 
-  return new TeamOrchestrator({ agents, defaultModel: model, apiKey, baseUrl, onProgress: options?.onProgress, workflowStateManager: options?.workflowStateManager, tokenBudgetManager: options?.tokenBudgetManager, extraCustomTools: docKanbanTools });
+  return new TeamOrchestrator({
+    agents,
+    defaultModel: model,
+    apiKey,
+    baseUrl,
+    onProgress: options?.onProgress,
+    workflowStateManager: options?.workflowStateManager,
+    tokenBudgetManager: options?.tokenBudgetManager,
+    extraCustomTools: docKanbanTools,
+  });
 }

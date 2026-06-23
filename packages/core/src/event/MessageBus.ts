@@ -39,6 +39,7 @@ export interface MessageBusOptions {
 export class MessageBus {
   private emitter: EventEmitter;
   private agentHandlers: Map<string, ((msg: AgentMessage) => Promise<void>)[]> = new Map();
+  private messageHistory: Map<string, AgentMessage[]> = new Map();
   private options: Required<MessageBusOptions>;
 
   constructor(options: MessageBusOptions = {}) {
@@ -91,6 +92,11 @@ export class MessageBus {
         round: message.metadata?.round,
       },
     };
+
+    // 记录消息历史
+    const history = this.messageHistory.get(to) || [];
+    history.push(msg);
+    this.messageHistory.set(to, history);
 
     const handlers = this.agentHandlers.get(to);
     if (!handlers || handlers.length === 0) {
@@ -182,10 +188,18 @@ export class MessageBus {
   }
 
   /**
+   * 获取 Agent 的消息历史
+   */
+  getHistory(agentId: string): AgentMessage[] {
+    return this.messageHistory.get(agentId) || [];
+  }
+
+  /**
    * 清空所有注册
    */
   clear(): void {
     this.agentHandlers.clear();
+    this.messageHistory.clear();
     this.emitter.removeAllListeners();
   }
 }

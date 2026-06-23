@@ -85,6 +85,19 @@ instances:
       - data-analysis
     timeout_ms: 120000
 
+  - id: project-admin
+    label: "项目管理员 Agent"
+    port: 8206
+    hermes_port: 8206
+    tags: ["admin", "project", "management", "coordination", "planning"]
+    skills:
+      - project-management
+      - task-coordination
+      - milestone-tracking
+      - risk-assessment
+      - team-communication
+    timeout_ms: 120000
+
 # 路由规则
 routing:
   # 基于标签的路由

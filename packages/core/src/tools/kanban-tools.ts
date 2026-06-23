@@ -136,7 +136,7 @@ export function createKanbanTools() {
             params.push(input.assignee);
           }
           sql += ' ORDER BY updated_at DESC LIMIT ?';
-          params.push(input.limit);
+          params.push(input.limit ?? 50);
 
           const rows = db.prepare(sql).all(...params) as any[];
           const tasks = rows.map((r) => ({

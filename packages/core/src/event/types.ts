@@ -8,6 +8,10 @@
  * - payload: 事件载荷（具体数据）
  */
 
+import type { TokenUsage } from '../orchestrator/types.js';
+
+// ============================================================================
+
 // ============================================================================
 // 看板事件
 // ============================================================================
@@ -59,7 +63,7 @@ export interface WorkflowEvent {
     totalSteps?: number;        // 总步骤数
     output?: string;            // 步骤/工作流输出
     error?: string;             // 错误信息
-    tokenUsage?: number;        // Token 消耗
+    tokenUsage?: TokenUsage;        // Token 消耗
     agentResults?: string[];    // 参与 Agent 的结果摘要
   };
 }

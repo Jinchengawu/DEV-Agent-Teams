@@ -159,8 +159,8 @@ export class Surface {
         ...this.extractArtifacts(agentResult.output),
       };
       result.tokenUsage = {
-        input: agentResult.tokenUsage?.input_tokens || 0,
-        output: agentResult.tokenUsage?.output_tokens || 0,
+        input_tokens: agentResult.tokenUsage?.input_tokens || 0,
+        output_tokens: agentResult.tokenUsage?.output_tokens || 0,
       };
       result.logs?.push(`Agent ${this.agent} 执行完成`);
 

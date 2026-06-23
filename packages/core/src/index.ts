@@ -1,4 +1,16 @@
-// @dev-agent/core — 基于 @open-multi-agent/core 的多 Agent 协作框架
+// @dev-agent/core — 基于 Hermes Agent 集群的多 Agent 协作编排平台
+
+// ── Hermes Agent 客户端（新增 — 替代 omAgent）──
+export {
+  HermesAgentClient,
+  createHermesAgentClient,
+  getGlobalHermesClient,
+} from './hermes';
+export type {
+  HermesInstance,
+  HermesConfig,
+  HermesAgentResult,
+} from './hermes';
 
 // ── 会话管理 ──
 export { SessionManager } from './session/SessionManager';
