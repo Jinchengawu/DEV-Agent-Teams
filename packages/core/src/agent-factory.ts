@@ -20,6 +20,7 @@ import type { OrchestratorEvent } from './orchestrator/types.js';
 import { setKanbanDatabase, createKanbanTools } from './tools/kanban-tools.js';
 import { createDocumentTools } from './tools/document-tools.js';
 import { createPipelineOrchestrator } from './pipeline/Orchestrator.js';
+import { getGlobalKnowledgeCenter } from './knowledge/KnowledgeCenter.js';
 
 // ============================================================================
 // Types
@@ -94,9 +95,10 @@ export async function createAgentApp(config: AgentAppConfig = {}): Promise<Agent
     extraCustomTools,
   });
 
-  // 创建 Pipeline 编排器
-  const { PipelineOrchestrator } = await import('./pipeline/Orchestrator.js');
-  const pipelineOrchestrator = new PipelineOrchestrator(orchestrator, workflowStateManager);
+  // 创建 Pipeline 编排器（注入知识中心）
+  const knowledgeCenter = getGlobalKnowledgeCenter({ dbPath: path.join(dataDir, 'knowledge.db') });
+  const pipelineOrchestrator = createPipelineOrchestrator(orchestrator, workflowStateManager, knowledgeCenter);
+  console.log(`[AgentApp] KnowledgeCenter 已初始化: ${dataDir}/knowledge.db`);
 
   const app = express();
   app.use(express.json({ limit: '1mb' }));

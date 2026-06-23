@@ -247,6 +247,19 @@ export class Surface {
       }
     }
 
+    // 处理循环反馈（__loop_feedback）
+    const loopFeedback = this.inputArtifacts.get('__loop_feedback');
+    if (loopFeedback) {
+      goal += `\n\n⚠️ 这是第 ${loopFeedback.iteration || 1} 次修改迭代。\n`;
+      goal += `上一轮反馈: ${loopFeedback.feedback || '请根据评审意见修改'}\n`;
+      if (loopFeedback.previousResult) {
+        const prevStr = typeof loopFeedback.previousResult === 'string' 
+          ? loopFeedback.previousResult 
+          : JSON.stringify(loopFeedback.previousResult).substring(0, 500);
+        goal += `上一轮产物: ${prevStr}`;
+      }
+    }
+
     // 添加工作流步骤提示
     if (workflow.steps && workflow.steps.length > 0) {
       goal += '\n\n建议执行步骤:';

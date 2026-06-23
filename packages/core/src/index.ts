@@ -71,6 +71,8 @@ export {
   createSurface,
   PipelineOrchestrator,
   createPipelineOrchestrator,
+  ConflictResolver,
+  createConflictResolver,
 } from './pipeline';
 export type {
   PipelineDefinition,
@@ -83,7 +85,25 @@ export type {
   OutputContract,
   Edge,
   GateDefinition,
+  ConflictResolution,
+  ConflictStrategy,
+  Conflict,
+  ConflictConfig,
 } from './pipeline';
+
+// ── 知识中心（新增 — P1）──
+export {
+  KnowledgeCenter,
+  getGlobalKnowledgeCenter,
+  resetGlobalKnowledgeCenter,
+  createKnowledgeCenter,
+} from './knowledge/KnowledgeCenter.js';
+export type {
+  KnowledgeDocument,
+  KnowledgeQuery,
+  KnowledgeResult,
+  KnowledgeCenterConfig,
+} from './knowledge/KnowledgeCenter.js';
 export { MessageBus, getGlobalMessageBus, resetGlobalMessageBus } from './event/MessageBus';
 export type { AgentMessage, MessageBusOptions } from './event/MessageBus';
 

@@ -99,6 +99,12 @@ export interface Edge {
   condition?: string;
   /** 描述 */
   description?: string;
+  /** 是否支持循环（gate 失败时返回上游面） */
+  loop?: boolean;
+  /** 最大循环次数（默认 3） */
+  maxLoops?: number;
+  /** 循环计数器（运行时状态） */
+  loopCount?: number;
 }
 
 /** Pipeline 定义 */

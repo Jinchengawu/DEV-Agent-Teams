@@ -30,3 +30,5 @@ export type {
 
 export { Surface, createSurface } from './Surface.js';
 export { PipelineOrchestrator, createPipelineOrchestrator } from './Orchestrator.js';
+export { ConflictResolver, createConflictResolver } from './ConflictResolver.js';
+export type { ConflictResolution, ConflictStrategy, Conflict, ConflictConfig } from './ConflictResolver.js';
