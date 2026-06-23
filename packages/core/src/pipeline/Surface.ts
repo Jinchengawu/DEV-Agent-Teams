@@ -251,6 +251,10 @@ export class Surface {
   private extractArtifacts(output: string): Record<string, any> {
     const artifacts: Record<string, any> = {};
 
+    // 将完整输出作为 "prd" 传递（供下游面使用）
+    artifacts.prd = output;
+    artifacts.output = output;
+
     // 尝试提取文档路径
     const docMatch = output.match(/文档已保存:\s*(.+)/);
     if (docMatch) {

@@ -323,7 +323,10 @@ export class PipelineOrchestrator {
     for (const edge of upstreamEdges) {
       const upstreamResult = instance.surfaceResults.get(edge.from);
       if (upstreamResult?.artifacts) {
+        // 将上游面的 artifacts 直接作为输入（用原始 key）
         for (const [key, value] of Object.entries(upstreamResult.artifacts)) {
+          surface.setInput(key, value);
+          // 同时保留带前缀的版本（便于调试）
           surface.setInput(`${edge.from}.${key}`, value);
         }
       }
@@ -333,8 +336,20 @@ export class PipelineOrchestrator {
     if (surfaceDef.input?.from) {
       const fromSurfaceId = surfaceDef.input.from;
       const fromResult = instance.surfaceResults.get(fromSurfaceId);
-      if (fromResult?.artifacts?.output) {
-        surface.setInput('from_upstream', fromResult.artifacts.output);
+      if (fromResult?.artifacts) {
+        // 将上游面的 prd/output 作为当前面的 prd 输入
+        if (fromResult.artifacts.prd) {
+          surface.setInput('prd', fromResult.artifacts.prd);
+        }
+        if (fromResult.artifacts.output) {
+          surface.setInput('output', fromResult.artifacts.output);
+        }
+        // 将所有 artifacts 都传入
+        for (const [key, value] of Object.entries(fromResult.artifacts)) {
+          if (!surface.getInput(key)) {
+            surface.setInput(key, value);
+          }
+        }
       }
     }
 
