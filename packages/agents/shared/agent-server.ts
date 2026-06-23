@@ -12,6 +12,31 @@ import { createServer } from 'node:http';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 
 // ============================================================================
+// 会话记忆存储（按 sessionId 保存对话历史）
+// ============================================================================
+
+const sessionMemory = new Map<string, ChatMessage[]>();
+const MAX_MEMORY_SIZE = 50; // 每个会话最多保存 50 条消息
+
+function getSessionHistory(sessionId: string): ChatMessage[] {
+  return sessionMemory.get(sessionId) || [];
+}
+
+function appendToSession(sessionId: string, messages: ChatMessage[]): void {
+  const history = sessionMemory.get(sessionId) || [];
+  history.push(...messages);
+  // 截断到最大长度
+  if (history.length > MAX_MEMORY_SIZE) {
+    history.splice(0, history.length - MAX_MEMORY_SIZE);
+  }
+  sessionMemory.set(sessionId, history);
+}
+
+function clearSession(sessionId: string): void {
+  sessionMemory.delete(sessionId);
+}
+
+// ============================================================================
 // Types
 // ============================================================================
 
@@ -156,18 +181,40 @@ export function createAgentServer(config: AgentServerConfig) {
     // ── Chat Completions (OpenAI 兼容) ──
     if (req.url === '/v1/chat/completions' && req.method === 'POST') {
       const requestBody: ChatCompletionRequest = body;
+      const sessionId = requestBody.sessionId || 'default';
 
-      // 注入系统提示（如果用户消息中没有 system prompt）
-      const messages = [...(requestBody.messages || [])];
-      if (!messages.some((m) => m.role === 'system')) {
-        messages.unshift({ role: 'system', content: config.systemPrompt });
+      // 获取当前请求的消息
+      const currentMessages = [...(requestBody.messages || [])];
+      
+      // 获取历史对话
+      const history = getSessionHistory(sessionId);
+      
+      // 构建完整消息列表：system + 历史 + 当前
+      const messages: ChatMessage[] = [];
+      
+      // 注入系统提示（如果还没有）
+      if (!history.some((m) => m.role === 'system') && !currentMessages.some((m) => m.role === 'system')) {
+        messages.push({ role: 'system', content: config.systemPrompt });
       }
+      
+      // 添加历史（排除 system，因为上面已经加了）
+      messages.push(...history.filter((m) => m.role !== 'system'));
+      
+      // 添加当前消息（排除 system，因为上面已经加了）
+      messages.push(...currentMessages.filter((m) => m.role !== 'system'));
+      
+      console.log(`[AgentServer] ${config.id} 会话 ${sessionId} | 历史 ${history.length} 条 | 当前 ${currentMessages.length} 条`);
 
       const startTime = Date.now();
       const result = await callLLM(messages, requestBody.max_tokens || 4000);
       const latency = Date.now() - startTime;
 
       console.log(`[AgentServer] ${config.id} 响应 (${latency}ms): "${result.content.substring(0, 60)}..."`);
+
+      // 保存到会话记忆（当前用户消息 + 助手回复）
+      const userMessages = currentMessages.filter((m) => m.role === 'user');
+      const assistantMessage: ChatMessage = { role: 'assistant', content: result.content };
+      appendToSession(sessionId, [...userMessages, assistantMessage]);
 
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({

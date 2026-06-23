@@ -138,6 +138,7 @@ export class HermesAgentClient {
       messages,
       max_tokens: options?.maxTokens || 4000,
       stream: false,
+      sessionId: options?.sessionId || undefined,
     };
 
     const startTime = Date.now();
