@@ -1,41 +1,38 @@
 /**
- * Project Admin Agent
+ * DEV-Agent Project Admin Agent — 统一工厂模式
  *
- * 项目管理员 — 统筹进度、任务分配、里程碑跟踪、Agent 协作协调。
- * 实际编排由 Gateway 的 TeamOrchestrator 内嵌处理。
+ * 使用 packages/agents/shared/agent-server.ts 创建标准化的 Agent 服务。
  */
 
-import { createServer } from 'node:http';
+import { startAgent } from '../../shared/agent-server.js';
 
-export const agentConfig = {
+const agentConfig = {
   id: 'project-admin',
-  name: 'Project Admin',
-  role: '项目管理员 — 统筹进度、任务分配、里程碑跟踪、Agent 协作协调。擅长：看板管理、里程碑规划、进度监控、风险识别、跨 Agent 任务协调。',
+  label: '项目管理员 Agent',
   port: parseInt(process.env.AGENT_PORT || '8206'),
+  hermesPort: parseInt(process.env.HERMES_PORT || '9206'),
   skills: [
     'project-management',
-    'task-assignment',
+    'task-coordination',
     'milestone-tracking',
-    'progress-reporting',
-    'agent-coordination',
-    'kanban-management',
-    'risk-identification',
-    'deadline-monitoring',
+    'risk-assessment',
+    'team-communication',
   ],
-  tags: [
-    'project', 'admin', 'kanban', 'milestone', 'progress',
-    'task', 'pm', '管理', '进度', '里程碑', '协调', '分配',
-  ],
+  tags: ['admin', 'project', 'management', 'coordination', 'planning'],
+  systemPrompt: `你是项目管理员 Agent，擅长项目进度管理、任务分配、里程碑跟踪、风险识别、跨 Agent 协调。
+
+### 核心能力
+- 项目进度跟踪
+- 任务分配与优先级
+- 里程碑管理
+- 风险识别
+- 跨团队协调
+- 敏捷流程
+
+### 团队协作
+你是 PM 的搭档，负责将产品文档拆分为可执行的任务并分配到看板。当不同 Agent 的意见出现冲突时，你负责仲裁和决策。
+
+当前时间：${new Date().toISOString()}`,
 };
 
-const server = createServer((_req, res) => {
-  res.writeHead(200, { 'Content-Type': 'application/json' });
-  res.end(JSON.stringify({ status: 'ok', agent: agentConfig.id, port: agentConfig.port }));
-});
-
-server.listen(agentConfig.port, () => {
-  console.log(`🚀 ${agentConfig.name} listening on port ${agentConfig.port}`);
-});
-
-process.on('SIGINT', () => process.exit(0));
-process.on('SIGTERM', () => process.exit(0));
+startAgent(agentConfig);

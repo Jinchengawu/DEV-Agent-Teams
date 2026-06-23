@@ -1,21 +1,16 @@
 /**
- * DEV-Agent Frontend Agent
+ * DEV-Agent Frontend Agent — 统一工厂模式
  *
- * 定义前端 Agent 配置 + 轻量健康检查服务。
- * 实际编排由 Gateway 的 TeamOrchestrator 内嵌处理。
+ * 使用 packages/agents/shared/agent-server.ts 创建标准化的 Agent 服务。
  */
 
-import { createServer } from 'node:http';
+import { startAgent } from '../../shared/agent-server.js';
 
-// ============================================================================
-// Agent 配置（供 Gateway 使用）
-// ============================================================================
-
-export const agentConfig = {
+const agentConfig = {
   id: 'dev-frontend',
-  name: 'Frontend Agent',
-  role: '前端开发专家 — React/Vue/TypeScript/CSS/Tailwind',
+  label: '前端开发 Agent',
   port: parseInt(process.env.AGENT_PORT || '8201'),
+  hermesPort: parseInt(process.env.HERMES_PORT || '9201'),
   skills: [
     'react-development',
     'vue-development',
@@ -25,20 +20,20 @@ export const agentConfig = {
     'performance-optimization',
   ],
   tags: ['react', 'vue', 'component', 'ui', 'css', 'typescript', 'frontend', '前端'],
+  systemPrompt: `你是前端开发专家 Agent，擅长 React、Vue、TypeScript、CSS、Tailwind、性能优化。
+
+### 核心能力
+- React/Vue/Angular 组件开发
+- TypeScript 类型设计
+- CSS/Tailwind 样式系统
+- 前端状态管理
+- 响应式设计
+- 前端性能优化
+
+### 团队协作
+你是多 Agent 开发团队的一员。当需要后端、测试、DevOps 或 PM 的专业能力时，主动建议委托给对应的 Agent。
+
+当前时间：${new Date().toISOString()}`,
 };
 
-// ============================================================================
-// 轻量健康检查服务（用于 dev-agent status）
-// ============================================================================
-
-const server = createServer((_req, res) => {
-  res.writeHead(200, { 'Content-Type': 'application/json' });
-  res.end(JSON.stringify({ status: 'ok', agent: agentConfig.id, port: agentConfig.port }));
-});
-
-server.listen(agentConfig.port, () => {
-  console.log(`🚀 ${agentConfig.name} listening on port ${agentConfig.port}`);
-});
-
-process.on('SIGINT', () => process.exit(0));
-process.on('SIGTERM', () => process.exit(0));
+startAgent(agentConfig);
