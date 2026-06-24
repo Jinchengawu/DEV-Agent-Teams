@@ -71,15 +71,25 @@ CREATE TABLE IF NOT EXISTS snapshots (
 );
 CREATE INDEX IF NOT EXISTS idx_snapshots_session ON snapshots(session_id, created_at);
 
--- 用户表（预留）
+-- 用户表（认证系统）
 CREATE TABLE IF NOT EXISTS users (
   id          TEXT PRIMARY KEY,
-  clerk_id    TEXT UNIQUE,
-  email       TEXT,
+  username    TEXT UNIQUE NOT NULL,
+  email       TEXT UNIQUE,
+  password_hash TEXT NOT NULL,
   name        TEXT,
   avatar      TEXT,
-  created_at  TEXT NOT NULL DEFAULT (datetime('now'))
+  created_at  TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at  TEXT NOT NULL DEFAULT (datetime('now'))
 );
+
+CREATE TABLE IF NOT EXISTS schema_migrations (
+  version TEXT PRIMARY KEY,
+  applied_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+-- 为旧表迁移添加缺失列（兼容已存在的 users 表）
+INSERT OR IGNORE INTO schema_migrations (version) VALUES ('add_users_columns');
 
 -- 工作流状态表（Phase 4: 断点续传）
 CREATE TABLE IF NOT EXISTS workflow_states (
@@ -101,4 +111,30 @@ CREATE INDEX IF NOT EXISTS idx_workflow_states_created ON workflow_states(create
 
 export function initSchema(db: { exec: (sql: string) => void }): void {
   db.exec(SCHEMA_SQL);
+  
+  // 迁移：兼容旧 users 表结构（无 username/password_hash 列）
+  const migrateUsers = db as unknown as { 
+    prepare: (sql: string) => { get: (...args: unknown[]) => unknown };
+    exec: (sql: string) => void;
+  };
+  try {
+    const applied = migrateUsers.prepare(
+      "SELECT version FROM schema_migrations WHERE version = 'add_users_columns'"
+    ).get();
+    if (!applied) {
+      // 添加缺失的列（如果已经存在 SQLite 会报错，所以逐条 try/catch）
+      const addColumn = (col: string, def: string) => {
+        try { migrateUsers.exec(`ALTER TABLE users ADD COLUMN ${col} ${def}`); } catch { /* already exists */ }
+      };
+      addColumn('username', 'TEXT');
+      addColumn('password_hash', 'TEXT');
+      addColumn('updated_at', "TEXT NOT NULL DEFAULT (datetime('now'))");
+      // email 唯一约束不能通过 ALTER 添加，重建逻辑由应用层保证
+      migrateUsers.exec(
+        "INSERT OR IGNORE INTO schema_migrations (version) VALUES ('add_users_columns')"
+      );
+    }
+  } catch {
+    // schema_migrations 表可能还不存在，CREATE TABLE IF NOT EXISTS 已在上面的 SCHEMA_SQL 中处理
+  }
 }
