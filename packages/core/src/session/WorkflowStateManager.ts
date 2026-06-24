@@ -50,6 +50,25 @@ export class WorkflowStateManager {
 
   constructor(db: Database) {
     this.db = db;
+    this.initSchema();
+  }
+
+  private initSchema(): void {
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS workflow_states (
+        id TEXT PRIMARY KEY,
+        goal TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'running',
+        current_step INTEGER NOT NULL DEFAULT 0,
+        total_steps INTEGER NOT NULL DEFAULT 0,
+        steps TEXT NOT NULL DEFAULT '[]',
+        context TEXT NOT NULL DEFAULT '{}',
+        token_usage TEXT NOT NULL DEFAULT '{"input_tokens":0,"output_tokens":0}',
+        error TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      )
+    `);
   }
 
   /**

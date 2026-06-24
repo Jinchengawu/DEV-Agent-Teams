@@ -161,19 +161,18 @@ export class TeamOrchestrator implements IOrchestrator {
       const involvedAgents = decision.involvedAgents || [decision.primaryAgent || 'dev-backend'];
       console.log(`[TeamOrchestrator] runTeam 路由决策: ${decision.strategy} | 参与 Agent: ${involvedAgents.join(', ')}`);
 
-      // 2. 并行调用所有参与 Agent
+      // 2. 串行调用所有参与 Agent（Hermes 不支持并发，避免请求阻塞）
       const agentResults = new Map<string, AgentRunResult>();
       const totalTokenUsage = { input_tokens: 0, output_tokens: 0 };
 
-      const promises = involvedAgents.map(async (agentId) => {
-        if (!agentId) return;
+      for (const agentId of involvedAgents) {
+        if (!agentId) continue;
+        console.log(`[TeamOrchestrator] runTeam 调用 ${agentId}...`);
         const result = await this.runAgent(agentId, goal, sessionId);
         agentResults.set(agentId, result);
         totalTokenUsage.input_tokens += result.tokenUsage.input_tokens;
         totalTokenUsage.output_tokens += result.tokenUsage.output_tokens;
-      });
-
-      await Promise.all(promises);
+      }
 
       // 3. 汇总结果
       const outputs = Array.from(agentResults.entries())
