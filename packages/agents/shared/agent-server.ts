@@ -70,9 +70,9 @@ interface ChatCompletionRequest {
 
 function getApiConfig() {
   return {
-    model: process.env.MODEL_NAME || 'mimo-v2.5-pro',
+    model: process.env.MODEL_NAME || 'deepseek-v4-pro',
     apiKey: process.env.API_KEY || '',
-    baseUrl: process.env.MODEL_BASE_URL || 'https://token-plan-cn.xiaomimimo.com/v1',
+    baseUrl: process.env.MODEL_BASE_URL || 'https://api.deepseek.com/v1',
   };
 }
 
@@ -192,10 +192,11 @@ export function createAgentServer(config: AgentServerConfig) {
       // 构建完整消息列表：system + 历史 + 当前
       const messages: ChatMessage[] = [];
       
-      // 始终注入系统提示（增强版：声明记忆能力）
+      // 始终注入系统提示（增强版：声明记忆能力 + 架构身份）
       // 注意：忽略客户端发送的 system 消息，使用 Agent 自己的 systemPrompt
-      const memoryNotice = `\n\n💡 你有记忆能力：当前对话的历史记录会自动保留，你可以参考之前的对话内容回答问题。`;
-      const systemPrompt = config.systemPrompt + memoryNotice;
+      const architectureNotice = `\n\n🏗️ 架构声明：你是 DEV-Agent-Teams 多 Agent 协作平台中的「${config.label}」（ID: ${config.id}）。你的底层运行基于 Hermes（多 Agent 智能体编排框架），因此你本质上是一个 Hermes 实例。你在团队中的角色是上述专家，与其他 Agent 通过 HTTP API 协作。`;
+      const memoryNotice = `\n\n💡 记忆能力：当前对话的历史记录会自动保留，你可以参考之前的对话内容回答问题。`;
+      const systemPrompt = config.systemPrompt + architectureNotice + memoryNotice;
       messages.push({ role: 'system', content: systemPrompt });
       
       // 添加历史（排除 system，因为上面已经加了）
