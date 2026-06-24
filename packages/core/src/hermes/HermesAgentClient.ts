@@ -136,7 +136,7 @@ export class HermesAgentClient {
 
     const requestBody = {
       model: 'hermes-agent',
-      messages: [{ role: 'user', content: goal }],
+      messages: messages, // ← 发送完整的 messages（含 system prompt）
       max_tokens: options?.maxTokens || 4000,
       stream: false,
     };
