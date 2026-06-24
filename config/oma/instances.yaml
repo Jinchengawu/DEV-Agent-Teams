@@ -12,8 +12,8 @@ oma:
 instances:
   - id: dev-frontend
     label: "前端开发 Agent"
-    port: 8201
-    hermes_port: 8201
+    port: 8002
+    hermes_port: 8002
     tags: ["frontend", "react", "vue", "typescript", "css"]
     skills:
       - react-development
@@ -26,8 +26,8 @@ instances:
 
   - id: dev-backend
     label: "后端开发 Agent"
-    port: 8202
-    hermes_port: 8202
+    port: 8003
+    hermes_port: 8003
     tags: ["backend", "api", "database", "python", "node", "go"]
     skills:
       - python-development
@@ -41,8 +41,8 @@ instances:
 
   - id: dev-testing
     label: "测试开发 Agent"
-    port: 8203
-    hermes_port: 8203
+    port: 8004
+    hermes_port: 8004
     tags: ["testing", "test", "qa", "coverage", "e2e"]
     skills:
       - pytest-development
@@ -56,8 +56,8 @@ instances:
 
   - id: dev-devops
     label: "DevOps Agent"
-    port: 8204
-    hermes_port: 8204
+    port: 8005
+    hermes_port: 8005
     tags: ["devops", "docker", "k8s", "deploy", "ci/cd"]
     skills:
       - docker-management
@@ -71,8 +71,8 @@ instances:
 
   - id: dev-pm
     label: "产品经理 Agent"
-    port: 8205
-    hermes_port: 8205
+    port: 8006
+    hermes_port: 8006
     tags: ["pm", "product", "prd", "requirement", "strategy", "用户研究", "产品", "需求"]
     skills:
       - prd-writing
@@ -87,8 +87,8 @@ instances:
 
   - id: project-admin
     label: "项目管理员 Agent"
-    port: 8206
-    hermes_port: 8206
+    port: 8007
+    hermes_port: 8007
     tags: ["admin", "project", "management", "coordination", "planning"]
     skills:
       - project-management

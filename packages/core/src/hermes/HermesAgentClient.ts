@@ -67,14 +67,15 @@ function loadConfig(): HermesConfig {
     }
   }
 
-  // 默认配置（fallback）
+  // 默认配置（fallback）— 调用真正的 Hermes 实例（API Server 端口）
   return {
     instances: [
-      { id: 'dev-frontend', label: '前端开发 Agent', port: 8201, hermes_port: 8201, tags: ['frontend'], skills: [], timeout_ms: 120000 },
-      { id: 'dev-backend', label: '后端开发 Agent', port: 8202, hermes_port: 8202, tags: ['backend'], skills: [], timeout_ms: 120000 },
-      { id: 'dev-testing', label: '测试开发 Agent', port: 8203, hermes_port: 8203, tags: ['testing'], skills: [], timeout_ms: 180000 },
-      { id: 'dev-devops', label: 'DevOps Agent', port: 8204, hermes_port: 8204, tags: ['devops'], skills: [], timeout_ms: 300000 },
-      { id: 'dev-pm', label: '产品经理 Agent', port: 8205, hermes_port: 8205, tags: ['pm'], skills: [], timeout_ms: 120000 },
+      { id: 'dev-frontend', label: '前端开发 Agent', port: 8002, hermes_port: 8002, tags: ['frontend'], skills: [], timeout_ms: 120000 },
+      { id: 'dev-backend', label: '后端开发 Agent', port: 8003, hermes_port: 8003, tags: ['backend'], skills: [], timeout_ms: 120000 },
+      { id: 'dev-testing', label: '测试开发 Agent', port: 8004, hermes_port: 8004, tags: ['testing'], skills: [], timeout_ms: 180000 },
+      { id: 'dev-devops', label: 'DevOps Agent', port: 8005, hermes_port: 8005, tags: ['devops'], skills: [], timeout_ms: 300000 },
+      { id: 'dev-pm', label: '产品经理 Agent', port: 8006, hermes_port: 8006, tags: ['pm'], skills: [], timeout_ms: 120000 },
+      { id: 'project-admin', label: '项目管理员 Agent', port: 8007, hermes_port: 8007, tags: ['project-admin'], skills: [], timeout_ms: 120000 },
     ],
     routing: { rules: [], default: 'dev-backend' },
   };
@@ -135,11 +136,19 @@ export class HermesAgentClient {
 
     const requestBody = {
       model: 'hermes-agent',
-      messages,
+      messages: [{ role: 'user', content: goal }],
       max_tokens: options?.maxTokens || 4000,
       stream: false,
-      sessionId: options?.sessionId || undefined,
     };
+
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+      'Authorization': 'Bearer dev-agent-teams-key',
+    };
+
+    if (options?.sessionId) {
+      headers['X-Hermes-Session-Id'] = options.sessionId;
+    }
 
     const startTime = Date.now();
     console.log(`[HermesClient] 调用 ${agentId} @ ${url} → "${goal.substring(0, 60)}..."`);
@@ -147,7 +156,7 @@ export class HermesAgentClient {
     try {
       const response = await fetch(url, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers,
         body: JSON.stringify(requestBody),
       });
 
