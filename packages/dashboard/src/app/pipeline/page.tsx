@@ -72,7 +72,7 @@ export default function PipelinePage() {
       if (stored) {
         const instanceIds: string[] = JSON.parse(stored);
         // 去重并过滤空值
-        const uniqueIds = [...new Set(instanceIds)].filter(Boolean);
+        const uniqueIds = Array.from(new Set(instanceIds)).filter(Boolean);
         if (uniqueIds.length > 0) {
           // 批量获取实例状态
           const res = await fetch('/api/pipeline-instances');
@@ -202,89 +202,196 @@ export default function PipelinePage() {
     }
   };
 
-  // 渲染单个 Pipeline 的执行状态
-  const renderPipelineStatus = (pipeline: PipelineDef, instance: PipelineInstance | null) => {
+  // 构建 DAG 拓扑排序（前端版本）
+  const buildExecutionBatches = (pipeline: PipelineDef): string[][] => {
+    const dag = new Map<string, Set<string>>();
+    for (const s of pipeline.surfaces) dag.set(s.id, new Set());
+    for (const edge of pipeline.edges) {
+      if ((edge as any).loop) continue; // 循环边不加入 DAG
+      const downstream = Array.isArray(edge.to) ? edge.to : [edge.to];
+      for (const toId of downstream) {
+        const deps = dag.get(toId) || new Set();
+        deps.add(edge.from);
+        dag.set(toId, deps);
+      }
+    }
+    const inDegree = new Map<string, number>();
+    const adj = new Map<string, Set<string>>();
+    dag.forEach((deps, id) => {
+      inDegree.set(id, deps.size);
+      if (!adj.has(id)) adj.set(id, new Set());
+      deps.forEach((dep) => {
+        const d = adj.get(dep) || new Set();
+        d.add(id);
+        adj.set(dep, d);
+      });
+    });
+    const batches: string[][] = [];
+    const visited = new Set<string>();
+    while (visited.size < dag.size) {
+      const batch: string[] = [];
+      inDegree.forEach((degree, id) => {
+        if (degree === 0 && !visited.has(id)) batch.push(id);
+      });
+      if (batch.length === 0) break;
+      batches.push(batch);
+      batch.forEach((id) => {
+        visited.add(id);
+        (adj.get(id) || new Set()).forEach((downstream) => {
+          inDegree.set(downstream, (inDegree.get(downstream) || 0) - 1);
+        });
+      });
+    }
+    return batches;
+  };
+
+  // 获取循环边
+  const getLoopEdges = (pipeline: PipelineDef): { from: string; to: string }[] => {
+    return pipeline.edges
+      .filter((e) => (e as any).loop)
+      .flatMap((e) => {
+        const downstream = Array.isArray(e.to) ? e.to : [e.to];
+        return downstream.map((toId) => ({ from: e.from, to: toId }));
+      });
+  };
+
+  // 渲染 DAG 执行状态
+  const renderPipelineDAG = (pipeline: PipelineDef, instance: PipelineInstance | null) => {
+    const batches = buildExecutionBatches(pipeline);
+    const loopEdges = getLoopEdges(pipeline);
+    const surfaceMap = new Map(pipeline.surfaces.map((s) => [s.id, s]));
+
     return (
       <div className="mt-4">
         <div className="flex items-center gap-2 mb-4">
-          <span className="text-sm font-medium text-gray-700">执行流程:</span>
+          <span className="text-sm font-medium text-gray-700">DAG 执行流程:</span>
           {instance && (
             <span className="text-xs text-gray-500">
               实例: {instance.id} | {getStatusBadge(instance.status)}
             </span>
           )}
+          {loopEdges.length > 0 && (
+            <Badge variant="outline" className="text-xs text-amber-600 border-amber-300">
+              {loopEdges.length} 条循环边
+            </Badge>
+          )}
         </div>
-        <div className="flex flex-col gap-4">
-          {pipeline.surfaces.map((surface, index) => {
-            const isCurrent = instance?.surfaceResults[surface.id];
-            const status = isCurrent?.status || 'pending';
 
-            return (
-              <div key={surface.id} className="relative">
-                {/* 连接线 */}
-                {index > 0 && (
-                  <div className="absolute -top-4 left-6 w-0.5 h-4 bg-gray-300" />
-                )}
+        {/* DAG 可视化 */}
+        <div className="flex flex-col gap-8">
+          {batches.map((batch, batchIndex) => (
+            <div key={batchIndex} className="relative">
+              {/* 批次之间的连接线 */}
+              {batchIndex > 0 && (
+                <div className="absolute -top-6 left-1/2 transform -translate-x-1/2 w-0.5 h-6 bg-gray-300" />
+              )}
 
-                <div className={`flex items-start gap-4 p-4 rounded-lg border-2 transition-all ${
-                  status === 'running' ? 'border-blue-500 bg-blue-50' :
-                  status === 'completed' ? 'border-green-500 bg-green-50' :
-                  status === 'failed' ? 'border-red-500 bg-red-50' :
-                  'border-gray-200 bg-white'
-                }`}>
-                  {/* 状态指示器 */}
-                  <div className={`w-4 h-4 rounded-full mt-1 flex-shrink-0 ${getStatusColor(status)}`} />
+              <div className={`grid gap-4 ${
+                batch.length === 1 ? 'grid-cols-1' :
+                batch.length === 2 ? 'grid-cols-2' :
+                batch.length === 3 ? 'grid-cols-3' :
+                'grid-cols-2 md:grid-cols-3'
+              }`}>
+                {batch.map((surfaceId) => {
+                  const surface = surfaceMap.get(surfaceId);
+                  if (!surface) return null;
+                  const isCurrent = instance?.surfaceResults[surfaceId];
+                  const status = isCurrent?.status || 'pending';
+                  const isLoopSource = loopEdges.some((e) => e.from === surfaceId);
+                  const isLoopTarget = loopEdges.some((e) => e.to === surfaceId);
 
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 mb-1">
-                      <span className="font-semibold">{surface.name}</span>
-                      {getStatusBadge(status)}
-                      <span className="text-xs text-gray-500">({surface.agent})</span>
-                    </div>
-
-                    {/* 输入/输出 */}
-                    <div className="text-sm text-gray-600 mt-2 space-y-1">
-                      {surface.input?.from && (
-                        <p>输入: 来自 {surface.input.from}</p>
+                  return (
+                    <div key={surfaceId} className="relative">
+                      {/* 循环边指示 */}
+                      {(isLoopSource || isLoopTarget) && (
+                        <div className="absolute -top-2 -right-2 z-10">
+                          <Badge variant="outline" className="text-[10px] text-amber-600 border-amber-300 bg-amber-50">
+                            🔄 循环
+                          </Badge>
+                        </div>
                       )}
-                      {surface.output?.artifacts && (
-                        <p>产出: {surface.output.artifacts.join(', ')}</p>
-                      )}
-                    </div>
 
-                    {/* 执行结果 */}
-                    {isCurrent && (
-                      <div className="mt-3 p-3 bg-white rounded border text-sm">
-                        {isCurrent.error ? (
-                          <p className="text-red-600">❌ {isCurrent.error}</p>
-                        ) : isCurrent.artifacts ? (
-                          <div>
-                            <p className="font-medium text-green-600">✅ 执行完成</p>
-                            {Object.entries(isCurrent.artifacts).slice(0, 3).map(([key, value]) => (
-                              <p key={key} className="text-gray-600 mt-1">
-                                {key}: {typeof value === 'string' ? value.substring(0, 100) : JSON.stringify(value).substring(0, 100)}
+                      <div className={`p-4 rounded-lg border-2 transition-all ${
+                        status === 'running' ? 'border-blue-500 bg-blue-50' :
+                        status === 'completed' ? 'border-green-500 bg-green-50' :
+                        status === 'failed' ? 'border-red-500 bg-red-50' :
+                        'border-gray-200 bg-white'
+                      }`}>
+                        {/* 状态指示器和名称 */}
+                        <div className="flex items-center gap-2 mb-2">
+                          <div className={`w-3 h-3 rounded-full flex-shrink-0 ${getStatusColor(status)}`} />
+                          <span className="font-semibold text-sm">{surface.name}</span>
+                          {getStatusBadge(status)}
+                        </div>
+
+                        <div className="text-xs text-gray-500 mb-2">
+                          {surface.agent}
+                        </div>
+
+                        {/* 输入/输出 */}
+                        <div className="text-xs text-gray-600 space-y-1">
+                          {surface.input?.from && (
+                            <p>← 来自 {surface.input.from}</p>
+                          )}
+                          {surface.output?.artifacts && (
+                            <p>→ 产出: {surface.output.artifacts.join(', ')}</p>
+                          )}
+                        </div>
+
+                        {/* 执行结果 */}
+                        {isCurrent && (
+                          <div className="mt-2 p-2 bg-white/80 rounded border text-xs">
+                            {isCurrent.error ? (
+                              <p className="text-red-600">❌ {isCurrent.error}</p>
+                            ) : isCurrent.artifacts ? (
+                              <div>
+                                <p className="text-green-600">✅ 完成</p>
+                                {Object.entries(isCurrent.artifacts).slice(0, 2).map(([key, value]) => (
+                                  <p key={key} className="text-gray-600 truncate">
+                                    {key}: {typeof value === 'string' ? value.substring(0, 60) : JSON.stringify(value).substring(0, 60)}
+                                  </p>
+                                ))}
+                              </div>
+                            ) : null}
+                            {isCurrent.startedAt && (
+                              <p className="text-[10px] text-gray-400 mt-1">
+                                {isCurrent.completedAt
+                                  ? `${Math.round((isCurrent.completedAt - isCurrent.startedAt) / 1000)}s`
+                                  : '进行中...'
+                                }
                               </p>
-                            ))}
+                            )}
                           </div>
-                        ) : null}
-                        {isCurrent.startedAt && (
-                          <p className="text-xs text-gray-400 mt-2">
-                            耗时: {isCurrent.completedAt
-                              ? Math.round((isCurrent.completedAt - isCurrent.startedAt) / 1000) + 's'
-                              : '进行中...'
-                            }
-                          </p>
                         )}
                       </div>
-                    )}
-                  </div>
-                </div>
+                    </div>
+                  );
+                })}
               </div>
-            );
-          })}
+            </div>
+          ))}
         </div>
+
+        {/* 循环边图例 */}
+        {loopEdges.length > 0 && (
+          <div className="mt-6 p-4 bg-amber-50 rounded-lg border border-amber-200">
+            <h4 className="text-sm font-semibold text-amber-800 mb-2">循环边</h4>
+            <div className="flex flex-wrap gap-2">
+              {loopEdges.map((edge, i) => (
+                <Badge key={i} variant="outline" className="text-xs border-dashed border-amber-400 text-amber-700">
+                  {edge.from} → {edge.to} (反馈)
+                </Badge>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
     );
+  };
+
+  // 渲染单个 Pipeline 的执行状态（保持向后兼容）
+  const renderPipelineStatus = (pipeline: PipelineDef, instance: PipelineInstance | null) => {
+    return renderPipelineDAG(pipeline, instance);
   };
 
   return (

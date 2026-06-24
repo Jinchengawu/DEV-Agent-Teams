@@ -448,6 +448,81 @@ async function main(): Promise<void> {
         return;
       }
 
+      // 知识中心 API
+      if (path.startsWith('/knowledge') && req.method === 'GET') {
+        const kc = agentApp.knowledgeCenter;
+        if (!kc) {
+          res.writeHead(503, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: 'KnowledgeCenter not available' }));
+          return;
+        }
+
+        // /knowledge/search?q=...
+        if (path === '/knowledge/search') {
+          const q = url.searchParams.get('q') || '';
+          const type = url.searchParams.get('type') || undefined;
+          const limit = parseInt(url.searchParams.get('limit') || '20', 10);
+          const results = kc.search({ q, type, limit, semantic: true });
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ query: q, results }));
+          return;
+        }
+
+        // /knowledge/stats
+        if (path === '/knowledge/stats') {
+          const stats = kc.stats();
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify(stats));
+          return;
+        }
+
+        // /knowledge/:id
+        const knowledgeIdMatch = path.match(/^\/knowledge\/(.+)$/);
+        if (knowledgeIdMatch) {
+          const docId = knowledgeIdMatch[1];
+          const doc = kc.getDocument(docId);
+          if (!doc) {
+            res.writeHead(404, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ error: 'Document not found' }));
+            return;
+          }
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify(doc));
+          return;
+        }
+
+        // /knowledge (list)
+        const type = url.searchParams.get('type') || undefined;
+        const source = url.searchParams.get('source') || undefined;
+        const limit = parseInt(url.searchParams.get('limit') || '50', 10);
+        const offset = parseInt(url.searchParams.get('offset') || '0', 10);
+        const docs = kc.listDocuments({ type, source, limit, offset });
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ documents: docs, total: docs.length }));
+        return;
+      }
+
+      // 知识中心自然语言查询
+      if (path === '/knowledge/query' && req.method === 'POST') {
+        const kc = agentApp.knowledgeCenter;
+        if (!kc) {
+          res.writeHead(503, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: 'KnowledgeCenter not available' }));
+          return;
+        }
+        const request = body ? JSON.parse(body) : {};
+        const { question, limit } = request;
+        if (!question) {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: 'question is required' }));
+          return;
+        }
+        const answer = await kc.query(question, { limit });
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify(answer));
+        return;
+      }
+
       // 404
       res.writeHead(404, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ error: 'Not Found' }));

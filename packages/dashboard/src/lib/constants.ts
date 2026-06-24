@@ -2,6 +2,7 @@ export const NAV_ITEMS = [
   { href: '/', label: 'Dashboard', icon: '📊' },
   { href: '/kanban', label: '看板', icon: '📋' },
   { href: '/pipeline', label: 'Pipeline', icon: '🚀' },
+  { href: '/knowledge', label: '知识中心', icon: '🧠' },
   { href: '/agents', label: 'Agents', icon: '🤖' },
   { href: '/skills', label: 'Skills', icon: '📚' },
   { href: '/chat', label: 'Chat', icon: '💬' },

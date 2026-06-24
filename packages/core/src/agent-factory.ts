@@ -39,6 +39,7 @@ export interface AgentApp {
   orchestrator: TeamOrchestrator;
   tokenBudgetManager: TokenBudgetManager;
   pipelineOrchestrator: import('./pipeline/Orchestrator.js').PipelineOrchestrator;
+  knowledgeCenter: import('./knowledge/KnowledgeCenter.js').KnowledgeCenter;
   close: () => Promise<void>;
 }
 
@@ -291,5 +292,5 @@ export async function createAgentApp(config: AgentAppConfig = {}): Promise<Agent
     sessionManager.close();
   };
 
-  return { app, sessionManager, orchestrator, tokenBudgetManager, pipelineOrchestrator, close };
+  return { app, sessionManager, orchestrator, tokenBudgetManager, pipelineOrchestrator, knowledgeCenter, close };
 }

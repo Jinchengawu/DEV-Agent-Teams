@@ -5,12 +5,12 @@ export {
   HermesAgentClient,
   createHermesAgentClient,
   getGlobalHermesClient,
-} from './hermes';
+} from './hermes/index.js';
 export type {
   HermesInstance,
   HermesConfig,
   HermesAgentResult,
-} from './hermes';
+} from './hermes/index.js';
 
 // ── 会话管理 ──
 export { SessionManager } from './session/SessionManager';
