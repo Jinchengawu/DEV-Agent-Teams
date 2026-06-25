@@ -40,10 +40,40 @@ if ! command -v node >/dev/null 2>&1; then
   exit 1
 fi
 
+if ! command -v pnpm >/dev/null 2>&1; then
+  echo "pnpm is required" >&2
+  exit 1
+fi
+
 if ! command -v hermes >/dev/null 2>&1; then
   echo "Hermes is required" >&2
   exit 1
 fi
+
+node_runtime_summary() {
+  echo "Node: $(node --version) ($(command -v node))"
+  echo "pnpm: $(pnpm --version) ($(command -v pnpm))"
+}
+
+verify_native_module() {
+  local package_dir="$1"
+  local module_name="$2"
+  local label="$3"
+
+  if [ ! -d "$package_dir/node_modules" ]; then
+    echo "Missing dependencies for $label: $package_dir/node_modules" >&2
+    echo "Run pnpm install from $ROOT, then retry ./dev-agent start" >&2
+    exit 1
+  fi
+
+  if ! (cd "$package_dir" && node -e "require(process.argv[1])" "$module_name") >/dev/null 2>&1; then
+    echo "Native module check failed for $label: $module_name" >&2
+    echo "Active runtime: $(node --version) ($(command -v node))" >&2
+    echo "This usually means node_modules was built with a different Node ABI." >&2
+    echo "Use the bundled runtime via CODEX_NODE_BIN or rebuild dependencies with pnpm install." >&2
+    exit 1
+  fi
+}
 
 port_listening() {
   lsof -tiTCP:"$1" -sTCP:LISTEN >/dev/null 2>&1
@@ -171,6 +201,10 @@ start_node_service() {
 
 echo "Starting DEV-Agent-Teams services"
 echo "Model: $MODEL_PROVIDER / $MODEL_NAME"
+node_runtime_summary
+
+verify_native_module "$ROOT/packages/core" "better-sqlite3" "Core session/document store"
+verify_native_module "$ROOT/packages/dashboard" "better-sqlite3" "Dashboard kanban/document APIs"
 
 start_hermes "frontend" "$(resolve_hermes_port "${FRONTEND_AGENT_PORT:-}" 8002 8201)" "$HOME/.hermes-frontend" "Frontend Agent"
 start_hermes "backend" "$(resolve_hermes_port "${BACKEND_AGENT_PORT:-}" 8003 8202)" "$HOME/.hermes-backend" "Backend Agent"

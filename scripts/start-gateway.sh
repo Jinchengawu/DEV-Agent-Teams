@@ -22,6 +22,14 @@ if ! command -v node &> /dev/null; then
 fi
 
 echo "✅ Node.js 已安装: $(node --version)"
+echo "   Node 路径: $(command -v node)"
+
+if ! command -v pnpm &> /dev/null; then
+    echo "❌ pnpm 未安装"
+    exit 1
+fi
+
+echo "✅ pnpm 已安装: $(pnpm --version)"
 
 # 进入 gateway 目录
 cd "$ROOT/packages/gateway"
@@ -30,7 +38,14 @@ cd "$ROOT/packages/gateway"
 if [ ! -d "node_modules" ]; then
     echo ""
     echo "📦 安装依赖..."
-    npm install
+    pnpm install
+fi
+
+if ! (cd "$ROOT/packages/core" && node -e "require(process.argv[1])" "better-sqlite3") >/dev/null 2>&1; then
+    echo "❌ better-sqlite3 与当前 Node runtime 不兼容"
+    echo "   当前 Node: $(node --version) ($(command -v node))"
+    echo "   建议: 使用 CODEX_NODE_BIN 指向 bundled Node，或在当前 Node 下重新 pnpm install"
+    exit 1
 fi
 
 # 检查配置文件

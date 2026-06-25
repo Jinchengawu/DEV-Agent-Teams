@@ -125,6 +125,7 @@ echo "================="
 
 cd "$ROOT"
 
+run_cmd "local startup scripts syntax" bash -n dev-agent scripts/start-all.sh scripts/start-gateway.sh
 run_cmd "core typecheck" pnpm --filter @dev-agent/core run check
 run_cmd "gateway build" pnpm --filter @dev-agent/gateway run build
 run_cmd "dashboard typecheck" pnpm --filter @dev-agent/dashboard exec tsc --noEmit
