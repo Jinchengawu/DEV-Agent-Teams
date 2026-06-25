@@ -982,7 +982,16 @@ if (
     sample: data.tasks?.slice?.(0, 3),
   })}`);
 }
-console.log(`source=${data.filters.source} tasks=${data.tasks.length}`);
+const linkedCount = data.tasks.filter((task) => task.pipeline_instance_id && task.pipeline_id && task.surface_id).length;
+const recentMissing = data.tasks.slice(0, 20).filter((task) => !task.pipeline_instance_id || !task.pipeline_id || !task.surface_id);
+if (linkedCount / data.tasks.length < 0.95 || recentMissing.length > 0) {
+  throw new Error(`kanban pipeline links were not preserved: ${JSON.stringify({
+    tasks: data.tasks.length,
+    linkedCount,
+    recentMissing: recentMissing.map((task) => task.id),
+  })}`);
+}
+console.log(`source=${data.filters.source} tasks=${data.tasks.length} linked=${linkedCount}`);
 NODE
 )"
   dashboard_kanban_filter_code=$?

@@ -46,7 +46,7 @@ type PipelineTaskLink = {
 async function fetchPipelineTaskLinks(): Promise<Map<string, PipelineTaskLink>> {
   const links = new Map<string, PipelineTaskLink>();
   try {
-    const res = await fetch(`${GATEWAY_URL}/pipeline-instances`, { cache: 'no-store' });
+    const res = await fetch(`${GATEWAY_URL}/pipeline-instances?limit=500`, { cache: 'no-store' });
     if (!res.ok) return links;
     const data = await res.json();
     for (const instance of data.instances || []) {

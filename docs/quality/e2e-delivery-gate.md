@@ -93,7 +93,9 @@ checks for `status` and `limit`.
 Dashboard Kanban local task operations are also exercised as a closed loop:
 create a task, update its status/progress, delete it, and confirm it no longer resolves.
 Kanban board filtering is covered for coordination tasks so large task sets stay usable
-during long MVP sessions.
+during long MVP sessions. The same check also asserts that recent coordination tasks keep
+their Pipeline instance and Surface links, and that the overall Kanban projection preserves
+workflow links for at least 95% of recoverable coordination tasks.
 
 To verify restart recovery, opt in with:
 
