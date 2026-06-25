@@ -56,6 +56,7 @@ When Dashboard is already running, the same script also checks:
 - Dashboard Pipeline history can recover persisted instances with coordination bindings
 - Dashboard Workflows records link to their Pipeline instance and project documents
 - Dashboard Workflows records expose stable navigation links to Pipeline, Knowledge, and Kanban
+- Dashboard Pipeline instance history exposes stable navigation links to Pipeline, Knowledge, and Kanban
 - Dashboard Pipeline coordination summaries expose stable project, task, document, and board links
 - Dashboard Pipeline page exposes a YAML importer for runtime custom workflows
 - Knowledge links can preserve project/task context for workflow documents

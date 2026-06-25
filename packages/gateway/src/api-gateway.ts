@@ -67,6 +67,17 @@ function serializeWorkflow(workflow: any): Record<string, unknown> {
   };
 }
 
+function withPipelineNavigation(serialized: Record<string, any>): Record<string, unknown> {
+  const instanceId = serialized.id ? String(serialized.id) : '';
+  const projectId = serialized.coordination?.projectId ? String(serialized.coordination.projectId) : '';
+  return {
+    ...serialized,
+    pipeline_url: instanceId ? `/pipeline?instanceId=${encodeURIComponent(instanceId)}` : undefined,
+    knowledge_url: projectId ? `/knowledge?projectId=${encodeURIComponent(projectId)}` : undefined,
+    kanban_url: projectId ? '/kanban?source=coordination' : undefined,
+  };
+}
+
 function pipelineToTemplate(pipeline: any): Record<string, unknown> {
   const definition = serializePipelineDefinition(pipeline);
   return {
@@ -505,7 +516,7 @@ async function main(): Promise<void> {
           .slice(0, limit);
         res.writeHead(200, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({
-          instances: instances.map((i) => agentApp.pipelineOrchestrator.serializeInstance(i)),
+          instances: instances.map((i) => withPipelineNavigation(agentApp.pipelineOrchestrator.serializeInstance(i))),
           filters: { status: status || 'all', pipelineId: pipelineId || null, limit },
         }));
         return;
@@ -653,7 +664,7 @@ async function main(): Promise<void> {
           return;
         }
         res.writeHead(200, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify(agentApp.pipelineOrchestrator.serializeInstance(instance)));
+        res.end(JSON.stringify(withPipelineNavigation(agentApp.pipelineOrchestrator.serializeInstance(instance))));
         return;
       }
 

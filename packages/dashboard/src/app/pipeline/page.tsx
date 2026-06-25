@@ -48,6 +48,9 @@ interface PipelineInstance {
   surfaceResults: Record<string, SurfaceResult>;
   startedAt: number;
   completedAt?: number;
+  pipeline_url?: string;
+  knowledge_url?: string;
+  kanban_url?: string;
   coordination?: {
     projectId: string;
     taskIdsBySurface: Record<string, string>;
@@ -942,6 +945,28 @@ export default function PipelinePage() {
                       <div className="text-right text-xs text-gray-500">
                         <p>{getStatusBadge(instance.status)}</p>
                         <p>{new Date(instance.startedAt).toLocaleString()}</p>
+                        {(instance.knowledge_url || instance.kanban_url) && (
+                          <div className="mt-1 flex justify-end gap-2">
+                            {instance.knowledge_url && (
+                              <a
+                                href={instance.knowledge_url}
+                                className="text-blue-600 hover:underline"
+                                onClick={(event) => event.stopPropagation()}
+                              >
+                                文档
+                              </a>
+                            )}
+                            {instance.kanban_url && (
+                              <a
+                                href={instance.kanban_url}
+                                className="text-slate-600 hover:underline"
+                                onClick={(event) => event.stopPropagation()}
+                              >
+                                看板
+                              </a>
+                            )}
+                          </div>
+                        )}
                       </div>
                     </div>
                   ))}

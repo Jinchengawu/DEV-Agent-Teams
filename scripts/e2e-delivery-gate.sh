@@ -838,6 +838,9 @@ ok = (
     and any(
         isinstance(instance.get("surfaceResults"), dict)
         and instance.get("coordination", {}).get("projectId")
+        and instance.get("pipeline_url")
+        and instance.get("knowledge_url")
+        and instance.get("kanban_url")
         for instance in instances
     )
 )
@@ -849,7 +852,8 @@ with open(sys.argv[1], "r", encoding="utf-8") as f:
 instances = data.get("instances", [])
 bound = [i for i in instances if isinstance(i.get("surfaceResults"), dict) and i.get("coordination", {}).get("projectId")]
 latest = bound[0] if bound else {}
-print("instances={} bound={} latest={} status={}".format(len(instances), len(bound), latest.get("id", "none"), latest.get("status", "unknown")))' /tmp/dev-agent-dashboard-pipeline-instances.json)"
+nav = sum(1 for i in bound if i.get("pipeline_url") and i.get("knowledge_url") and i.get("kanban_url"))
+print("instances={} bound={} nav={} latest={} status={}".format(len(instances), len(bound), nav, latest.get("id", "none"), latest.get("status", "unknown")))' /tmp/dev-agent-dashboard-pipeline-instances.json)"
       record "dashboard pipeline instances proxy" PASS "$dashboard_instance_summary"
     else
       record "dashboard pipeline instances proxy" FAIL "GET /api/pipeline-instances returned no bound Pipeline instances"
