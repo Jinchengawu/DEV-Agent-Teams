@@ -13,6 +13,8 @@ interface HealthResponse {
   onlineCount: number;
   totalAgents: number;
   totalSkills: number;
+  gatewayOnline?: boolean;
+  livePipelineReady?: boolean;
   timestamp: number;
 }
 
@@ -44,6 +46,8 @@ export function useAgentHealth() {
     onlineCount: data?.onlineCount || 0,
     successRate: data ? Math.round((data.onlineCount / data.totalAgents) * 100) : 0,
     totalSkills: data?.totalSkills || 0,
+    gatewayOnline: data?.gatewayOnline || false,
+    livePipelineReady: data?.livePipelineReady || false,
   };
 
   return { agents, stats, error, isLoading, mutate };

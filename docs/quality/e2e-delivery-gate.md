@@ -55,6 +55,7 @@ When Dashboard is already running, the same script also checks:
 - Dashboard Pipeline page exposes a YAML importer for runtime custom workflows
 - Knowledge links can preserve project/task context for workflow documents
 - Kanban coordination tasks expose project links and related document counts
+- Dashboard health exposes live Pipeline readiness from real Hermes Agent health
 
 To verify the Pipeline control plane against a running Gateway, opt in with:
 
@@ -106,6 +107,10 @@ The default live prompt is a dry-run coordination check. It instructs Agents to 
 markdown-only artifacts and avoid modifying the repository. If you intentionally want
 the team to write files, set `E2E_LIVE_USER_REQUEST` explicitly and inspect the resulting
 git diff before accepting the run.
+
+Live surface calls default to `300000ms` because real Hermes Agents, especially DevOps
+release checks, can take longer than the UI dry-run path. Override with
+`E2E_LIVE_SURFACE_TIMEOUT_MS` when debugging latency.
 
 Live runs also pass structured execution options to the Gateway:
 

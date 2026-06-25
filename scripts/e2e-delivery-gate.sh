@@ -470,6 +470,7 @@ with open(sys.argv[1], "r", encoding="utf-8") as f:
 agents = data.get("agents", [])
 ok = (
     isinstance(data.get("gatewayOnline"), bool)
+    and isinstance(data.get("livePipelineReady"), bool)
     and isinstance(agents, list)
     and len(agents) >= 6
     and all(isinstance(a.get("online"), bool) for a in agents)
@@ -479,7 +480,7 @@ raise SystemExit(0 if ok else 1)' /tmp/dev-agent-dashboard-health.json
       dashboard_health_summary="$(python3 -c 'import json, sys
 with open(sys.argv[1], "r", encoding="utf-8") as f:
     data = json.load(f)
-print("online={}/{} gateway={}".format(data.get("onlineCount"), data.get("totalAgents"), data.get("gatewayOnline")))' /tmp/dev-agent-dashboard-health.json)"
+print("online={}/{} gateway={} liveReady={}".format(data.get("onlineCount"), data.get("totalAgents"), data.get("gatewayOnline"), data.get("livePipelineReady")))' /tmp/dev-agent-dashboard-health.json)"
       record "dashboard agent health" PASS "$dashboard_health_summary"
     else
       record "dashboard agent health" FAIL "GET /api/health returned an invalid payload"
@@ -648,7 +649,7 @@ print(json.dumps({
     "initialInput": {"userRequest": os.environ["E2E_LIVE_REQUEST"]},
     "options": {
         "dryRun": True,
-        "surfaceTimeoutMs": int(os.environ.get("E2E_LIVE_SURFACE_TIMEOUT_MS", "90000")),
+        "surfaceTimeoutMs": int(os.environ.get("E2E_LIVE_SURFACE_TIMEOUT_MS", "300000")),
     },
 }))')"
 

@@ -15,7 +15,7 @@ interface HealthResult {
   error?: string;
 }
 
-async function checkGateway(): Promise<{ online: boolean; agents: HealthResult[] }> {
+async function checkGateway(): Promise<{ online: boolean; agents: HealthResult[]; livePipelineReady: boolean }> {
   try {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 5000);
@@ -46,10 +46,11 @@ async function checkGateway(): Promise<{ online: boolean; agents: HealthResult[]
       },
       error: a.error,
     }));
-    return { online: true, agents };
+    return { online: true, agents, livePipelineReady: Boolean(data.livePipelineReady) };
   } catch (e) {
     return {
       online: false,
+      livePipelineReady: false,
       agents: ['dev-frontend', 'dev-backend', 'dev-testing', 'dev-devops', 'dev-pm', 'project-admin'].map(id => ({
         id,
         online: false,
@@ -60,12 +61,13 @@ async function checkGateway(): Promise<{ online: boolean; agents: HealthResult[]
 }
 
 export async function GET() {
-  const { online, agents } = await checkGateway();
+  const { online, agents, livePipelineReady } = await checkGateway();
   const onlineCount = agents.filter((agent) => agent.online).length;
 
   return NextResponse.json({
     timestamp: Date.now(),
     gatewayOnline: online,
+    livePipelineReady,
     onlineCount,
     totalAgents: agents.length,
     totalSkills: agents.reduce((sum, agent) => sum + (agent.data?.skills || 0), 0),

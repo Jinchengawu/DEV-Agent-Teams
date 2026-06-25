@@ -5,6 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/components/ui/toast';
+import { useAgentHealth } from '@/hooks/useAgentHealth';
 
 interface PipelineDef {
   id: string;
@@ -122,6 +123,7 @@ function normalizePipelines(items: unknown): PipelineDef[] {
 
 export default function PipelinePage() {
   const { showToast } = useToast();
+  const { stats: agentStats, isLoading: agentHealthLoading } = useAgentHealth();
   const [pipelines, setPipelines] = useState<PipelineDef[]>([]);
   const [loading, setLoading] = useState(false);
   const [executing, setExecuting] = useState<string | null>(null);
@@ -133,6 +135,10 @@ export default function PipelinePage() {
   const [yamlDraft, setYamlDraft] = useState(YAML_DRAFT);
   const [yamlSource, setYamlSource] = useState('dashboard:pipeline-page');
   const [importingYaml, setImportingYaml] = useState(false);
+  const [executionMode, setExecutionMode] = useState<'dry-run' | 'live'>('dry-run');
+
+  const livePipelineReady = agentStats.livePipelineReady;
+  const canExecuteLive = executionMode !== 'live' || livePipelineReady;
 
   // 加载 Pipeline 列表 + 恢复历史
   useEffect(() => {
@@ -280,7 +286,13 @@ export default function PipelinePage() {
 
   // 执行 Pipeline
   const executePipeline = async (pipelineId: string) => {
+    if (executionMode === 'live' && !livePipelineReady) {
+      showToast('Hermes Agents are not all online; live execution is disabled', 'error');
+      return;
+    }
+
     setExecuting(pipelineId);
+    const isDryRun = executionMode === 'dry-run';
     try {
       const res = await fetch('/api/pipelines/execute', {
         method: 'POST',
@@ -288,12 +300,14 @@ export default function PipelinePage() {
         body: JSON.stringify({
           pipelineId,
           initialInput: {
-            userRequest: `Dashboard requested execution of ${pipelineId}. Produce concise coordination artifacts and preserve results as documents.`,
-            requestedBy: 'dashboard',
+            userRequest: isDryRun
+              ? `Dashboard requested dry-run execution of ${pipelineId}. Produce concise coordination artifacts and preserve results as documents. Do not create, edit, delete, move, install, build, or write repository files.`
+              : `Dashboard requested live execution of ${pipelineId}. Execute through the available Hermes Agents, preserve coordination artifacts as documents, and keep task state current.`,
+            requestedBy: isDryRun ? 'dashboard-dry-run' : 'dashboard-live',
           },
           options: {
-            dryRun: true,
-            surfaceTimeoutMs: 90_000,
+            dryRun: isDryRun,
+            surfaceTimeoutMs: isDryRun ? 90_000 : 300_000,
           },
         }),
       });
@@ -315,7 +329,7 @@ export default function PipelinePage() {
         }
       }
 
-      showToast('Pipeline started', 'success');
+      showToast(isDryRun ? 'Pipeline dry-run started' : 'Live Pipeline started', 'success');
     } catch (e) {
       const msg = e instanceof Error ? e.message : 'Unknown error';
       showToast(msg, 'error');
@@ -655,6 +669,58 @@ export default function PipelinePage() {
         <h1 className="text-3xl font-bold mb-2">Pipeline 流水线</h1>
         <p className="text-gray-500 mb-8">基于"一体多面"哲学的面编排引擎</p>
 
+        <Card className="mb-6 border-l-4 border-l-blue-500" data-testid="pipeline-execution-mode">
+          <CardHeader className="pb-3">
+            <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+              <div>
+                <CardTitle className="text-lg">执行模式</CardTitle>
+                <p className="mt-1 text-sm text-gray-500">
+                  {agentHealthLoading
+                    ? '正在检查 Hermes Agent 状态...'
+                    : `Hermes Agent: ${agentStats.onlineCount}/${agentStats.totalAgents} 在线`}
+                </p>
+              </div>
+              <Badge
+                variant={livePipelineReady ? 'default' : 'outline'}
+                className={livePipelineReady ? 'bg-green-600' : 'border-amber-300 text-amber-700'}
+              >
+                {livePipelineReady ? 'Live Ready' : 'Live Disabled'}
+              </Badge>
+            </div>
+          </CardHeader>
+          <CardContent>
+            <div className="grid gap-3 md:grid-cols-2">
+              <button
+                type="button"
+                onClick={() => setExecutionMode('dry-run')}
+                className={`rounded-md border p-3 text-left text-sm transition ${
+                  executionMode === 'dry-run'
+                    ? 'border-blue-500 bg-blue-50 text-blue-900'
+                    : 'border-gray-200 bg-white text-gray-700 hover:bg-gray-50'
+                }`}
+                data-testid="pipeline-mode-dry-run"
+              >
+                <div className="font-medium">演练模式</div>
+                <div className="mt-1 text-xs text-gray-500">默认安全模式，禁止仓库副作用，只沉淀协作文档与任务状态</div>
+              </button>
+              <button
+                type="button"
+                onClick={() => livePipelineReady && setExecutionMode('live')}
+                disabled={!livePipelineReady}
+                className={`rounded-md border p-3 text-left text-sm transition disabled:cursor-not-allowed disabled:opacity-60 ${
+                  executionMode === 'live'
+                    ? 'border-green-500 bg-green-50 text-green-900'
+                    : 'border-gray-200 bg-white text-gray-700 hover:bg-gray-50'
+                }`}
+                data-testid="pipeline-mode-live"
+              >
+                <div className="font-medium">真实执行</div>
+                <div className="mt-1 text-xs text-gray-500">需要全部 Hermes Agent 在线，按工作流调用真实 Agent 能力</div>
+              </button>
+            </div>
+          </CardContent>
+        </Card>
+
         <Card className="mb-6 border-l-4 border-l-emerald-500" data-testid="pipeline-yaml-importer">
           <CardHeader className="pb-3">
             <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
@@ -774,10 +840,11 @@ export default function PipelinePage() {
                     )}
                     <Button
                       onClick={() => executePipeline(pipeline.id)}
-                      disabled={executing === pipeline.id}
+                      disabled={executing === pipeline.id || !canExecuteLive}
                       className="min-w-[100px]"
+                      data-testid={`pipeline-execute-${pipeline.id}`}
                     >
-                      {executing === pipeline.id ? '执行中...' : '执行'}
+                      {executing === pipeline.id ? '执行中...' : executionMode === 'live' ? '真实执行' : '演练'}
                     </Button>
                   </div>
                 </div>
