@@ -196,7 +196,19 @@ if (cancelRes.status !== 200 || cancelled.status !== 'cancelled' || taskCount < 
   })}`);
 }
 
-console.log(`instance=${started.instanceId} project=${cancelled.coordination?.projectId || 'none'} tasks=${taskCount}`);
+await new Promise((resolve) => setTimeout(resolve, 500));
+const coordinationRes = await fetch(`${base}/pipeline-instances/${started.instanceId}/coordination`);
+const coordination = await coordinationRes.json();
+if (!coordinationRes.ok) {
+  throw new Error(`coordination failed: ${coordinationRes.status} ${JSON.stringify(coordination)}`);
+}
+const statuses = coordination.bindings.map((binding) => binding.task?.status);
+const blockedCount = statuses.filter((status) => status === 'blocked').length;
+if (blockedCount !== coordination.bindings.length) {
+  throw new Error(`cancel did not block all tasks: ${JSON.stringify(statuses)}`);
+}
+
+console.log(`instance=${started.instanceId} project=${cancelled.coordination?.projectId || 'none'} tasks=${taskCount} blocked=${blockedCount}`);
 NODE
 )"
     control_code=$?
@@ -217,10 +229,10 @@ const base = process.env.GATEWAY_URL;
 const payload = {
   pipelineId: 'dev-team-minimum-loop',
   initialInput: {
-    userRequest: 'E2E recovery smoke: start, cancel, restart Gateway, then recover from workflow state. Dry-run only; do not write files.',
+    userRequest: 'E2E recovery smoke: start, restart Gateway while running, then recover interrupted workflow state. Dry-run only; do not write files.',
     requestedBy: 'e2e-delivery-gate-recovery',
   },
-  options: { dryRun: true, surfaceTimeoutMs: 1000 },
+  options: { dryRun: true, surfaceTimeoutMs: 90000 },
 };
 const startRes = await fetch(`${base}/v1/pipeline/start`, {
   method: 'POST',
@@ -232,23 +244,8 @@ if (!startRes.ok || !started.instanceId) {
   throw new Error(`start failed: ${startRes.status} ${JSON.stringify(started)}`);
 }
 
-const cancelRes = await fetch(`${base}/pipeline-instances/${started.instanceId}/cancel`, {
-  method: 'POST',
-  headers: { 'Content-Type': 'application/json' },
-  body: JSON.stringify({ reason: 'E2E recovery smoke cancellation' }),
-});
-const cancelled = await cancelRes.json();
-const projectId = cancelled.coordination?.projectId;
-if (cancelRes.status !== 200 || cancelled.status !== 'cancelled' || !projectId) {
-  throw new Error(`cancel failed: ${cancelRes.status} ${JSON.stringify({
-    status: cancelled.status,
-    projectId,
-  })}`);
-}
-
 console.log(JSON.stringify({
   instanceId: started.instanceId,
-  projectId,
 }));
 NODE
 )"
@@ -256,7 +253,6 @@ NODE
     if [ "$recovery_code" -eq 0 ]; then
       recovery_json="$(echo "$recovery_output" | tail -n 1)"
       instance_id="$(printf '%s' "$recovery_json" | python3 -c 'import json,sys; print(json.load(sys.stdin)["instanceId"])' 2>/dev/null)"
-      project_id="$(printf '%s' "$recovery_json" | python3 -c 'import json,sys; print(json.load(sys.stdin)["projectId"])' 2>/dev/null)"
 
       screen -S dev-agent-gateway -X quit >/dev/null 2>&1 || true
       gateway_pid="$(lsof -tiTCP:8400 -sTCP:LISTEN 2>/dev/null || true)"
@@ -265,22 +261,32 @@ NODE
       screen -dmS dev-agent-gateway bash -lc "cd '$ROOT/packages/gateway' && env PATH=/Users/zhuizhui/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/bin:\$PATH GATEWAY_PORT=8400 ./node_modules/.bin/tsx src/api-gateway.ts 2>&1 | tee -a ../../.codex-run/logs/gateway-screen.log"
       sleep 5
 
-      verify_output="$(GATEWAY_URL="$GATEWAY_URL" INSTANCE_ID="$instance_id" PROJECT_ID="$project_id" node <<'NODE' 2>&1
+      verify_output="$(GATEWAY_URL="$GATEWAY_URL" INSTANCE_ID="$instance_id" node <<'NODE' 2>&1
 const base = process.env.GATEWAY_URL;
 const instanceId = process.env.INSTANCE_ID;
-const expectedProjectId = process.env.PROJECT_ID;
-const res = await fetch(`${base}/pipeline-instances/${instanceId}`);
-const instance = await res.json();
-const taskCount = Object.keys(instance.coordination?.taskIdsBySurface || {}).length;
-if (res.status !== 200 || instance.id !== instanceId || instance.status !== 'cancelled' || instance.coordination?.projectId !== expectedProjectId || taskCount < 1) {
+const res = await fetch(`${base}/pipeline-instances/${instanceId}/coordination`);
+const summary = await res.json();
+const taskCount = Object.keys(summary.instance?.coordination?.taskIdsBySurface || {}).length;
+const statuses = summary.bindings?.map((binding) => binding.task?.status) || [];
+const blockedCount = statuses.filter((status) => status === 'blocked').length;
+if (
+  res.status !== 200 ||
+  summary.instance?.id !== instanceId ||
+  summary.instance?.status !== 'failed' ||
+  !String(summary.instance?.error || '').includes('Gateway restart') ||
+  taskCount < 1 ||
+  blockedCount !== statuses.length
+) {
   throw new Error(`recovery failed: ${res.status} ${JSON.stringify({
-    id: instance.id,
-    status: instance.status,
-    projectId: instance.coordination?.projectId,
+    id: summary.instance?.id,
+    status: summary.instance?.status,
+    error: summary.instance?.error,
+    projectId: summary.instance?.coordination?.projectId,
     taskCount,
+    statuses,
   })}`);
 }
-console.log(`instance=${instanceId} project=${expectedProjectId} tasks=${taskCount}`);
+console.log(`instance=${instanceId} project=${summary.instance?.coordination?.projectId || 'none'} tasks=${taskCount} blocked=${blockedCount}`);
 NODE
 )"
       recovery_code=$?
