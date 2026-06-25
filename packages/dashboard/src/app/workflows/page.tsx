@@ -3,9 +3,11 @@
 import { useState, useEffect } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
 import { SkeletonCard } from '@/components/ui/skeleton'
 import { ErrorState } from '@/components/ui/error-state'
 import { EmptyState } from '@/components/ui/empty-state'
+import { useToast } from '@/components/ui/toast'
 
 interface WorkflowRecord {
   id: string
@@ -32,6 +34,8 @@ interface Template {
   id: string
   name: string
   description: string
+  source?: string
+  deletable?: boolean
   steps: { agentId: string; order: number; description: string }[]
 }
 
@@ -44,10 +48,12 @@ const STATUS_COLORS: Record<string, string> = {
 }
 
 export default function WorkflowsPage() {
+  const { showToast } = useToast()
   const [workflows, setWorkflows] = useState<WorkflowRecord[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [templates, setTemplates] = useState<Template[]>([])
+  const [startingTemplate, setStartingTemplate] = useState<string | null>(null)
 
   const fetchWorkflows = () => {
     setLoading(true)
@@ -70,6 +76,36 @@ export default function WorkflowsPage() {
       .then((data) => setTemplates(data.templates || []))
       .catch(() => {})
   }, [])
+
+  const startTemplate = async (template: Template) => {
+    setStartingTemplate(template.id)
+    try {
+      const res = await fetch('/api/pipelines/execute', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          pipelineId: template.id,
+          initialInput: {
+            userRequest: `Dashboard workflow template started ${template.id}. Produce concise coordination artifacts and preserve results as documents.`,
+            requestedBy: 'dashboard-workflows',
+          },
+          options: {
+            dryRun: true,
+            surfaceTimeoutMs: 90_000,
+          },
+        }),
+      })
+      const data = await res.json()
+      if (!res.ok || data.error) throw new Error(data.error || 'Workflow start failed')
+      showToast(`Workflow started: ${template.id}`, 'success')
+      fetchWorkflows()
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : 'Unknown error'
+      showToast(msg, 'error')
+    } finally {
+      setStartingTemplate(null)
+    }
+  }
 
   if (loading) {
     return (
@@ -107,9 +143,29 @@ export default function WorkflowsPage() {
           <h2 className="text-sm font-semibold text-gray-700 mb-3 uppercase">Available Templates</h2>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
             {templates.map((tpl) => (
-              <Card key={tpl.id}>
+              <Card key={tpl.id} data-testid={`workflow-template-${tpl.id}`}>
                 <CardContent className="p-4">
-                  <h3 className="font-semibold text-gray-900">{tpl.name}</h3>
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <h3 className="font-semibold text-gray-900">{tpl.name}</h3>
+                        {tpl.source === 'runtime-yaml' && (
+                          <Badge variant="outline" className="border-emerald-300 text-emerald-700">
+                            运行时 YAML
+                          </Badge>
+                        )}
+                      </div>
+                      <p className="mt-1 text-xs font-mono text-gray-400">{tpl.id}</p>
+                    </div>
+                    <Button
+                      size="sm"
+                      onClick={() => startTemplate(tpl)}
+                      disabled={startingTemplate === tpl.id}
+                      data-testid={`workflow-template-start-${tpl.id}`}
+                    >
+                      {startingTemplate === tpl.id ? '启动中...' : '启动'}
+                    </Button>
+                  </div>
                   <p className="text-xs text-gray-500 mt-1">{tpl.description}</p>
                   <div className="flex items-center space-x-1 mt-3">
                     {tpl.steps.map((step, i) => (
