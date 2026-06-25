@@ -88,6 +88,8 @@ forwards the selected `surfaceTimeoutMs` option by starting a 1ms dry-run and ob
 expected failed Surface.
 The gate also checks Gateway and Dashboard Pipeline instance filters (`status`, `pipelineId`,
 and `limit`) so long-running MVP sessions can keep history views bounded and reviewable.
+Workflow list filters are covered in the same way, including Gateway and Dashboard proxy
+checks for `status` and `limit`.
 
 To verify restart recovery, opt in with:
 

@@ -51,6 +51,14 @@ const STATUS_COLORS: Record<string, string> = {
   skipped: 'bg-yellow-500',
 }
 
+const STATUS_OPTIONS = [
+  { label: '全部', value: 'all' },
+  { label: '运行中', value: 'running' },
+  { label: '失败', value: 'failed' },
+  { label: '完成', value: 'completed' },
+  { label: '等待', value: 'pending' },
+]
+
 export default function WorkflowsPage() {
   const { showToast } = useToast()
   const [workflows, setWorkflows] = useState<WorkflowRecord[]>([])
@@ -58,11 +66,13 @@ export default function WorkflowsPage() {
   const [error, setError] = useState('')
   const [templates, setTemplates] = useState<Template[]>([])
   const [startingTemplate, setStartingTemplate] = useState<string | null>(null)
+  const [statusFilter, setStatusFilter] = useState('all')
+  const [pipelineOnly, setPipelineOnly] = useState(false)
 
   const fetchWorkflows = () => {
     setLoading(true)
     setError('')
-    fetch('/api/workflows')
+    fetch('/api/workflows?limit=100')
       .then((r) => r.json())
       .then((data) => {
         setWorkflows(data.workflows || [])
@@ -71,6 +81,12 @@ export default function WorkflowsPage() {
       .catch(() => setError('Failed to fetch workflows'))
       .finally(() => setLoading(false))
   }
+
+  const visibleWorkflows = workflows.filter((workflow) => {
+    if (statusFilter !== 'all' && workflow.status !== statusFilter) return false
+    if (pipelineOnly && !workflow.pipeline_instance_id) return false
+    return true
+  })
 
   useEffect(() => { fetchWorkflows() }, [])
 
@@ -137,9 +153,41 @@ export default function WorkflowsPage() {
       <div>
         <h1 className="text-2xl font-bold text-gray-900">Workflows</h1>
         <p className="text-sm text-gray-500 mt-1">
-          {workflows.length} workflows · {templates.length} templates available
+          {visibleWorkflows.length}/{workflows.length} workflows · {templates.length} templates available
         </p>
       </div>
+
+      <Card>
+        <CardContent className="flex flex-col gap-3 p-4 md:flex-row md:items-center md:justify-between">
+          <div className="flex flex-wrap items-center gap-2">
+            <select
+              value={statusFilter}
+              onChange={(event) => setStatusFilter(event.target.value)}
+              className="h-9 rounded-md border border-gray-300 bg-white px-3 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100"
+              aria-label="Workflow status filter"
+              data-testid="workflow-status-filter"
+            >
+              {STATUS_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+            <label className="flex h-9 items-center gap-2 rounded-md border border-gray-300 bg-white px-3 text-sm text-gray-700">
+              <input
+                type="checkbox"
+                checked={pipelineOnly}
+                onChange={(event) => setPipelineOnly(event.target.checked)}
+                data-testid="workflow-pipeline-only"
+              />
+              只看 Pipeline
+            </label>
+          </div>
+          <Button variant="outline" size="sm" onClick={fetchWorkflows}>
+            刷新
+          </Button>
+        </CardContent>
+      </Card>
 
       {/* Templates */}
       {templates.length > 0 && (
@@ -187,15 +235,15 @@ export default function WorkflowsPage() {
       )}
 
       {/* Workflow List */}
-      {workflows.length === 0 ? (
+      {visibleWorkflows.length === 0 ? (
         <EmptyState
           icon="🔄"
-          title="No workflows yet"
-          description="Start a workflow from the PM agent when you confirm requirements."
+          title={workflows.length === 0 ? 'No workflows yet' : 'No matching workflows'}
+          description={workflows.length === 0 ? 'Start a workflow from the PM agent when you confirm requirements.' : 'Change the filters to review more workflow records.'}
         />
       ) : (
         <div className="space-y-3">
-          {workflows.map((wf) => (
+          {visibleWorkflows.map((wf) => (
             <Card key={wf.id}>
               <CardContent className="p-5">
                 <div className="flex items-center justify-between mb-3">

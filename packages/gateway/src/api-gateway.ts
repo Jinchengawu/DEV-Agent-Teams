@@ -308,11 +308,33 @@ async function main(): Promise<void> {
 
       // 工作流列表（Dashboard 工作流页）
       if (path === '/v1/workflows' && req.method === 'GET') {
-        const limit = parseInt(url.searchParams.get('limit') || '50', 10);
-        const offset = parseInt(url.searchParams.get('offset') || '0', 10);
-        const workflows = agentApp.orchestrator.listWorkflows(limit, offset).map(serializeWorkflow);
+        const limitParam = Number(url.searchParams.get('limit') || 50);
+        const offsetParam = Number(url.searchParams.get('offset') || 0);
+        const limit = Number.isFinite(limitParam) ? Math.min(Math.max(Math.trunc(limitParam), 1), 500) : 50;
+        const offset = Number.isFinite(offsetParam) ? Math.max(Math.trunc(offsetParam), 0) : 0;
+        const status = url.searchParams.get('status');
+        const pipelineId = url.searchParams.get('pipelineId');
+        const projectId = url.searchParams.get('projectId');
+        const pipelineInstanceId = url.searchParams.get('pipelineInstanceId');
+        const workflows = agentApp.orchestrator.listWorkflows(500, 0)
+          .map(serializeWorkflow)
+          .filter((workflow) => !status || status === 'all' || workflow.status === status)
+          .filter((workflow) => !pipelineId || workflow.pipeline_id === pipelineId)
+          .filter((workflow) => !projectId || workflow.project_id === projectId)
+          .filter((workflow) => !pipelineInstanceId || workflow.pipeline_instance_id === pipelineInstanceId)
+          .slice(offset, offset + limit);
         res.writeHead(200, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ workflows }));
+        res.end(JSON.stringify({
+          workflows,
+          filters: {
+            status: status || 'all',
+            pipelineId: pipelineId || null,
+            projectId: projectId || null,
+            pipelineInstanceId: pipelineInstanceId || null,
+            limit,
+            offset,
+          },
+        }));
         return;
       }
 

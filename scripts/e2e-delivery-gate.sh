@@ -269,6 +269,33 @@ raise SystemExit(0 if isinstance(data.get("workflows"), list) else 1)' /tmp/dev-
     record "gateway workflow registry" FAIL "GET /v1/workflows failed"
   fi
 
+  if curl -fsS "$GATEWAY_URL/v1/workflows?status=failed&limit=3" >/tmp/dev-agent-workflows-filtered.json 2>/dev/null; then
+    if python3 -c 'import json, sys
+with open(sys.argv[1], "r", encoding="utf-8") as f:
+    data = json.load(f)
+workflows = data.get("workflows", [])
+filters = data.get("filters", {})
+ok = (
+    isinstance(workflows, list)
+    and len(workflows) <= 3
+    and filters.get("status") == "failed"
+    and int(filters.get("limit") or 0) == 3
+    and all(workflow.get("status") == "failed" for workflow in workflows)
+)
+raise SystemExit(0 if ok else 1)' /tmp/dev-agent-workflows-filtered.json
+    then
+      workflow_filter_summary="$(python3 -c 'import json, sys
+with open(sys.argv[1], "r", encoding="utf-8") as f:
+    data = json.load(f)
+print("status=failed limit=3 returned={}".format(len(data.get("workflows", []))))' /tmp/dev-agent-workflows-filtered.json)"
+      record "gateway workflow filters" PASS "$workflow_filter_summary"
+    else
+      record "gateway workflow filters" FAIL "filtered workflow response was invalid"
+    fi
+  else
+    record "gateway workflow filters" FAIL "GET /v1/workflows?status=failed&limit=3 failed"
+  fi
+
   if curl -fsS "$GATEWAY_URL/v1/templates" >/tmp/dev-agent-templates.json 2>/dev/null; then
     if python3 -c 'import json, sys
 with open(sys.argv[1], "r", encoding="utf-8") as f:
@@ -708,6 +735,33 @@ print("workflows={} bound={} latest={} project={} tasks={}".format(len(workflows
     fi
   else
     record "dashboard workflow proxy" FAIL "GET /api/workflows failed"
+  fi
+
+  if curl -fsS "$DASHBOARD_URL/api/workflows?status=failed&limit=3" >/tmp/dev-agent-dashboard-workflows-filtered.json 2>/dev/null; then
+    if python3 -c 'import json, sys
+with open(sys.argv[1], "r", encoding="utf-8") as f:
+    data = json.load(f)
+workflows = data.get("workflows", [])
+filters = data.get("filters", {})
+ok = (
+    isinstance(workflows, list)
+    and len(workflows) <= 3
+    and filters.get("status") == "failed"
+    and int(filters.get("limit") or 0) == 3
+    and all(workflow.get("status") == "failed" for workflow in workflows)
+)
+raise SystemExit(0 if ok else 1)' /tmp/dev-agent-dashboard-workflows-filtered.json
+    then
+      dashboard_workflow_filter_summary="$(python3 -c 'import json, sys
+with open(sys.argv[1], "r", encoding="utf-8") as f:
+    data = json.load(f)
+print("status=failed limit=3 returned={}".format(len(data.get("workflows", []))))' /tmp/dev-agent-dashboard-workflows-filtered.json)"
+      record "dashboard workflow filters" PASS "$dashboard_workflow_filter_summary"
+    else
+      record "dashboard workflow filters" FAIL "filtered Dashboard workflow response was invalid"
+    fi
+  else
+    record "dashboard workflow filters" FAIL "GET /api/workflows?status=failed&limit=3 failed"
   fi
 
   if curl -fsS "$DASHBOARD_URL/api/pipeline-instances" >/tmp/dev-agent-dashboard-pipeline-instances.json 2>/dev/null; then
