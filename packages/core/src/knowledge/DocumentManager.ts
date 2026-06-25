@@ -11,6 +11,7 @@
 
 import Database from 'better-sqlite3';
 import { join } from 'node:path';
+import { eventBus } from '../event/EventBus.js';
 
 // ============================================================================
 // Types
@@ -325,6 +326,23 @@ export class DocumentManager {
       JSON.stringify(fullDoc.relatedTaskIds), JSON.stringify(fullDoc.relatedAgentIds),
       fullDoc.commentCount, fullDoc.createdAt, fullDoc.updatedAt, JSON.stringify(fullDoc.metadata)
     );
+
+    eventBus.emit({
+      type: 'document.created',
+      source: 'document',
+      timestamp: now,
+      payload: {
+        documentId: fullDoc.id,
+        projectId: fullDoc.projectId,
+        taskId: fullDoc.taskId,
+        type: fullDoc.type,
+        title: fullDoc.title,
+        tags: fullDoc.tags,
+        relatedTaskIds: fullDoc.relatedTaskIds,
+        relatedDocIds: fullDoc.relatedDocIds,
+        metadata: fullDoc.metadata,
+      },
+    });
 
     return fullDoc;
   }
