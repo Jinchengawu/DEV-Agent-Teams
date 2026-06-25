@@ -99,6 +99,7 @@ export default function KnowledgePage() {
 
   // 过滤和排序
   const [filterProject, setFilterProject] = useState('');
+  const [filterTask, setFilterTask] = useState('');
   const [filterType, setFilterType] = useState('');
   const [filterAuthor, setFilterAuthor] = useState('');
   const [sortBy, setSortBy] = useState<'updatedAt' | 'createdAt' | 'title'>('updatedAt');
@@ -111,6 +112,11 @@ export default function KnowledgePage() {
 
   // 初始加载
   useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const projectId = params.get('projectId');
+    const taskId = params.get('taskId');
+    if (projectId) setFilterProject(projectId);
+    if (taskId) setFilterTask(taskId);
     fetchStats();
     fetchProjects();
     fetchDocuments();
@@ -119,7 +125,7 @@ export default function KnowledgePage() {
   // 过滤变化时重新加载
   useEffect(() => {
     fetchDocuments();
-  }, [filterProject, filterType, filterAuthor, sortBy, sortOrder]);
+  }, [filterProject, filterTask, filterType, filterAuthor, sortBy, sortOrder]);
 
   // 加载文档详情时获取评论
   useEffect(() => {
@@ -150,6 +156,7 @@ export default function KnowledgePage() {
     try {
       const params = new URLSearchParams();
       if (filterProject) params.set('projectId', filterProject);
+      if (filterTask) params.set('taskId', filterTask);
       if (filterType) params.set('type', filterType);
       if (filterAuthor) params.set('authorId', filterAuthor);
       params.set('sortBy', sortBy);
@@ -172,6 +179,7 @@ export default function KnowledgePage() {
       const params = new URLSearchParams();
       params.set('q', searchKeyword);
       if (filterProject) params.set('projectId', filterProject);
+      if (filterTask) params.set('taskId', filterTask);
       if (filterType) params.set('type', filterType);
       const res = await fetch(`/api/v2/documents/search?${params.toString()}`);
       if (res.ok) {
@@ -254,6 +262,7 @@ export default function KnowledgePage() {
                 <div className="flex items-center gap-4 mt-2 text-sm text-gray-500">
                   <span>👤 {selectedDoc.authorName}</span>
                   <span>📁 {getProjectName(selectedDoc.projectId)}</span>
+                  {selectedDoc.taskId && <span>✅ {selectedDoc.taskId}</span>}
                   <span>📝 {formatDate(selectedDoc.updatedAt)}</span>
                 </div>
               </div>
@@ -421,6 +430,15 @@ export default function KnowledgePage() {
                 ))}
               </select>
 
+              {/* 任务过滤 */}
+              <input
+                type="text"
+                placeholder="任务ID"
+                value={filterTask}
+                onChange={(e) => setFilterTask(e.target.value)}
+                className="px-3 py-2 border border-gray-300 rounded-lg text-sm min-w-[180px]"
+              />
+
               {/* 作者过滤 */}
               <select
                 value={filterAuthor}
@@ -504,6 +522,12 @@ export default function KnowledgePage() {
                         <span className="font-medium text-blue-600">{doc.authorName}</span>
                         <span>·</span>
                         <span>{getProjectName(doc.projectId)}</span>
+                        {doc.taskId && (
+                          <>
+                            <span>·</span>
+                            <span className="font-mono">{doc.taskId}</span>
+                          </>
+                        )}
                       </div>
                       <span>{formatDate(doc.updatedAt)}</span>
                     </div>

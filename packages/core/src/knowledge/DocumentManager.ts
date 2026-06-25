@@ -443,7 +443,7 @@ export class DocumentManager {
   /**
    * 全文搜索
    */
-  searchDocuments(keyword: string, options?: { projectId?: string; type?: string; limit?: number }): DocumentV2[] {
+  searchDocuments(keyword: string, options?: { projectId?: string; taskId?: string; type?: string; limit?: number }): DocumentV2[] {
     const cleanQuery = keyword.replace(/[^\u4e00-\u9fa5a-zA-Z0-9\s]/g, ' ').trim();
     if (!cleanQuery) return [];
 
@@ -460,6 +460,10 @@ export class DocumentManager {
     if (options?.projectId) {
       sql += ' AND d.project_id = ?';
       params.push(options.projectId);
+    }
+    if (options?.taskId) {
+      sql += ' AND d.task_id = ?';
+      params.push(options.taskId);
     }
     if (options?.type) {
       sql += ' AND d.type = ?';

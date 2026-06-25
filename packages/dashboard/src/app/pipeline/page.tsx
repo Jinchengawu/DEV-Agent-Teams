@@ -380,7 +380,14 @@ export default function PipelinePage() {
 
                         {taskId && (
                           <div className="mb-2 rounded border border-gray-200 bg-gray-50 px-2 py-1 text-[11px] text-gray-600">
-                            任务: <span className="font-mono">{taskId}</span>
+                            任务:{' '}
+                            <a
+                              href={`/knowledge?projectId=${encodeURIComponent(instance?.coordination?.projectId || '')}&taskId=${encodeURIComponent(taskId)}`}
+                              className="font-mono text-blue-600 hover:underline"
+                              onClick={(event) => event.stopPropagation()}
+                            >
+                              {taskId}
+                            </a>
                             {documentId && (
                               <span className="ml-2">
                                 文档: <span className="font-mono">{documentId}</span>
@@ -572,7 +579,12 @@ export default function PipelinePage() {
                 {currentInstance.coordination?.projectId && (
                   <div>
                     <span className="text-gray-500">协作项目:</span>
-                    <span className="ml-2 font-mono">{currentInstance.coordination.projectId}</span>
+                    <a
+                      href={`/knowledge?projectId=${encodeURIComponent(currentInstance.coordination.projectId)}`}
+                      className="ml-2 font-mono text-blue-600 hover:underline"
+                    >
+                      {currentInstance.coordination.projectId}
+                    </a>
                   </div>
                 )}
                 {currentInstance.coordination?.taskIdsBySurface && (

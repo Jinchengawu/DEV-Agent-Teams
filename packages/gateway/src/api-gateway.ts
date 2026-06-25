@@ -763,6 +763,18 @@ async function main(): Promise<void> {
           }
         }
 
+        // 搜索文档
+        if (path === '/api/v2/documents/search') {
+          const q = url.searchParams.get('q') || '';
+          const projectId = url.searchParams.get('projectId') || undefined;
+          const taskId = url.searchParams.get('taskId') || undefined;
+          const type = url.searchParams.get('type') || undefined;
+          const docs = dm.searchDocuments(q, { projectId, taskId, type });
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ documents: docs, total: docs.length }));
+          return;
+        }
+
         // 单文档操作
         const docIdMatch = path.match(/^\/api\/v2\/documents\/([^\/]+)$/);
         if (docIdMatch) {
@@ -791,17 +803,6 @@ async function main(): Promise<void> {
             res.end();
             return;
           }
-        }
-
-        // 搜索文档
-        if (path === '/api/v2/documents/search') {
-          const q = url.searchParams.get('q') || '';
-          const projectId = url.searchParams.get('projectId') || undefined;
-          const type = url.searchParams.get('type') || undefined;
-          const docs = dm.searchDocuments(q, { projectId, type });
-          res.writeHead(200, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({ documents: docs, total: docs.length }));
-          return;
         }
 
         // 按 Agent 查询

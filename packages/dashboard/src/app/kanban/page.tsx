@@ -226,7 +226,14 @@ export default function KanbanPage() {
                     {task.source === 'coordination' && (
                       <div className="mt-2 rounded border border-blue-100 bg-blue-50 px-2 py-1 text-[11px] text-blue-700">
                         Pipeline 协作任务
-                        {task.project_id && <span className="ml-1 font-mono">{task.project_id}</span>}
+                        {task.project_id && (
+                          <a
+                            href={`/knowledge?projectId=${encodeURIComponent(task.project_id)}&taskId=${encodeURIComponent(task.id)}`}
+                            className="ml-1 font-mono hover:underline"
+                          >
+                            {task.project_id}
+                          </a>
+                        )}
                       </div>
                     )}
                     <div className="flex items-center gap-2 mt-2">
