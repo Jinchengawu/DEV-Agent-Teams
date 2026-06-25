@@ -144,7 +144,7 @@ raise SystemExit(0 if any(p.get("id") == "stock-analysis-system" for p in pipeli
   set +e
   yaml_loader_output="$(GATEWAY_URL="$GATEWAY_URL" node <<'NODE' 2>&1
 const base = process.env.GATEWAY_URL;
-const id = `e2e-inline-yaml-${Date.now()}`;
+const id = 'e2e-inline-yaml-persistent';
 const yaml = `
 id: ${id}
 name: E2E Inline YAML Pipeline
@@ -378,7 +378,12 @@ if (
     retroDocIds,
   })}`);
 }
-console.log(`instance=${instanceId} project=${summary.instance?.coordination?.projectId || 'none'} tasks=${taskCount} blocked=${blockedCount} experience=${experienceDocId}`);
+const pipelinesRes = await fetch(`${base}/pipelines`);
+const pipelines = await pipelinesRes.json();
+if (!pipelines.pipelines?.some((pipeline) => pipeline.id === 'e2e-inline-yaml-persistent')) {
+  throw new Error('persistent inline YAML pipeline was not restored after Gateway restart');
+}
+console.log(`instance=${instanceId} project=${summary.instance?.coordination?.projectId || 'none'} tasks=${taskCount} blocked=${blockedCount} experience=${experienceDocId} yamlRestored=1`);
 NODE
 )"
       recovery_code=$?

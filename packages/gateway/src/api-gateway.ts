@@ -11,9 +11,10 @@
  */
 
 import { createServer } from 'node:http';
-import { mkdirSync, existsSync, createWriteStream } from 'node:fs';
+import { mkdirSync, existsSync, createWriteStream, readdirSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { homedir } from 'node:os';
 import { config } from 'dotenv';
 import { createAgentApp } from '@dev-agent/core';
 import type { OrchestratorEvent, MeetingProgressEvent } from '@dev-agent/core';
@@ -79,6 +80,34 @@ function createRequestAbortSignal(res: { writableEnded: boolean; on: (event: str
   return controller.signal;
 }
 
+function getDataDir(): string {
+  return process.env.AGENT_DB_PATH || join(homedir(), '.dev-agent/data');
+}
+
+function getRuntimePipelinesDir(): string {
+  return join(getDataDir(), 'pipelines');
+}
+
+function pipelineFileName(id: string): string {
+  return `${id.replace(/[^a-zA-Z0-9_.-]/g, '_')}.yaml`;
+}
+
+async function loadRuntimePipelines(agentApp: Awaited<ReturnType<typeof createAgentApp>>): Promise<void> {
+  const dir = getRuntimePipelinesDir();
+  if (!existsSync(dir)) return;
+
+  for (const file of readdirSync(dir)) {
+    if (!file.endsWith('.yaml') && !file.endsWith('.yml')) continue;
+    const filePath = join(dir, file);
+    try {
+      await agentApp.pipelineOrchestrator.loadFromYaml(filePath);
+      console.log(`[Gateway] Runtime Pipeline YAML 已加载: ${filePath}`);
+    } catch (error) {
+      console.warn(`[Gateway] Runtime Pipeline YAML 加载失败: ${filePath}`, error);
+    }
+  }
+}
+
 // ============================================================================
 // Main
 // ============================================================================
@@ -109,6 +138,7 @@ async function main(): Promise<void> {
   } catch (err) {
     console.warn('[Gateway] Pipeline 加载失败:', err);
   }
+  await loadRuntimePipelines(agentApp);
   const server = createServer(async (req, res) => {
     const startTime = Date.now();
     const url = new URL(req.url || '/', `http://${req.headers.host}`);
@@ -327,6 +357,9 @@ async function main(): Promise<void> {
 
         try {
           const loaded = agentApp.pipelineOrchestrator.loadFromYamlContent(yamlContent, source);
+          const runtimeDir = getRuntimePipelinesDir();
+          mkdirSync(runtimeDir, { recursive: true });
+          writeFileSync(join(runtimeDir, pipelineFileName(loaded.id)), yamlContent, 'utf8');
           const pipelines = agentApp.pipelineOrchestrator.listPipelines();
           res.writeHead(201, { 'Content-Type': 'application/json' });
           res.end(JSON.stringify({ pipeline: loaded, pipelines: pipelines.map((pipeline) => pipeline.id) }));
