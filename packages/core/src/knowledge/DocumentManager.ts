@@ -282,6 +282,13 @@ export class DocumentManager {
     return rows.map(r => this.rowToTask(r));
   }
 
+  listTasksByAssignee(assignee: string): Task[] {
+    const rows = this.db.prepare(
+      'SELECT * FROM tasks WHERE assignee = ? ORDER BY updated_at DESC'
+    ).all(assignee) as any[];
+    return rows.map(r => this.rowToTask(r));
+  }
+
   // ============================================================================
   // 文档操作
   // ============================================================================
@@ -456,6 +463,94 @@ export class DocumentManager {
 
     const rows = this.db.prepare(sql).all(...params) as any[];
     return rows.map(r => this.rowToDocument(r));
+  }
+
+  /**
+   * 获取 Agent 最近活动（文档 + 评论 + 任务）
+   */
+  getAgentActivities(agentId: string, limit: number = 5): Array<{
+    action: string;
+    time: string;
+    type: 'document' | 'comment' | 'task' | 'meeting' | 'code';
+    details?: string;
+  }> {
+    const activities: Array<{
+      action: string;
+      time: string;
+      type: 'document' | 'comment' | 'task' | 'meeting' | 'code';
+      details?: string;
+      timestamp: number;
+    }> = [];
+
+    // 1. 文档创建
+    const docs = this.db.prepare(`
+      SELECT title, type, created_at FROM documents_v2
+      WHERE author_id = ? ORDER BY created_at DESC LIMIT ?
+    `).all(agentId, limit) as any[];
+    for (const doc of docs) {
+      const typeMap: Record<string, any> = {
+        prd: 'document', tech_spec: 'document', meeting: 'meeting',
+        report: 'document', task: 'task', general: 'document',
+        review: 'code', code_review: 'code',
+      };
+      activities.push({
+        action: `创建文档: ${doc.title}`,
+        time: this.timeAgo(doc.created_at),
+        type: typeMap[doc.type] || 'document',
+        timestamp: doc.created_at,
+      });
+    }
+
+    // 2. 评论
+    const comments = this.db.prepare(`
+      SELECT c.content, c.created_at, d.title as doc_title
+      FROM document_comments c
+      JOIN documents_v2 d ON c.document_id = d.id
+      WHERE c.author_id = ? ORDER BY c.created_at DESC LIMIT ?
+    `).all(agentId, limit) as any[];
+    for (const c of comments) {
+      activities.push({
+        action: `评论文档: ${c.doc_title}`,
+        time: this.timeAgo(c.created_at),
+        type: 'comment',
+        details: c.content.substring(0, 50),
+        timestamp: c.created_at,
+      });
+    }
+
+    // 3. 任务分配
+    const tasks = this.db.prepare(`
+      SELECT title, status, updated_at FROM tasks
+      WHERE assignee = ? ORDER BY updated_at DESC LIMIT ?
+    `).all(agentId, limit) as any[];
+    for (const task of tasks) {
+      const statusMap: Record<string, string> = {
+        todo: '待处理', in_progress: '进行中', review: '审核中', done: '已完成',
+      };
+      activities.push({
+        action: `任务 ${statusMap[task.status] || task.status}: ${task.title}`,
+        time: this.timeAgo(task.updated_at),
+        type: 'task',
+        timestamp: task.updated_at,
+      });
+    }
+
+    // 按时间排序，取 limit 条
+    activities.sort((a, b) => b.timestamp - a.timestamp);
+    return activities.slice(0, limit).map(({ timestamp, ...rest }) => rest);
+  }
+
+  private timeAgo(timestamp: number): string {
+    const now = Date.now();
+    const diff = now - timestamp;
+    const minutes = Math.floor(diff / 60000);
+    const hours = Math.floor(diff / 3600000);
+    const days = Math.floor(diff / 86400000);
+    if (minutes < 1) return '刚刚';
+    if (minutes < 60) return `${minutes}分钟前`;
+    if (hours < 24) return `${hours}小时前`;
+    if (days < 7) return `${days}天前`;
+    return new Date(timestamp).toLocaleDateString('zh-CN');
   }
 
   /**
@@ -668,5 +763,3 @@ export function resetGlobalDocumentManager(): void {
 export function createDocumentManager(config?: DocumentManagerConfig): DocumentManager {
   return new DocumentManager(config);
 }
-
-export type { DocumentManagerConfig, DocumentV2, DocumentComment, DocumentQuery, Project, Task };

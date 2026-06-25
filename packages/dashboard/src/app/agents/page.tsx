@@ -158,20 +158,49 @@ function AgentInteractionPanel({
     catchphrase: '收到！',
   }
   const mood = getAgentMood(agent)
+  const { showToast } = useToast()
 
-  // 模拟最近活动数据
-  const [activities] = useState([
-    { action: '完成 PRD 文档', time: '2分钟前', type: 'document' },
-    { action: '参与 Meeting 讨论', time: '15分钟前', type: 'meeting' },
-    { action: '提交代码 review', time: '1小时前', type: 'code' },
-  ])
+  // 真实数据：从 API 获取任务统计
+  const [taskStats, setTaskStats] = useState({ total: 0, inProgress: 0, completed: 0, pending: 0 })
+  const [taskStatsLoading, setTaskStatsLoading] = useState(true)
 
-  const [taskStats] = useState({
-    total: 12,
-    inProgress: 3,
-    completed: 8,
-    pending: 1,
-  })
+  useEffect(() => {
+    fetch(`/api/v2/agents/${agent.id}/tasks`)
+      .then(r => r.json())
+      .then((data: { tasks: Array<{ status: string }> }) => {
+        const tasks = data.tasks || []
+        const inProgress = tasks.filter(t => t.status === 'in_progress').length
+        const completed = tasks.filter(t => t.status === 'done').length
+        const pending = tasks.filter(t => t.status === 'todo' || t.status === 'blocked').length
+        setTaskStats({
+          total: tasks.length,
+          inProgress,
+          completed,
+          pending,
+        })
+      })
+      .catch(() => setTaskStats({ total: 0, inProgress: 0, completed: 0, pending: 0 }))
+      .finally(() => setTaskStatsLoading(false))
+  }, [agent.id])
+
+  // 真实数据：从 API 获取最近活动
+  const [activities, setActivities] = useState<Array<{
+    action: string
+    time: string
+    type: 'document' | 'comment' | 'task' | 'meeting' | 'code'
+    details?: string
+  }>>([])
+  const [activitiesLoading, setActivitiesLoading] = useState(true)
+
+  useEffect(() => {
+    fetch(`/api/v2/agents/${agent.id}/activities?limit=5`)
+      .then(r => r.json())
+      .then((data: { activities: Array<{ action: string; time: string; type: any; details?: string }> }) => {
+        setActivities(data.activities || [])
+      })
+      .catch(() => setActivities([]))
+      .finally(() => setActivitiesLoading(false))
+  }, [agent.id])
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
@@ -239,19 +268,19 @@ function AgentInteractionPanel({
             <h3 className="text-sm font-semibold text-gray-700 mb-2">📊 任务状态</h3>
             <div className="grid grid-cols-4 gap-2">
               <div className="bg-blue-50 rounded-lg p-3 text-center">
-                <p className="text-lg font-bold text-blue-600">{taskStats.total}</p>
+                <p className="text-lg font-bold text-blue-600">{taskStatsLoading ? '…' : taskStats.total}</p>
                 <p className="text-xs text-gray-500">总任务</p>
               </div>
               <div className="bg-amber-50 rounded-lg p-3 text-center">
-                <p className="text-lg font-bold text-amber-600">{taskStats.inProgress}</p>
+                <p className="text-lg font-bold text-amber-600">{taskStatsLoading ? '…' : taskStats.inProgress}</p>
                 <p className="text-xs text-gray-500">进行中</p>
               </div>
               <div className="bg-green-50 rounded-lg p-3 text-center">
-                <p className="text-lg font-bold text-green-600">{taskStats.completed}</p>
+                <p className="text-lg font-bold text-green-600">{taskStatsLoading ? '…' : taskStats.completed}</p>
                 <p className="text-xs text-gray-500">已完成</p>
               </div>
               <div className="bg-gray-50 rounded-lg p-3 text-center">
-                <p className="text-lg font-bold text-gray-600">{taskStats.pending}</p>
+                <p className="text-lg font-bold text-gray-600">{taskStatsLoading ? '…' : taskStats.pending}</p>
                 <p className="text-xs text-gray-500">待处理</p>
               </div>
             </div>
@@ -260,19 +289,29 @@ function AgentInteractionPanel({
           {/* 最近活动 */}
           <div className="mb-5">
             <h3 className="text-sm font-semibold text-gray-700 mb-2">📝 最近动态</h3>
-            <div className="space-y-2">
-              {activities.map((a, i) => (
-                <div key={i} className="flex items-center gap-3 text-sm text-gray-600 bg-gray-50 rounded-lg p-2">
-                  <span className="text-lg">
-                    {a.type === 'document' ? '📄' : a.type === 'meeting' ? '🎙️' : '💻'}
-                  </span>
-                  <div className="flex-1">
-                    <p className="font-medium">{a.action}</p>
-                    <p className="text-xs text-gray-400">{a.time}</p>
+            {activitiesLoading ? (
+              <div className="space-y-2">
+                {Array.from({ length: 3 }).map((_, i) => (
+                  <div key={i} className="bg-gray-50 rounded-lg p-2 h-10 animate-pulse" />
+                ))}
+              </div>
+            ) : activities.length === 0 ? (
+              <p className="text-sm text-gray-400 py-2">暂无活动记录</p>
+            ) : (
+              <div className="space-y-2">
+                {activities.map((a, i) => (
+                  <div key={i} className="flex items-center gap-3 text-sm text-gray-600 bg-gray-50 rounded-lg p-2">
+                    <span className="text-lg">
+                      {a.type === 'document' ? '📄' : a.type === 'meeting' ? '🎙️' : a.type === 'comment' ? '💬' : a.type === 'task' ? '✅' : '💻'}
+                    </span>
+                    <div className="flex-1">
+                      <p className="font-medium">{a.action}</p>
+                      <p className="text-xs text-gray-400">{a.time}</p>
+                    </div>
                   </div>
-                </div>
-              ))}
-            </div>
+                ))}
+              </div>
+            )}
           </div>
 
           {/* 快速操作 */}
@@ -304,6 +343,7 @@ function AgentInteractionPanel({
                 className="w-full"
                 onClick={() => {
                   navigator.clipboard?.writeText(personality.catchphrase)
+                  showToast('口头禅已复制！', 'success')
                 }}
               >
                 🎤 {personality.catchphrase.substring(0, 6)}...
@@ -507,13 +547,14 @@ export default function AgentsPage() {
           onClose={() => setSelectedAgent(null)}
           onChat={() => {
             if (!selectedAgent.online) {
-              showToast('Agent 当前离线，无法对话', 'warning')
+              showToast('Agent 当前离线，无法对话', 'info')
               return
             }
             router.push(`/chat?agent=${selectedAgent.id}`)
           }}
           onViewTasks={() => {
-            showToast('任务看板功能开发中', 'info')
+            router.push('/kanban')
+            setSelectedAgent(null)
           }}
           onViewDocs={() => {
             router.push(`/knowledge`)

@@ -653,6 +653,25 @@ async function main(): Promise<void> {
           return;
         }
 
+        // 按 Agent 查询任务
+        if (path.match(/^\/api\/v2\/agents\/[^\/]+\/tasks$/)) {
+          const agentId = path.split('/')[4];
+          const tasks = dm.listTasksByAssignee(agentId);
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ tasks, total: tasks.length }));
+          return;
+        }
+
+        // 按 Agent 查询最近活动
+        if (path.match(/^\/api\/v2\/agents\/[^\/]+\/activities$/)) {
+          const agentId = path.split('/')[4];
+          const limit = parseInt(url.searchParams.get('limit') || '5', 10);
+          const activities = dm.getAgentActivities(agentId, limit);
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ activities, total: activities.length }));
+          return;
+        }
+
         // 按项目分组
         if (path.match(/^\/api\/v2\/projects\/[^\/]+\/documents$/)) {
           const projectId = path.split('/')[4];
