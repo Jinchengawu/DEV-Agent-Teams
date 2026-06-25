@@ -419,6 +419,28 @@ if (
     kanbanUrl: cancelled.kanban_url,
   })}`);
 }
+const repeatCancelRes = await fetch(`${base}/pipeline-instances/${started.instanceId}/cancel`, {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({ reason: 'E2E repeat cancel idempotency check' }),
+});
+const repeatCancelled = await repeatCancelRes.json();
+if (
+  repeatCancelRes.status !== 200 ||
+  repeatCancelled.status !== 'cancelled' ||
+  repeatCancelled.id !== started.instanceId ||
+  repeatCancelled.pipeline_url !== cancelled.pipeline_url ||
+  repeatCancelled.knowledge_url !== cancelled.knowledge_url ||
+  repeatCancelled.kanban_url !== cancelled.kanban_url
+) {
+  throw new Error(`repeat cancel was not idempotent: ${repeatCancelRes.status} ${JSON.stringify({
+    status: repeatCancelled.status,
+    id: repeatCancelled.id,
+    pipelineUrl: repeatCancelled.pipeline_url,
+    knowledgeUrl: repeatCancelled.knowledge_url,
+    kanbanUrl: repeatCancelled.kanban_url,
+  })}`);
+}
 
 await new Promise((resolve) => setTimeout(resolve, 500));
 const coordinationRes = await fetch(`${base}/pipeline-instances/${started.instanceId}/coordination`);
@@ -469,7 +491,7 @@ for (const [name, request] of controlChecks) {
   }
 }
 
-console.log(`instance=${started.instanceId} project=${started.coordination.projectId} startTasks=${startTaskCount} runningSurfaces=${runningSurfaces.join(',')} tasks=${taskCount} blocked=${blockedCount} experience=${experienceDocId} contextDocs=${filteredDocs.documents.length} unsupportedControls=3`);
+console.log(`instance=${started.instanceId} project=${started.coordination.projectId} startTasks=${startTaskCount} runningSurfaces=${runningSurfaces.join(',')} tasks=${taskCount} blocked=${blockedCount} experience=${experienceDocId} contextDocs=${filteredDocs.documents.length} repeatCancel=1 unsupportedControls=3`);
 NODE
 )"
     control_code=$?

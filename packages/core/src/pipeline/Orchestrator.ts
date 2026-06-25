@@ -77,7 +77,7 @@ interface DryRunGuard {
 }
 
 function isTerminalPipelineStatus(status: PipelineStatus): boolean {
-  return status === 'completed' || status === 'failed' || status === 'rolled_back';
+  return status === 'completed' || status === 'failed' || status === 'cancelled' || status === 'rolled_back';
 }
 
 /**
