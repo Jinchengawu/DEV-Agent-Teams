@@ -41,6 +41,7 @@ When Dashboard is already running, the same script also checks:
 - `GET /api/workflows`
 - `GET /api/workflows/templates`
 - the Pipeline control proxy returns honest unsupported errors when control smoke is enabled
+- `POST /api/pipelines/load-yaml` proxies runtime Pipeline registration to the Gateway
 
 To verify the Pipeline control plane against a running Gateway, opt in with:
 

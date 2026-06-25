@@ -475,6 +475,42 @@ NODE
   else
     record "dashboard pipeline control proxy" WARN "skipped; set RUN_PIPELINE_CONTROL_SMOKE=1 to verify Dashboard control proxy"
   fi
+
+  set +e
+  dashboard_yaml_output="$(DASHBOARD_URL="$DASHBOARD_URL" node <<'NODE' 2>&1
+const base = process.env.DASHBOARD_URL;
+const id = 'e2e-dashboard-yaml-proxy';
+const yaml = `
+id: ${id}
+name: E2E Dashboard YAML Proxy
+version: "0.0.1"
+surfaces:
+  - id: discovery
+    name: Discovery
+    agent: dev-pm
+    workflow:
+      goal: Validate Dashboard YAML proxy.
+edges: []
+`;
+const res = await fetch(`${base}/api/pipelines/load-yaml`, {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({ yaml, source: 'dashboard:e2e-delivery-gate' }),
+});
+const data = await res.json();
+if (res.status !== 201 || data.pipeline?.id !== id) {
+  throw new Error(`dashboard yaml proxy failed: ${res.status} ${JSON.stringify(data)}`);
+}
+console.log(`id=${id}`);
+NODE
+)"
+  dashboard_yaml_code=$?
+  set -e
+  if [ "$dashboard_yaml_code" -eq 0 ]; then
+    record "dashboard yaml pipeline proxy" PASS "$(echo "$dashboard_yaml_output" | tail -n 1 | sed 's/|/\\|/g')"
+  else
+    record "dashboard yaml pipeline proxy" FAIL "exit $dashboard_yaml_code: $(echo "$dashboard_yaml_output" | tail -n 3 | tr '\n' ' ' | sed 's/|/\\|/g')"
+  fi
 else
   record "dashboard root" WARN "Dashboard is not running; skipped Dashboard HTTP checks"
 fi
