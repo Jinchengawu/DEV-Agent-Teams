@@ -40,10 +40,18 @@ function extractOutput(agentResult: { output: string; toolCalls: { toolName: str
 }
 
 function serializeWorkflow(workflow: any): Record<string, unknown> {
+  const context = workflow.context || {};
+  const coordination = context.coordination || {};
+  const isPipelineWorkflow = context.kind === 'pipeline' || Boolean(context.pipelineId);
+
   return {
     id: workflow.id,
-    session_id: workflow.context?.sessionId || workflow.context?.session_id || workflow.id,
-    template: workflow.context?.pipelineId || workflow.goal,
+    session_id: context.sessionId || context.session_id || workflow.id,
+    template: context.pipelineId || workflow.goal,
+    pipeline_instance_id: isPipelineWorkflow ? workflow.id : undefined,
+    pipeline_id: context.pipelineId,
+    project_id: coordination.projectId,
+    coordination_task_count: coordination.taskIdsBySurface ? Object.keys(coordination.taskIdsBySurface).length : 0,
     goal: workflow.goal,
     status: workflow.status,
     current_step: workflow.currentStep,

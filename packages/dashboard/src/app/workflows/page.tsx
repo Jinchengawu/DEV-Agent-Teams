@@ -13,6 +13,10 @@ interface WorkflowRecord {
   id: string
   session_id: string
   template: string
+  pipeline_instance_id?: string
+  pipeline_id?: string
+  project_id?: string
+  coordination_task_count?: number
   status: string
   current_step: number
   created_at: string
@@ -212,9 +216,31 @@ export default function WorkflowsPage() {
                     </div>
                     <p className="text-xs text-gray-400 font-mono mt-1">{wf.id}</p>
                   </div>
-                  <span className="text-xs text-gray-400">
-                    {new Date(wf.created_at).toLocaleString()}
-                  </span>
+                  <div className="flex flex-col items-end gap-1 text-xs">
+                    <span className="text-gray-400">
+                      {new Date(wf.created_at).toLocaleString()}
+                    </span>
+                    <div className="flex flex-wrap justify-end gap-2">
+                      {wf.pipeline_instance_id && (
+                        <a
+                          href={`/pipeline?instanceId=${encodeURIComponent(wf.pipeline_instance_id)}`}
+                          className="text-blue-600 hover:underline"
+                          data-testid={`workflow-pipeline-${wf.id}`}
+                        >
+                          Pipeline
+                        </a>
+                      )}
+                      {wf.project_id && (
+                        <a
+                          href={`/knowledge?projectId=${encodeURIComponent(wf.project_id)}`}
+                          className="text-emerald-700 hover:underline"
+                          data-testid={`workflow-knowledge-${wf.id}`}
+                        >
+                          文档
+                        </a>
+                      )}
+                    </div>
+                  </div>
                 </div>
                 <div className="flex items-center space-x-2">
                   {Array.from({ length: wf.current_step + 1 }).map((_, i) => (
@@ -234,6 +260,7 @@ export default function WorkflowsPage() {
                 </div>
                 <p className="text-xs text-gray-500 mt-2">
                   Step {wf.current_step + 1} · Session: {wf.session_id}
+                  {wf.coordination_task_count ? ` · Tasks: ${wf.coordination_task_count}` : ''}
                 </p>
               </CardContent>
             </Card>

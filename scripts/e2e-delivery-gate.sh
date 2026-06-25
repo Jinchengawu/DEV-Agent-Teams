@@ -621,11 +621,28 @@ raise SystemExit(0 if isinstance(data.get("documents"), list) else 1)' /tmp/dev-
     if python3 -c 'import json, sys
 with open(sys.argv[1], "r", encoding="utf-8") as f:
     data = json.load(f)
-raise SystemExit(0 if isinstance(data.get("workflows"), list) else 1)' /tmp/dev-agent-dashboard-workflows.json
+workflows = data.get("workflows", [])
+ok = (
+    isinstance(workflows, list)
+    and any(
+        workflow.get("pipeline_instance_id")
+        and workflow.get("project_id")
+        and int(workflow.get("coordination_task_count") or 0) > 0
+        for workflow in workflows
+    )
+)
+raise SystemExit(0 if ok else 1)' /tmp/dev-agent-dashboard-workflows.json
     then
-      record "dashboard workflow proxy" PASS "GET /api/workflows returns workflows"
+      workflow_summary="$(python3 -c 'import json, sys
+with open(sys.argv[1], "r", encoding="utf-8") as f:
+    data = json.load(f)
+workflows = data.get("workflows", [])
+bound = [w for w in workflows if w.get("pipeline_instance_id") and w.get("project_id")]
+latest = bound[0] if bound else {}
+print("workflows={} bound={} latest={} project={} tasks={}".format(len(workflows), len(bound), latest.get("pipeline_instance_id", "none"), latest.get("project_id", "none"), latest.get("coordination_task_count", 0)))' /tmp/dev-agent-dashboard-workflows.json)"
+      record "dashboard workflow proxy" PASS "$workflow_summary"
     else
-      record "dashboard workflow proxy" FAIL "GET /api/workflows returned an invalid payload"
+      record "dashboard workflow proxy" FAIL "GET /api/workflows returned no Pipeline workflow binding"
     fi
   else
     record "dashboard workflow proxy" FAIL "GET /api/workflows failed"
