@@ -14,11 +14,12 @@ import type {
   KanbanEvent,
   WorkflowEvent,
   MeetingEvent,
+  ExperienceEvent,
   SystemEvent,
   EventHandler,
 } from './types.js';
 
-export type AnyEvent = KanbanEvent | WorkflowEvent | MeetingEvent | SystemEvent;
+export type AnyEvent = KanbanEvent | WorkflowEvent | MeetingEvent | ExperienceEvent | SystemEvent;
 
 /**
  * 事件总线 — 全系统共享的单例

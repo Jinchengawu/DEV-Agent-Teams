@@ -207,8 +207,17 @@ const blockedCount = statuses.filter((status) => status === 'blocked').length;
 if (blockedCount !== coordination.bindings.length) {
   throw new Error(`cancel did not block all tasks: ${JSON.stringify(statuses)}`);
 }
+const experienceDocId = coordination.instance?.coordination?.documentIdsBySurface?._experience;
+const retroBinding = coordination.bindings.find((binding) => binding.surfaceId === 'retrospective');
+const retroDocIds = (retroBinding?.documents || []).map((doc) => doc.id);
+if (!experienceDocId || !retroDocIds.includes(experienceDocId)) {
+  throw new Error(`experience document was not captured or linked: ${JSON.stringify({
+    experienceDocId,
+    retroDocIds,
+  })}`);
+}
 
-console.log(`instance=${started.instanceId} project=${cancelled.coordination?.projectId || 'none'} tasks=${taskCount} blocked=${blockedCount}`);
+console.log(`instance=${started.instanceId} project=${cancelled.coordination?.projectId || 'none'} tasks=${taskCount} blocked=${blockedCount} experience=${experienceDocId}`);
 NODE
 )"
     control_code=$?
@@ -269,13 +278,18 @@ const summary = await res.json();
 const taskCount = Object.keys(summary.instance?.coordination?.taskIdsBySurface || {}).length;
 const statuses = summary.bindings?.map((binding) => binding.task?.status) || [];
 const blockedCount = statuses.filter((status) => status === 'blocked').length;
+const experienceDocId = summary.instance?.coordination?.documentIdsBySurface?._experience;
+const retroBinding = summary.bindings?.find((binding) => binding.surfaceId === 'retrospective');
+const retroDocIds = (retroBinding?.documents || []).map((doc) => doc.id);
 if (
   res.status !== 200 ||
   summary.instance?.id !== instanceId ||
   summary.instance?.status !== 'failed' ||
   !String(summary.instance?.error || '').includes('Gateway restart') ||
   taskCount < 1 ||
-  blockedCount !== statuses.length
+  blockedCount !== statuses.length ||
+  !experienceDocId ||
+  !retroDocIds.includes(experienceDocId)
 ) {
   throw new Error(`recovery failed: ${res.status} ${JSON.stringify({
     id: summary.instance?.id,
@@ -284,9 +298,11 @@ if (
     projectId: summary.instance?.coordination?.projectId,
     taskCount,
     statuses,
+    experienceDocId,
+    retroDocIds,
   })}`);
 }
-console.log(`instance=${instanceId} project=${summary.instance?.coordination?.projectId || 'none'} tasks=${taskCount} blocked=${blockedCount}`);
+console.log(`instance=${instanceId} project=${summary.instance?.coordination?.projectId || 'none'} tasks=${taskCount} blocked=${blockedCount} experience=${experienceDocId}`);
 NODE
 )"
       recovery_code=$?

@@ -400,6 +400,9 @@ export class PipelineOrchestrator {
       this.blockUnfinishedSurfaceTasks(pipeline, instance);
       this.stateManager?.fail(instance.id, instance.error || 'Pipeline 执行失败');
     }
+    if (instance.status === 'completed' || instance.status === 'cancelled' || instance.status === 'failed') {
+      this.capturePipelineExperience(pipeline, instance);
+    }
 
     // 清理循环状态
     this.loopStates.delete(instance.id);
@@ -485,6 +488,7 @@ export class PipelineOrchestrator {
     const pipeline = this.pipelines.get(instance.pipelineId);
     if (pipeline) {
       this.blockUnfinishedSurfaceTasks(pipeline, instance);
+      this.capturePipelineExperience(pipeline, instance);
     }
 
     eventBus.emit({
@@ -1003,6 +1007,12 @@ ${JSON.stringify(artifacts, null, 2)}
     for (const state of interrupted) {
       this.stateManager.fail(state.id, 'Pipeline interrupted by Gateway restart before completion');
       this.blockPersistedCoordinationTasks(state);
+      const failedState = this.stateManager.load(state.id);
+      const pipeline = this.pipelines.get(pipelineId);
+      const instance = failedState ? this.workflowStateToPipelineInstance(failedState) : null;
+      if (pipeline && instance) {
+        this.capturePipelineExperience(pipeline, instance);
+      }
     }
 
     if (interrupted.length > 0) {
@@ -1021,6 +1031,98 @@ ${JSON.stringify(artifacts, null, 2)}
       } catch (error) {
         console.warn(`[PipelineOrchestrator] 中断任务状态更新失败: ${taskId}: ${error instanceof Error ? error.message : String(error)}`);
       }
+    }
+  }
+
+  private capturePipelineExperience(pipeline: PipelineDefinition, instance: PipelineInstance): void {
+    if (!this.documentManager) return;
+
+    const coordination = this.serializeCoordinationBinding(instance.id) ?? instance.coordination;
+    if (!coordination?.projectId) return;
+    if (coordination.documentIdsBySurface?._experience) return;
+
+    const taskIds = Object.values(coordination.taskIdsBySurface || {});
+    const existingDocIds = Object.values(coordination.documentIdsBySurface || {});
+    const surfaceLines = pipeline.surfaces.map((surface) => {
+      const result = instance.surfaceResults.get(surface.id);
+      const status = result?.status || (instance.status === 'completed' ? 'pending' : 'blocked');
+      const error = result?.error ? ` — ${result.error}` : '';
+      return `- ${surface.id}: ${status}${error}`;
+    });
+    const summary = [
+      `Pipeline: ${pipeline.name} (${pipeline.id})`,
+      `Instance: ${instance.id}`,
+      `Status: ${instance.status}`,
+      instance.error ? `Error: ${instance.error}` : undefined,
+      `Tasks: ${taskIds.length}`,
+      `Surface artifacts: ${existingDocIds.length}`,
+    ].filter(Boolean).join('\n');
+
+    try {
+      const doc = this.documentManager.createDocument({
+        title: `Experience: ${pipeline.name} - ${instance.id}`,
+        content: [
+          '# Pipeline Experience Summary',
+          '',
+          summary,
+          '',
+          '## Surface States',
+          surfaceLines.join('\n'),
+          '',
+          '## Reusable Experience',
+          '- Preserve the coordination chain between workflow state, Kanban tasks, and documents.',
+          '- Treat terminal Pipeline states as explicit team state, not only runtime control flow.',
+          '- Keep this run available as evidence for future planning and retrospectives.',
+        ].join('\n'),
+        type: 'report',
+        projectId: coordination.projectId,
+        taskId: coordination.taskIdsBySurface?.retrospective,
+        authorId: 'system',
+        authorName: 'Pipeline Experience',
+        tags: ['experience', 'pipeline-summary', pipeline.id, instance.status],
+        relatedDocIds: existingDocIds,
+        relatedTaskIds: taskIds,
+        relatedAgentIds: Array.from(new Set(pipeline.surfaces.map((surface) => surface.agent))),
+        metadata: {
+          instanceId: instance.id,
+          pipelineId: pipeline.id,
+          status: instance.status,
+          error: instance.error,
+          capturedAt: Date.now(),
+        },
+      });
+
+      const nextCoordination = {
+        ...coordination,
+        documentIdsBySurface: {
+          ...coordination.documentIdsBySurface,
+          _experience: doc.id,
+        },
+      };
+      const binding = this.coordinationBindings.get(instance.id);
+      binding?.docIdsBySurface.set('_experience', doc.id);
+      instance.coordination = nextCoordination;
+      this.persistInstanceContext(instance);
+
+      eventBus.emit({
+        type: 'experience.captured',
+        source: 'experience',
+        timestamp: Date.now(),
+        payload: {
+          experienceId: doc.id,
+          workflowId: instance.id,
+          pipelineId: pipeline.id,
+          projectId: coordination.projectId,
+          status: instance.status,
+          summary,
+          metadata: {
+            taskCount: taskIds.length,
+            artifactCount: existingDocIds.length,
+          },
+        },
+      });
+    } catch (error) {
+      console.warn(`[PipelineOrchestrator] 经验沉淀失败: ${error instanceof Error ? error.message : String(error)}`);
     }
   }
 
