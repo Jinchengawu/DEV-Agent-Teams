@@ -508,6 +508,33 @@ NODE
     record "dashboard pipeline control proxy" WARN "skipped; set RUN_PIPELINE_CONTROL_SMOKE=1 to verify Dashboard control proxy"
   fi
 
+  if [ "${RUN_PIPELINE_CONTROL_SMOKE:-0}" = "1" ]; then
+    set +e
+    dashboard_kanban_output="$(DASHBOARD_URL="$DASHBOARD_URL" node <<'NODE' 2>&1
+const base = process.env.DASHBOARD_URL;
+const res = await fetch(`${base}/api/kanban`, { cache: 'no-store' });
+const data = await res.json();
+if (!res.ok || !Array.isArray(data.tasks)) {
+  throw new Error(`dashboard kanban failed: ${res.status} ${JSON.stringify(data)}`);
+}
+const task = data.tasks.find((item) => item.source === 'coordination' && item.project_id && Number(item.document_count || 0) > 0);
+if (!task) {
+  throw new Error(`coordination task missing related documents: ${JSON.stringify(data.tasks.slice(0, 5))}`);
+}
+console.log(`task=${task.id} project=${task.project_id} documents=${task.document_count}`);
+NODE
+)"
+    dashboard_kanban_code=$?
+    set -e
+    if [ "$dashboard_kanban_code" -eq 0 ]; then
+      record "dashboard kanban document links" PASS "$(echo "$dashboard_kanban_output" | tail -n 1 | sed 's/|/\\|/g')"
+    else
+      record "dashboard kanban document links" FAIL "exit $dashboard_kanban_code: $(echo "$dashboard_kanban_output" | tail -n 3 | tr '\n' ' ' | sed 's/|/\\|/g')"
+    fi
+  else
+    record "dashboard kanban document links" WARN "skipped; set RUN_PIPELINE_CONTROL_SMOKE=1 to verify Kanban document links"
+  fi
+
   set +e
   dashboard_yaml_output="$(DASHBOARD_URL="$DASHBOARD_URL" node <<'NODE' 2>&1
 const base = process.env.DASHBOARD_URL;

@@ -18,9 +18,24 @@ type KanbanTask = {
   updated_at: string;
   source?: 'local' | 'coordination';
   project_id?: string;
+  document_count?: number;
 };
 
-function mapCoordinationTask(task: any): KanbanTask {
+async function fetchDocumentCount(taskId: string): Promise<number> {
+  try {
+    const res = await fetch(`${GATEWAY_URL}/api/v2/documents?taskId=${encodeURIComponent(taskId)}&limit=1`, {
+      cache: 'no-store',
+    });
+    if (!res.ok) return 0;
+    const data = await res.json();
+    return Number(data.total || 0);
+  } catch {
+    return 0;
+  }
+}
+
+async function mapCoordinationTask(task: any): Promise<KanbanTask> {
+  const documentCount = await fetchDocumentCount(task.id);
   return {
     id: task.id,
     title: task.title,
@@ -35,6 +50,7 @@ function mapCoordinationTask(task: any): KanbanTask {
     updated_at: new Date(task.updatedAt).toISOString(),
     source: 'coordination',
     project_id: task.projectId,
+    document_count: documentCount,
   };
 }
 
@@ -43,7 +59,7 @@ async function fetchCoordinationTasks(): Promise<KanbanTask[]> {
     const res = await fetch(`${GATEWAY_URL}/api/v2/tasks`, { cache: 'no-store' });
     if (!res.ok) return [];
     const data = await res.json();
-    return (data.tasks || []).map(mapCoordinationTask);
+    return Promise.all((data.tasks || []).map(mapCoordinationTask));
   } catch {
     return [];
   }

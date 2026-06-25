@@ -16,6 +16,7 @@ interface Task {
   updated_at: string
   source?: 'local' | 'coordination'
   project_id?: string
+  document_count?: number
 }
 
 interface Milestone {
@@ -215,23 +216,29 @@ export default function KanbanPage() {
               </div>
               <div className="space-y-2 min-h-[200px]">
                 {tasks.map(task => (
-                  <div key={task.id} className="bg-white rounded-lg shadow-sm p-3 text-sm">
+                  <div key={task.id} className="bg-white rounded-lg shadow-sm p-3 text-sm" data-testid={`kanban-task-${task.id}`}>
                     <div className="flex items-start justify-between gap-2">
                       <span className="font-medium text-gray-900 leading-tight">{task.title}</span>
                       {task.source !== 'coordination' && (
                         <button onClick={() => handleDeleteTask(task.id)} className="text-gray-400 hover:text-red-500 text-xs">✕</button>
                       )}
                     </div>
+                    <p className="mt-1 font-mono text-[11px] text-gray-400">{task.id}</p>
                     {task.description && <p className="text-xs text-gray-500 mt-1 line-clamp-2">{task.description}</p>}
                     {task.source === 'coordination' && (
                       <div className="mt-2 rounded border border-blue-100 bg-blue-50 px-2 py-1 text-[11px] text-blue-700">
-                        Pipeline 协作任务
+                        <div className="flex flex-wrap items-center gap-1">
+                          <span>Pipeline 协作任务</span>
+                          <span>·</span>
+                          <span>{task.document_count ?? 0} 篇文档</span>
+                        </div>
                         {task.project_id && (
                           <a
                             href={`/knowledge?projectId=${encodeURIComponent(task.project_id)}&taskId=${encodeURIComponent(task.id)}`}
-                            className="ml-1 font-mono hover:underline"
+                            className="mt-1 inline-flex font-mono hover:underline"
+                            data-testid={`kanban-task-docs-${task.id}`}
                           >
-                            {task.project_id}
+                            文档: {task.project_id}
                           </a>
                         )}
                       </div>

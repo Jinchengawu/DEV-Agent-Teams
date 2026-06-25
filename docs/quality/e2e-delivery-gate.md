@@ -52,6 +52,7 @@ When Dashboard is already running, the same script also checks:
 - Dashboard workflow templates include runtime YAML metadata for custom Pipelines
 - Dashboard Pipeline page exposes a YAML importer for runtime custom workflows
 - Knowledge links can preserve project/task context for workflow documents
+- Kanban coordination tasks expose project links and related document counts
 
 To verify the Pipeline control plane against a running Gateway, opt in with:
 
