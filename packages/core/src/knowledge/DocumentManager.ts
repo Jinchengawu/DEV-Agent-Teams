@@ -29,7 +29,7 @@ export interface Task {
   projectId: string;
   title: string;
   description: string;
-  status: 'todo' | 'in_progress' | 'review' | 'done';
+  status: 'todo' | 'in_progress' | 'review' | 'done' | 'blocked';
   assignee: string; // Agent ID
   createdAt: number;
   updatedAt: number;
@@ -287,6 +287,14 @@ export class DocumentManager {
       'SELECT * FROM tasks WHERE assignee = ? ORDER BY updated_at DESC'
     ).all(assignee) as any[];
     return rows.map(r => this.rowToTask(r));
+  }
+
+  updateTaskStatus(id: string, status: Task['status']): Task | null {
+    const now = Date.now();
+    this.db.prepare(`
+      UPDATE tasks SET status = ?, updated_at = ? WHERE id = ?
+    `).run(status, now, id);
+    return this.getTask(id);
   }
 
   // ============================================================================

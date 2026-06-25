@@ -26,7 +26,7 @@ import type {
   PipelineExecuteOptions,
 } from './types.js';
 import type { KnowledgeCenter } from '../knowledge/KnowledgeCenter.js';
-import type { DocumentManager } from '../knowledge/DocumentManager.js';
+import type { DocumentManager, Task } from '../knowledge/DocumentManager.js';
 
 // ============================================================================
 // 循环编排状态
@@ -50,6 +50,12 @@ interface ConflictResolution {
   reason: string;           // 解决理由
 }
 
+interface PipelineCoordinationBinding {
+  projectId: string;
+  taskIdsBySurface: Map<string, string>;
+  docIdsBySurface: Map<string, string>;
+}
+
 /**
  * Pipeline 编排器
  */
@@ -62,6 +68,7 @@ export class PipelineOrchestrator {
   private documentManager?: DocumentManager;
   private loopStates: Map<string, Map<string, LoopState>> = new Map(); // instanceId -> edgeKey -> LoopState
   private controllers: Map<string, AbortController> = new Map();
+  private coordinationBindings: Map<string, PipelineCoordinationBinding> = new Map();
 
   constructor(
     teamOrchestrator: TeamOrchestrator,
@@ -169,6 +176,7 @@ export class PipelineOrchestrator {
     this.instances.set(instance.id, instance);
     this.loopStates.set(instance.id, new Map());
     this.stateManager?.createState(`Pipeline: ${pipeline.name}`, pipeline.surfaces.length, instance.id);
+    this.createCoordinationBinding(pipeline, instance);
 
     const controller = new AbortController();
     const abortFromCaller = () => {
@@ -687,26 +695,36 @@ ${JSON.stringify(artifacts, null, 2)}
         });
       }
 
+      const binding = this.coordinationBindings.get(instanceId);
+      const taskId = binding?.taskIdsBySurface.get(surfaceId);
+      const relatedTaskIds = binding ? Array.from(binding.taskIdsBySurface.values()) : [];
+      const relatedDocIds = binding ? Array.from(binding.docIdsBySurface.values()) : [];
+
       if (this.documentManager) {
-        this.documentManager.createDocument({
+        const doc = this.documentManager.createDocument({
           title: `${surfaceName} (${surfaceId}) - ${instanceId}`,
           content,
           type: this.inferDocumentType(surfaceId),
+          projectId: binding?.projectId,
+          taskId,
           authorId: agentId,
           authorName: surfaceName,
           tags: ['pipeline-artifact', instanceId, surfaceId],
-          relatedDocIds: [],
-          relatedTaskIds: [],
+          relatedDocIds,
+          relatedTaskIds,
           relatedAgentIds: [agentId],
           metadata: {
             instanceId,
             surfaceId,
             surfaceName,
+            taskId,
+            projectId: binding?.projectId,
             status: result.status,
             tokenUsage: result.tokenUsage,
             timestamp: Date.now(),
           },
         });
+        binding?.docIdsBySurface.set(surfaceId, doc.id);
       }
 
       console.log(`[PipelineOrchestrator] 产物已沉淀到知识中心: ${surfaceId}`);
@@ -758,6 +776,57 @@ ${JSON.stringify(artifacts, null, 2)}
     }
     
     return parts.join('\n\n');
+  }
+
+  /**
+   * 创建本次 Pipeline 的项目、任务、文档绑定脉络
+   */
+  private createCoordinationBinding(pipeline: PipelineDefinition, instance: PipelineInstance): void {
+    if (!this.documentManager) return;
+
+    try {
+      const project = this.documentManager.createProject(
+        `${pipeline.name} - ${instance.id}`,
+        `Pipeline coordination project for ${pipeline.id}. Instance ${instance.id}.`,
+      );
+      const taskIdsBySurface = new Map<string, string>();
+
+      for (const surface of pipeline.surfaces) {
+        const task = this.documentManager.createTask(
+          project.id,
+          `${surface.name} (${surface.id})`,
+          [
+            `Pipeline: ${pipeline.id}`,
+            `Instance: ${instance.id}`,
+            `Surface: ${surface.id}`,
+            `Agent: ${surface.agent}`,
+            surface.output?.description ? `Expected output: ${surface.output.description}` : '',
+          ].filter(Boolean).join('\n'),
+          surface.agent,
+        );
+        taskIdsBySurface.set(surface.id, task.id);
+      }
+
+      this.coordinationBindings.set(instance.id, {
+        projectId: project.id,
+        taskIdsBySurface,
+        docIdsBySurface: new Map(),
+      });
+      console.log(`[PipelineOrchestrator] 协作脉络已创建: project=${project.id}, tasks=${taskIdsBySurface.size}`);
+    } catch (error) {
+      console.warn(`[PipelineOrchestrator] 协作脉络创建失败: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+
+  private updateSurfaceTaskStatus(instanceId: string, surfaceId: string, status: Task['status']): void {
+    const taskId = this.coordinationBindings.get(instanceId)?.taskIdsBySurface.get(surfaceId);
+    if (!taskId || !this.documentManager) return;
+
+    try {
+      this.documentManager.updateTaskStatus(taskId, status);
+    } catch (error) {
+      console.warn(`[PipelineOrchestrator] 任务状态更新失败: ${surfaceId} -> ${status}: ${error instanceof Error ? error.message : String(error)}`);
+    }
   }
 
   /**
@@ -848,6 +917,7 @@ ${JSON.stringify(artifacts, null, 2)}
 
     console.log(`[PipelineOrchestrator] 执行面: ${surfaceId} (${surfaceDef.name})`);
     instance.currentSurface = surfaceId;
+    this.updateSurfaceTaskStatus(instance.id, surfaceId, 'in_progress');
 
     // 创建面实例（使用 Pipeline instance ID 作为统一预算 session）
     const surface = createSurface(surfaceDef, this.teamOrchestrator, instance.id);
@@ -922,6 +992,11 @@ ${JSON.stringify(artifacts, null, 2)}
       dryRun: options.dryRun ?? pipeline.context?.execution?.dryRun,
     });
     instance.surfaceResults.set(surfaceId, result);
+    this.updateSurfaceTaskStatus(
+      instance.id,
+      surfaceId,
+      result.status === 'completed' ? 'done' : result.status === 'failed' || result.status === 'cancelled' ? 'blocked' : 'in_progress',
+    );
 
     const stepIndex = Math.max(0, pipeline.surfaces.findIndex((s) => s.id === surfaceId));
     this.stateManager?.updateStep(instance.id, stepIndex, {
