@@ -286,6 +286,17 @@ if (!experienceDocId || !retroDocIds.includes(experienceDocId)) {
     retroDocIds,
   })}`);
 }
+const filteredDocsRes = await fetch(`${base}/api/v2/documents?projectId=${encodeURIComponent(started.coordination.projectId)}&taskId=${encodeURIComponent(retroBinding.taskId)}&limit=50`);
+const filteredDocs = await filteredDocsRes.json();
+if (!filteredDocsRes.ok || !filteredDocs.documents?.some((doc) => doc.id === experienceDocId)) {
+  throw new Error(`document context filter did not return experience doc: ${JSON.stringify({
+    status: filteredDocsRes.status,
+    projectId: started.coordination.projectId,
+    taskId: retroBinding.taskId,
+    experienceDocId,
+    docs: (filteredDocs.documents || []).map((doc) => doc.id),
+  })}`);
+}
 
 const controlChecks = [
   ['pause', { url: `${base}/pipeline-instances/${started.instanceId}/pause`, body: {} }],
@@ -304,7 +315,7 @@ for (const [name, request] of controlChecks) {
   }
 }
 
-console.log(`instance=${started.instanceId} project=${started.coordination.projectId} startTasks=${startTaskCount} tasks=${taskCount} blocked=${blockedCount} experience=${experienceDocId} unsupportedControls=3`);
+console.log(`instance=${started.instanceId} project=${started.coordination.projectId} startTasks=${startTaskCount} tasks=${taskCount} blocked=${blockedCount} experience=${experienceDocId} contextDocs=${filteredDocs.documents.length} unsupportedControls=3`);
 NODE
 )"
     control_code=$?

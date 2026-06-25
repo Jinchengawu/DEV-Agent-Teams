@@ -37,6 +37,8 @@ When Gateway is already running, the same script also checks:
   `source: "runtime-yaml"` and `deletable: true`
 - YAML registration responses include full Pipeline definitions so Dashboard can
   refresh the list immediately after import
+- Pipeline-generated documents are retrievable through `projectId` + `taskId`
+  context filters
 
 When Dashboard is already running, the same script also checks:
 
@@ -49,6 +51,7 @@ When Dashboard is already running, the same script also checks:
   and `DELETE /api/pipelines/:id` proxies runtime Pipeline deletion
 - Dashboard workflow templates include runtime YAML metadata for custom Pipelines
 - Dashboard Pipeline page exposes a YAML importer for runtime custom workflows
+- Knowledge links can preserve project/task context for workflow documents
 
 To verify the Pipeline control plane against a running Gateway, opt in with:
 

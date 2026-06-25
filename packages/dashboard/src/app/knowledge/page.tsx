@@ -96,6 +96,7 @@ export default function KnowledgePage() {
   const [selectedDoc, setSelectedDoc] = useState<DocumentV2 | null>(null);
   const [comments, setComments] = useState<DocumentComment[]>([]);
   const [loading, setLoading] = useState(false);
+  const [urlFiltersLoaded, setUrlFiltersLoaded] = useState(false);
 
   // 过滤和排序
   const [filterProject, setFilterProject] = useState('');
@@ -115,17 +116,31 @@ export default function KnowledgePage() {
     const params = new URLSearchParams(window.location.search);
     const projectId = params.get('projectId');
     const taskId = params.get('taskId');
+    const type = params.get('type');
+    const authorId = params.get('authorId');
+    const nextSortBy = params.get('sortBy');
+    const nextSortOrder = params.get('sortOrder');
     if (projectId) setFilterProject(projectId);
     if (taskId) setFilterTask(taskId);
+    if (type) setFilterType(type);
+    if (authorId) setFilterAuthor(authorId);
+    if (nextSortBy === 'updatedAt' || nextSortBy === 'createdAt' || nextSortBy === 'title') {
+      setSortBy(nextSortBy);
+    }
+    if (nextSortOrder === 'asc' || nextSortOrder === 'desc') {
+      setSortOrder(nextSortOrder);
+    }
     fetchStats();
     fetchProjects();
-    fetchDocuments();
+    setUrlFiltersLoaded(true);
   }, []);
 
   // 过滤变化时重新加载
   useEffect(() => {
+    if (!urlFiltersLoaded) return;
+    syncUrlFilters();
     fetchDocuments();
-  }, [filterProject, filterTask, filterType, filterAuthor, sortBy, sortOrder]);
+  }, [urlFiltersLoaded, filterProject, filterTask, filterType, filterAuthor, sortBy, sortOrder]);
 
   // 加载文档详情时获取评论
   useEffect(() => {
@@ -170,6 +185,33 @@ export default function KnowledgePage() {
       }
     } catch (e) { console.error('documents failed:', e); }
     finally { setLoading(false); }
+  };
+
+  const syncUrlFilters = () => {
+    const params = new URLSearchParams(window.location.search);
+    const update = (key: string, value: string) => {
+      if (value) params.set(key, value);
+      else params.delete(key);
+    };
+
+    update('projectId', filterProject);
+    update('taskId', filterTask);
+    update('type', filterType);
+    update('authorId', filterAuthor);
+    update('sortBy', sortBy === 'updatedAt' ? '' : sortBy);
+    update('sortOrder', sortOrder === 'desc' ? '' : sortOrder);
+
+    const nextQuery = params.toString();
+    const nextUrl = nextQuery ? `${window.location.pathname}?${nextQuery}` : window.location.pathname;
+    window.history.replaceState(null, '', nextUrl);
+  };
+
+  const clearContextFilters = () => {
+    setFilterProject('');
+    setFilterTask('');
+    setFilterType('');
+    setFilterAuthor('');
+    setSearchKeyword('');
   };
 
   const searchDocuments = async () => {
@@ -259,6 +301,7 @@ export default function KnowledgePage() {
                   )}
                 </div>
                 <h2 className="text-xl font-bold text-gray-900">{selectedDoc.title}</h2>
+                <p className="mt-1 font-mono text-xs text-gray-400">{selectedDoc.id}</p>
                 <div className="flex items-center gap-4 mt-2 text-sm text-gray-500">
                   <span>👤 {selectedDoc.authorName}</span>
                   <span>📁 {getProjectName(selectedDoc.projectId)}</span>
@@ -423,6 +466,7 @@ export default function KnowledgePage() {
                 value={filterProject}
                 onChange={(e) => setFilterProject(e.target.value)}
                 className="px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                data-testid="knowledge-project-filter"
               >
                 <option value="">所有项目</option>
                 {projects.map(p => (
@@ -437,6 +481,7 @@ export default function KnowledgePage() {
                 value={filterTask}
                 onChange={(e) => setFilterTask(e.target.value)}
                 className="px-3 py-2 border border-gray-300 rounded-lg text-sm min-w-[180px]"
+                data-testid="knowledge-task-filter"
               />
 
               {/* 作者过滤 */}
@@ -474,6 +519,33 @@ export default function KnowledgePage() {
           </CardContent>
         </Card>
 
+        {(filterProject || filterTask || filterType || filterAuthor) && (
+          <Card className="mb-6 border-l-4 border-l-blue-500" data-testid="knowledge-active-context">
+            <CardContent className="p-4">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div className="flex flex-wrap items-center gap-2 text-sm">
+                  <span className="font-medium text-gray-700">当前上下文</span>
+                  {filterProject && (
+                    <Badge variant="outline" className="font-mono text-blue-700">项目 {filterProject}</Badge>
+                  )}
+                  {filterTask && (
+                    <Badge variant="outline" className="font-mono text-emerald-700">任务 {filterTask}</Badge>
+                  )}
+                  {filterType && (
+                    <Badge variant="outline">{TYPE_LABELS[filterType] || filterType}</Badge>
+                  )}
+                  {filterAuthor && (
+                    <Badge variant="outline">{AGENT_NAMES[filterAuthor] || filterAuthor}</Badge>
+                  )}
+                </div>
+                <Button variant="outline" size="sm" onClick={clearContextFilters}>
+                  清除过滤
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
         {/* 文档列表 */}
         <div>
           <div className="flex items-center justify-between mb-3">
@@ -497,6 +569,7 @@ export default function KnowledgePage() {
                   key={doc.id}
                   className="cursor-pointer hover:shadow-lg transition-shadow group"
                   onClick={() => setSelectedDoc(doc)}
+                  data-testid={`knowledge-doc-${doc.id}`}
                 >
                   <CardContent className="p-4">
                     <div className="flex justify-between items-start mb-2">
@@ -512,6 +585,7 @@ export default function KnowledgePage() {
                     <h3 className="font-semibold text-gray-900 mb-1 group-hover:text-blue-600 transition">
                       {doc.title}
                     </h3>
+                    <p className="mb-2 font-mono text-xs text-gray-400">{doc.id}</p>
 
                     <p className="text-sm text-gray-500 line-clamp-2 mb-3">
                       {doc.content.substring(0, 100).replace(/[#*`_]/g, '')}...
