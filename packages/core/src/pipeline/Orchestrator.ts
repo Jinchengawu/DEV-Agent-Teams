@@ -13,6 +13,8 @@
  */
 
 import { execFileSync } from 'node:child_process';
+import { readFile } from 'node:fs/promises';
+import { parse } from 'yaml';
 import { eventBus } from '../event/EventBus.js';
 import type { TeamOrchestrator } from '../team/TeamOrchestrator.js';
 import type { WorkflowState, WorkflowStateManager } from '../session/WorkflowStateManager.js';
@@ -124,11 +126,13 @@ export class PipelineOrchestrator {
   }
 
   /**
-   * 从 YAML 文件加载（异步，需要解析器）
+   * 从 YAML 文件加载 Pipeline 定义。
    */
-  async loadFromYaml(_yamlPath: string): Promise<void> {
-    // TODO: 实现 YAML 解析
-    console.log('[PipelineOrchestrator] YAML 加载待实现');
+  async loadFromYaml(yamlPath: string): Promise<void> {
+    const yamlContent = await readFile(yamlPath, 'utf8');
+    const parsed = parse(yamlContent);
+    const pipeline = this.assertPipelineDefinition(parsed, yamlPath);
+    this.loadPipeline(pipeline);
   }
 
   /**
@@ -1368,6 +1372,55 @@ ${JSON.stringify(artifacts, null, 2)}
       const reason = signal.reason;
       throw reason instanceof Error ? reason : new Error(String(reason || 'Pipeline cancelled'));
     }
+  }
+
+  private assertPipelineDefinition(value: unknown, source: string): PipelineDefinition {
+    if (!value || typeof value !== 'object') {
+      throw new Error(`Invalid Pipeline YAML (${source}): root must be an object`);
+    }
+
+    const pipeline = value as Partial<PipelineDefinition>;
+    if (!pipeline.id || typeof pipeline.id !== 'string') {
+      throw new Error(`Invalid Pipeline YAML (${source}): id is required`);
+    }
+    if (!pipeline.name || typeof pipeline.name !== 'string') {
+      throw new Error(`Invalid Pipeline YAML (${source}): name is required`);
+    }
+    if (!Array.isArray(pipeline.surfaces) || pipeline.surfaces.length === 0) {
+      throw new Error(`Invalid Pipeline YAML (${source}): surfaces must be a non-empty array`);
+    }
+    if (!Array.isArray(pipeline.edges)) {
+      throw new Error(`Invalid Pipeline YAML (${source}): edges must be an array`);
+    }
+
+    const surfaceIds = new Set<string>();
+    for (const [index, surface] of pipeline.surfaces.entries()) {
+      if (!surface?.id || typeof surface.id !== 'string') {
+        throw new Error(`Invalid Pipeline YAML (${source}): surfaces[${index}].id is required`);
+      }
+      if (surfaceIds.has(surface.id)) {
+        throw new Error(`Invalid Pipeline YAML (${source}): duplicate surface id "${surface.id}"`);
+      }
+      if (!surface.name || typeof surface.name !== 'string') {
+        throw new Error(`Invalid Pipeline YAML (${source}): surface "${surface.id}" name is required`);
+      }
+      if (!surface.agent || typeof surface.agent !== 'string') {
+        throw new Error(`Invalid Pipeline YAML (${source}): surface "${surface.id}" agent is required`);
+      }
+      surfaceIds.add(surface.id);
+    }
+
+    for (const [index, edge] of pipeline.edges.entries()) {
+      if (!edge?.from || typeof edge.from !== 'string' || !surfaceIds.has(edge.from)) {
+        throw new Error(`Invalid Pipeline YAML (${source}): edges[${index}].from references an unknown surface`);
+      }
+      const downstream = Array.isArray(edge.to) ? edge.to : [edge.to];
+      if (downstream.length === 0 || downstream.some((surfaceId) => typeof surfaceId !== 'string' || !surfaceIds.has(surfaceId))) {
+        throw new Error(`Invalid Pipeline YAML (${source}): edges[${index}].to references an unknown surface`);
+      }
+    }
+
+    return pipeline as PipelineDefinition;
   }
 }
 

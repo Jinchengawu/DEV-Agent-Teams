@@ -30,6 +30,7 @@ When Gateway is already running, the same script also checks:
 - `GET /v1/workflows`
 - `GET /v1/templates`
 - `dev-team-minimum-loop` is available through the Gateway
+- `stock-analysis-system` is loaded from the YAML Pipeline example
 
 When Dashboard is already running, the same script also checks:
 

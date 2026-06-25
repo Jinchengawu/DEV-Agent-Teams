@@ -126,6 +126,17 @@ raise SystemExit(0 if any(p.get("id") == "dev-team-minimum-loop" for p in pipeli
     else
       record "gateway pipeline registry" FAIL "dev-team-minimum-loop not listed"
     fi
+
+    if python3 -c 'import json, sys
+with open(sys.argv[1], "r", encoding="utf-8") as f:
+    data = json.load(f)
+pipelines = data.get("pipelines", [])
+raise SystemExit(0 if any(p.get("id") == "stock-analysis-system" for p in pipelines) else 1)' /tmp/dev-agent-pipelines.json
+    then
+      record "gateway yaml pipeline loader" PASS "stock-analysis-system is loaded from YAML"
+    else
+      record "gateway yaml pipeline loader" FAIL "stock-analysis-system not listed"
+    fi
   else
     record "gateway pipeline registry" FAIL "GET /pipelines failed"
   fi
