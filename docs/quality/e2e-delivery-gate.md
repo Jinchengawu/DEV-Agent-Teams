@@ -117,8 +117,10 @@ Live runs also pass structured execution options to the Gateway:
 - `dryRun: true` is forwarded into every Pipeline surface so Agents receive a no-write
   execution contract.
 - dry-run Pipeline execution records a Git worktree status baseline and fails the run
-  if repository status changes after a Surface completes.
-- `surfaceTimeoutMs` defaults to `90000`; override it with `E2E_LIVE_SURFACE_TIMEOUT_MS`.
+  if repository status changes after a Surface completes or before the run exits.
+- `surfaceTimeoutMs` defaults to `300000`; override it with `E2E_LIVE_SURFACE_TIMEOUT_MS`.
+- `RUN_PIPELINE_CONTROL_SMOKE=1` compares Git status before and after a dry-run
+  control flow so repository side effects are visible in the delivery report.
 - Dashboard-triggered Pipelines use the same dry-run and timeout defaults, but run
   asynchronously through `POST /v1/pipeline/start` so the UI can poll or cancel the
   instance.

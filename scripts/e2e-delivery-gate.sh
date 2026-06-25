@@ -71,6 +71,33 @@ run_cmd() {
   fi
 }
 
+repo_status_snapshot() {
+  local report_rel="${REPORT_FILE#$ROOT/}"
+
+  git -C "$ROOT" status --porcelain=v1 --untracked-files=all \
+    | awk -v report="$report_rel" 'substr($0, 4) != report { print }' \
+    | sort
+}
+
+repo_status_count() {
+  printf '%s\n' "$1" | sed '/^$/d' | wc -l | tr -d ' '
+}
+
+record_repo_status_result() {
+  local before="$1"
+  local after="$2"
+
+  if [ "$after" = "$before" ]; then
+    record "dry-run repository side effects" PASS "git status unchanged; tracked entries=$(repo_status_count "$after")"
+  else
+    local diff_output
+    set +e
+    diff_output="$(diff -u <(printf '%s\n' "$before") <(printf '%s\n' "$after") 2>&1 | tail -n 8 | tr '\n' ' ' | sed 's/|/\\|/g')"
+    set -e
+    record "dry-run repository side effects" FAIL "$diff_output"
+  fi
+}
+
 json_field() {
   python3 -c 'import json,sys; data=json.load(sys.stdin); cur=data
 for part in sys.argv[1].split("."):
@@ -248,6 +275,7 @@ raise SystemExit(0 if any(t.get("id") == "dev-team-minimum-loop" for t in templa
   fi
 
   if [ "${RUN_PIPELINE_CONTROL_SMOKE:-0}" = "1" ]; then
+    repo_status_before_control="$(repo_status_snapshot)"
     set +e
     control_output="$(GATEWAY_URL="$GATEWAY_URL" node <<'NODE' 2>&1
 const base = process.env.GATEWAY_URL;
@@ -350,8 +378,11 @@ NODE
     else
       record "pipeline control smoke" FAIL "exit $control_code: $(echo "$control_output" | tail -n 3 | tr '\n' ' ' | sed 's/|/\\|/g')"
     fi
+    repo_status_after_control="$(repo_status_snapshot)"
+    record_repo_status_result "$repo_status_before_control" "$repo_status_after_control"
   else
     record "pipeline control smoke" WARN "skipped; set RUN_PIPELINE_CONTROL_SMOKE=1 to verify start/cancel/coordination binding"
+    record "dry-run repository side effects" WARN "skipped; set RUN_PIPELINE_CONTROL_SMOKE=1 to compare git status around dry-run execution"
   fi
 
   if [ "${RUN_PIPELINE_RECOVERY_SMOKE:-0}" = "1" ]; then

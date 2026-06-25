@@ -416,6 +416,8 @@ export class PipelineOrchestrator {
       });
     }
 
+    this.finalizeDryRunGuard(dryRunGuard, instance);
+
     if (instance.status === 'cancelled') {
       this.blockUnfinishedSurfaceTasks(pipeline, instance);
       this.stateManager?.cancel(instance.id, instance.error || 'Pipeline cancelled');
@@ -993,6 +995,34 @@ ${JSON.stringify(artifacts, null, 2)}
 
     if (diff.length > 0) {
       throw new Error(`Dry-run repository side effect detected. Changed git status entries: ${diff.slice(0, 20).join('; ')}`);
+    }
+  }
+
+  private finalizeDryRunGuard(guard: DryRunGuard | undefined, instance: PipelineInstance): void {
+    if (!guard) return;
+
+    try {
+      this.assertDryRunNoRepositorySideEffects(guard);
+    } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : String(error);
+      const alreadyFailedForSameReason = instance.status === 'failed' && instance.error === errorMsg;
+      instance.status = 'failed';
+      instance.error = errorMsg;
+      instance.completedAt = Date.now();
+
+      if (!alreadyFailedForSameReason) {
+        eventBus.emit({
+          type: 'workflow.failed',
+          source: 'workflow',
+          timestamp: Date.now(),
+          payload: {
+            workflowId: instance.id,
+            taskId: instance.pipelineId,
+            pipelineId: instance.pipelineId,
+            error: errorMsg,
+          },
+        });
+      }
     }
   }
 
