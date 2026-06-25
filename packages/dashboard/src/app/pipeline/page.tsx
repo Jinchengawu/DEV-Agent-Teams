@@ -52,6 +52,36 @@ interface PipelineInstance {
   };
 }
 
+interface CoordinationTask {
+  id: string;
+  title: string;
+  status: string;
+  assignee: string;
+}
+
+interface CoordinationDocument {
+  id: string;
+  title: string;
+  type: string;
+}
+
+interface CoordinationBinding {
+  surfaceId: string;
+  taskId: string;
+  task?: CoordinationTask | null;
+  documentId?: string;
+  documents?: CoordinationDocument[];
+}
+
+interface CoordinationSummary {
+  project?: {
+    id: string;
+    name: string;
+  } | null;
+  tasks: CoordinationTask[];
+  bindings: CoordinationBinding[];
+}
+
 const STORAGE_KEY = 'pipeline-execution-history';
 const TERMINAL_STATUSES = new Set(['completed', 'failed', 'cancelled']);
 
@@ -62,6 +92,7 @@ export default function PipelinePage() {
   const [executing, setExecuting] = useState<string | null>(null);
   const [currentInstance, setCurrentInstance] = useState<PipelineInstance | null>(null);
   const [instanceHistory, setInstanceHistory] = useState<PipelineInstance[]>([]);
+  const [coordinationSummary, setCoordinationSummary] = useState<CoordinationSummary | null>(null);
   const [pollInterval, setPollInterval] = useState<NodeJS.Timeout | null>(null);
   const [showHistory, setShowHistory] = useState(false);
 
@@ -70,6 +101,14 @@ export default function PipelinePage() {
     fetchPipelines();
     restoreHistory();
   }, []);
+
+  useEffect(() => {
+    if (currentInstance?.id) {
+      fetchCoordinationSummary(currentInstance.id);
+    } else {
+      setCoordinationSummary(null);
+    }
+  }, [currentInstance?.id]);
 
   // 从 localStorage 恢复历史
   const restoreHistory = async () => {
@@ -123,6 +162,20 @@ export default function PipelinePage() {
       setPipelines(data.pipelines || []);
     } catch (e) {
       showToast('Failed to load pipelines', 'error');
+    }
+  };
+
+  const fetchCoordinationSummary = async (instanceId: string) => {
+    try {
+      const res = await fetch(`/api/pipeline-instances/${instanceId}/coordination`);
+      if (!res.ok) {
+        setCoordinationSummary(null);
+        return;
+      }
+      const data = await res.json();
+      setCoordinationSummary(data);
+    } catch {
+      setCoordinationSummary(null);
     }
   };
 
@@ -222,6 +275,11 @@ export default function PipelinePage() {
       case 'failed': return <Badge className="bg-red-500">失败</Badge>;
       case 'cancelled': return <Badge className="bg-amber-500">已取消</Badge>;
       case 'pending': return <Badge variant="secondary">等待</Badge>;
+      case 'todo': return <Badge variant="secondary">待办</Badge>;
+      case 'in_progress': return <Badge className="bg-blue-500">进行中</Badge>;
+      case 'review': return <Badge className="bg-purple-500">评审中</Badge>;
+      case 'done': return <Badge className="bg-green-500">已完成</Badge>;
+      case 'blocked': return <Badge className="bg-red-500">阻塞</Badge>;
       default: return <Badge variant="secondary">{status}</Badge>;
     }
   };
@@ -595,6 +653,56 @@ export default function PipelinePage() {
                     </span>
                   </div>
                 )}
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {currentInstance && coordinationSummary && (
+          <Card className="mt-6 border-l-4 border-l-emerald-500">
+            <CardHeader>
+              <CardTitle>协作脉络</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-3 gap-4 text-sm mb-4">
+                <div>
+                  <span className="text-gray-500">项目:</span>
+                  <span className="ml-2 font-mono">
+                    {coordinationSummary.project?.id || currentInstance.coordination?.projectId || '未绑定'}
+                  </span>
+                </div>
+                <div>
+                  <span className="text-gray-500">任务:</span>
+                  <span className="ml-2">{coordinationSummary.tasks?.length || 0} 个</span>
+                </div>
+                <div>
+                  <span className="text-gray-500">文档:</span>
+                  <span className="ml-2">
+                    {coordinationSummary.bindings.reduce((count, binding) => count + (binding.documents?.length || 0), 0)} 篇
+                  </span>
+                </div>
+              </div>
+
+              <div className="grid gap-2">
+                {coordinationSummary.bindings.map((binding) => (
+                  <div key={binding.surfaceId} className="flex items-center justify-between rounded border border-gray-200 bg-white px-3 py-2 text-sm">
+                    <div className="min-w-0">
+                      <div className="font-medium text-gray-900">{binding.surfaceId}</div>
+                      <div className="text-xs text-gray-500 truncate">
+                        {binding.task?.title || binding.taskId}
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      {binding.task?.status && getStatusBadge(binding.task.status)}
+                      <a
+                        href={`/knowledge?projectId=${encodeURIComponent(coordinationSummary.project?.id || currentInstance.coordination?.projectId || '')}&taskId=${encodeURIComponent(binding.taskId)}`}
+                        className="text-xs text-blue-600 hover:underline"
+                      >
+                        文档
+                      </a>
+                    </div>
+                  </div>
+                ))}
               </div>
             </CardContent>
           </Card>

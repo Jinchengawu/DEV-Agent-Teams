@@ -348,6 +348,49 @@ async function main(): Promise<void> {
         return;
       }
 
+      // Pipeline 协作脉络汇总：实例 -> 项目 -> 任务 -> 文档
+      if (path.match(/^\/pipeline-instances\/[^/]+\/coordination$/) && req.method === 'GET') {
+        const instanceId = path.split('/')[2];
+        const instance = agentApp.pipelineOrchestrator.getStatus(instanceId);
+        if (!instance) {
+          res.writeHead(404, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: 'Instance not found' }));
+          return;
+        }
+
+        const serialized = agentApp.pipelineOrchestrator.serializeInstance(instance);
+        const coordination = serialized.coordination;
+        const dm = agentApp.documentManager;
+        const project = coordination?.projectId ? dm.getProject(coordination.projectId) : null;
+        const taskIdsBySurface = coordination?.taskIdsBySurface || {};
+        const documentIdsBySurface = coordination?.documentIdsBySurface || {};
+        const taskById: Record<string, unknown> = {};
+        const documentsByTaskId: Record<string, unknown[]> = {};
+        const bindings = Object.entries(taskIdsBySurface).map(([surfaceId, taskId]) => {
+          const task = dm.getTask(String(taskId));
+          const documents = dm.getDocumentsByTask(String(taskId));
+          taskById[String(taskId)] = task;
+          documentsByTaskId[String(taskId)] = documents;
+          return {
+            surfaceId,
+            taskId,
+            task,
+            documentId: documentIdsBySurface[surfaceId],
+            documents,
+          };
+        });
+
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({
+          instance: serialized,
+          project,
+          tasks: Object.values(taskById).filter(Boolean),
+          documentsByTaskId,
+          bindings,
+        }));
+        return;
+      }
+
       // 获取 Pipeline 实例状态
       if (path.startsWith('/pipeline-instances/') && req.method === 'GET') {
         const instanceId = path.split('/')[2];
