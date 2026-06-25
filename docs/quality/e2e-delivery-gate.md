@@ -33,6 +33,7 @@ When Gateway is already running, the same script also checks:
 - `stock-analysis-system` is loaded from the YAML Pipeline example
 - an inline YAML Pipeline can be registered through `POST /pipelines/load-yaml`
   restored after a Gateway restart, and deleted through `DELETE /pipelines/:id`
+- runtime YAML Pipelines are listed with `source: "runtime-yaml"` and `deletable: true`
 
 When Dashboard is already running, the same script also checks:
 

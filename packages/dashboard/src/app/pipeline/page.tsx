@@ -10,6 +10,8 @@ interface PipelineDef {
   id: string;
   name: string;
   version?: string;
+  source?: string;
+  deletable?: boolean;
   surfaces: SurfaceDef[];
   edges: EdgeDef[];
 }
@@ -162,6 +164,27 @@ export default function PipelinePage() {
       setPipelines(data.pipelines || []);
     } catch (e) {
       showToast('Failed to load pipelines', 'error');
+    }
+  };
+
+  const deletePipeline = async (pipeline: PipelineDef) => {
+    if (!pipeline.deletable) return;
+
+    try {
+      const res = await fetch(`/api/pipelines/${encodeURIComponent(pipeline.id)}`, { method: 'DELETE' });
+      const data = await res.json();
+      if (!res.ok || data.error || data.deleted !== true) {
+        throw new Error(data.error || 'Delete failed');
+      }
+      setPipelines((prev) => prev.filter((item) => item.id !== pipeline.id));
+      if (currentInstance?.pipelineId === pipeline.id) {
+        setCurrentInstance(null);
+        setCoordinationSummary(null);
+      }
+      showToast('Pipeline deleted', 'success');
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : 'Unknown error';
+      showToast(msg, 'error');
     }
   };
 
@@ -605,16 +628,35 @@ export default function PipelinePage() {
               <CardHeader className="pb-2">
                 <div className="flex justify-between items-start">
                   <div>
-                    <CardTitle className="text-xl">{pipeline.name}</CardTitle>
+                    <div className="flex items-center gap-2">
+                      <CardTitle className="text-xl">{pipeline.name}</CardTitle>
+                      {pipeline.source === 'runtime-yaml' && (
+                        <Badge variant="outline" className="border-emerald-300 text-emerald-700">
+                          运行时 YAML
+                        </Badge>
+                      )}
+                    </div>
                     <p className="text-sm text-gray-500 mt-1">ID: {pipeline.id} | 版本: {pipeline.version || '1.0'}</p>
                   </div>
-                <Button
-                  onClick={() => executePipeline(pipeline.id)}
-                  disabled={executing === pipeline.id}
-                  className="min-w-[100px]"
-                >
-                  {executing === pipeline.id ? '执行中...' : '执行'}
-                </Button>
+                  <div className="flex items-center gap-2">
+                    {pipeline.deletable && (
+                      <Button
+                        variant="outline"
+                        onClick={() => deletePipeline(pipeline)}
+                        disabled={executing === pipeline.id}
+                        className="border-red-200 text-red-600 hover:bg-red-50"
+                      >
+                        删除
+                      </Button>
+                    )}
+                    <Button
+                      onClick={() => executePipeline(pipeline.id)}
+                      disabled={executing === pipeline.id}
+                      className="min-w-[100px]"
+                    >
+                      {executing === pipeline.id ? '执行中...' : '执行'}
+                    </Button>
+                  </div>
                 </div>
               </CardHeader>
               <CardContent>

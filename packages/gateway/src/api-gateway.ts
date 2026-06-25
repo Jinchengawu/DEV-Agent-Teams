@@ -112,6 +112,15 @@ async function loadRuntimePipelines(agentApp: Awaited<ReturnType<typeof createAg
   }
 }
 
+function serializePipelineDefinition(pipeline: Record<string, any>): Record<string, any> {
+  const deletable = existsSync(runtimePipelinePath(String(pipeline.id)));
+  return {
+    ...pipeline,
+    source: deletable ? 'runtime-yaml' : 'builtin',
+    deletable,
+  };
+}
+
 // ============================================================================
 // Main
 // ============================================================================
@@ -341,7 +350,7 @@ async function main(): Promise<void> {
 
       // 列出所有 Pipeline 定义
       if (path === '/pipelines' && req.method === 'GET') {
-        const pipelines = agentApp.pipelineOrchestrator.listPipelines();
+        const pipelines = agentApp.pipelineOrchestrator.listPipelines().map((pipeline) => serializePipelineDefinition(pipeline));
         res.writeHead(200, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ pipelines }));
         return;
@@ -364,9 +373,9 @@ async function main(): Promise<void> {
           const runtimeDir = getRuntimePipelinesDir();
           mkdirSync(runtimeDir, { recursive: true });
           writeFileSync(runtimePipelinePath(loaded.id), yamlContent, 'utf8');
-          const pipelines = agentApp.pipelineOrchestrator.listPipelines();
+          const pipelines = agentApp.pipelineOrchestrator.listPipelines().map((pipeline) => serializePipelineDefinition(pipeline));
           res.writeHead(201, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({ pipeline: loaded, pipelines: pipelines.map((pipeline) => pipeline.id) }));
+          res.end(JSON.stringify({ pipeline: serializePipelineDefinition(loaded), pipelines: pipelines.map((pipeline) => pipeline.id) }));
         } catch (error) {
           const errorMsg = error instanceof Error ? error.message : 'Unknown error';
           res.writeHead(400, { 'Content-Type': 'application/json' });
@@ -394,8 +403,9 @@ async function main(): Promise<void> {
         try {
           unlinkSync(filePath);
           const deleted = agentApp.pipelineOrchestrator.unloadPipeline(pipelineId);
+          const pipelines = agentApp.pipelineOrchestrator.listPipelines().map((pipeline) => serializePipelineDefinition(pipeline));
           res.writeHead(200, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({ id: pipelineId, deleted, pipelines: agentApp.pipelineOrchestrator.listPipelines().map((pipeline) => pipeline.id) }));
+          res.end(JSON.stringify({ id: pipelineId, deleted, pipelines: pipelines.map((pipeline) => pipeline.id) }));
         } catch (error) {
           const errorMsg = error instanceof Error ? error.message : 'Unknown error';
           res.writeHead(500, { 'Content-Type': 'application/json' });

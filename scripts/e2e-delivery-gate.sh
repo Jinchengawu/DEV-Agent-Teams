@@ -166,9 +166,12 @@ const loaded = await loadRes.json();
 if (loadRes.status !== 201 || loaded.pipeline?.id !== id) {
   throw new Error(`inline load failed: ${loadRes.status} ${JSON.stringify(loaded)}`);
 }
+if (loaded.pipeline?.source !== 'runtime-yaml' || loaded.pipeline?.deletable !== true) {
+  throw new Error(`inline loaded pipeline missing runtime metadata: ${JSON.stringify(loaded.pipeline)}`);
+}
 const listRes = await fetch(`${base}/pipelines`);
 const listed = await listRes.json();
-if (!listed.pipelines?.some((pipeline) => pipeline.id === id)) {
+if (!listed.pipelines?.some((pipeline) => pipeline.id === id && pipeline.source === 'runtime-yaml' && pipeline.deletable === true)) {
   throw new Error(`inline loaded pipeline not listed: ${id}`);
 }
 console.log(`id=${id}`);
@@ -510,6 +513,9 @@ const res = await fetch(`${base}/api/pipelines/load-yaml`, {
 const data = await res.json();
 if (res.status !== 201 || data.pipeline?.id !== id) {
   throw new Error(`dashboard yaml proxy failed: ${res.status} ${JSON.stringify(data)}`);
+}
+if (data.pipeline?.source !== 'runtime-yaml' || data.pipeline?.deletable !== true) {
+  throw new Error(`dashboard yaml proxy missing runtime metadata: ${JSON.stringify(data.pipeline)}`);
 }
 const deleteRes = await fetch(`${base}/api/pipelines/${id}`, { method: 'DELETE' });
 const deleted = await deleteRes.json();
