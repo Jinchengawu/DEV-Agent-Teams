@@ -15,6 +15,7 @@ DASHBOARD_URL="${DASHBOARD_URL:-http://localhost:3000}"
 REPORT_DIR="$ROOT/scripts/test-reports"
 TIMESTAMP="$(date +%Y%m%d_%H%M%S)"
 REPORT_FILE="$REPORT_DIR/e2e-delivery-gate-$TIMESTAMP.md"
+CODEX_NODE_BIN="${CODEX_NODE_BIN:-$HOME/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/bin}"
 
 PASS=0
 FAIL=0
@@ -504,7 +505,7 @@ NODE
       gateway_pid="$(lsof -tiTCP:8400 -sTCP:LISTEN 2>/dev/null || true)"
       if [ -n "$gateway_pid" ]; then kill $gateway_pid >/dev/null 2>&1 || true; fi
       sleep 2
-      screen -dmS dev-agent-gateway bash -lc "cd '$ROOT/packages/gateway' && env PATH=/Users/zhuizhui/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/bin:\$PATH GATEWAY_PORT=8400 ./node_modules/.bin/tsx src/api-gateway.ts 2>&1 | tee -a ../../.codex-run/logs/gateway-screen.log"
+      screen -dmS dev-agent-gateway bash -lc "cd '$ROOT/packages/gateway' && env PATH='$CODEX_NODE_BIN':\$PATH GATEWAY_PORT=8400 ./node_modules/.bin/tsx src/api-gateway.ts 2>&1 | tee -a ../../.codex-run/logs/gateway-screen.log"
       sleep 5
 
       verify_output="$(GATEWAY_URL="$GATEWAY_URL" INSTANCE_ID="$instance_id" node <<'NODE' 2>&1
