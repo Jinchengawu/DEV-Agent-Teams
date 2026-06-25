@@ -239,7 +239,7 @@ export class HermesAgentClient {
   /**
    * 检查 Agent 实例是否在线
    */
-  async healthCheck(agentId: string): Promise<{ online: boolean; latency: number }> {
+  async healthCheck(agentId: string, timeoutMs = 1500): Promise<{ online: boolean; latency: number }> {
     const instance = this.instanceMap.get(agentId);
     if (!instance) return { online: false, latency: -1 };
 
@@ -248,7 +248,7 @@ export class HermesAgentClient {
     const startTime = Date.now();
 
     try {
-      const response = await fetch(url, { signal: AbortSignal.timeout(5000) });
+      const response = await fetch(url, { signal: AbortSignal.timeout(timeoutMs) });
       return { online: response.ok, latency: Date.now() - startTime };
     } catch {
       return { online: false, latency: -1 };
@@ -258,11 +258,11 @@ export class HermesAgentClient {
   /**
    * 检查所有实例状态
    */
-  async healthCheckAll(): Promise<Map<string, { online: boolean; latency: number }>> {
+  async healthCheckAll(timeoutMs = 1500): Promise<Map<string, { online: boolean; latency: number }>> {
     const results = new Map<string, { online: boolean; latency: number }>();
 
     const promises = this.config.instances.map(async (inst) => {
-      const status = await this.healthCheck(inst.id);
+      const status = await this.healthCheck(inst.id, timeoutMs);
       results.set(inst.id, status);
     });
 

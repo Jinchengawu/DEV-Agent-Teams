@@ -115,6 +115,31 @@ if curl -fsS "$GATEWAY_URL/health" >/tmp/dev-agent-health.json 2>/dev/null; then
   agents="$(json_field agents < /tmp/dev-agent-health.json 2>/dev/null || echo "")"
   record "gateway health" PASS "agents=${agents:-unknown}"
 
+  if curl -fsS "$GATEWAY_URL/agent-health" >/tmp/dev-agent-agent-health.json 2>/dev/null; then
+    if python3 -c 'import json, sys
+with open(sys.argv[1], "r", encoding="utf-8") as f:
+    data = json.load(f)
+agents = data.get("agents", [])
+ok = (
+    isinstance(agents, list)
+    and len(agents) >= 6
+    and all(isinstance(a.get("online"), bool) for a in agents)
+    and isinstance(data.get("livePipelineReady"), bool)
+)
+raise SystemExit(0 if ok else 1)' /tmp/dev-agent-agent-health.json
+    then
+      agent_health_summary="$(python3 -c 'import json, sys
+with open(sys.argv[1], "r", encoding="utf-8") as f:
+    data = json.load(f)
+print("online={}/{} liveReady={}".format(data.get("onlineCount"), data.get("totalAgents"), data.get("livePipelineReady")))' /tmp/dev-agent-agent-health.json)"
+      record "gateway agent health" PASS "$agent_health_summary"
+    else
+      record "gateway agent health" FAIL "GET /agent-health returned an invalid payload"
+    fi
+  else
+    record "gateway agent health" FAIL "GET /agent-health failed"
+  fi
+
   if curl -fsS "$GATEWAY_URL/pipelines" >/tmp/dev-agent-pipelines.json 2>/dev/null; then
     if python3 -c 'import json, sys
 with open(sys.argv[1], "r", encoding="utf-8") as f:
@@ -437,6 +462,31 @@ fi
 
 if curl -fsS "$DASHBOARD_URL/" >/tmp/dev-agent-dashboard.html 2>/dev/null; then
   record "dashboard root" PASS "Dashboard is reachable"
+
+  if curl -fsS "$DASHBOARD_URL/api/health" >/tmp/dev-agent-dashboard-health.json 2>/dev/null; then
+    if python3 -c 'import json, sys
+with open(sys.argv[1], "r", encoding="utf-8") as f:
+    data = json.load(f)
+agents = data.get("agents", [])
+ok = (
+    isinstance(data.get("gatewayOnline"), bool)
+    and isinstance(agents, list)
+    and len(agents) >= 6
+    and all(isinstance(a.get("online"), bool) for a in agents)
+)
+raise SystemExit(0 if ok else 1)' /tmp/dev-agent-dashboard-health.json
+    then
+      dashboard_health_summary="$(python3 -c 'import json, sys
+with open(sys.argv[1], "r", encoding="utf-8") as f:
+    data = json.load(f)
+print("online={}/{} gateway={}".format(data.get("onlineCount"), data.get("totalAgents"), data.get("gatewayOnline")))' /tmp/dev-agent-dashboard-health.json)"
+      record "dashboard agent health" PASS "$dashboard_health_summary"
+    else
+      record "dashboard agent health" FAIL "GET /api/health returned an invalid payload"
+    fi
+  else
+    record "dashboard agent health" FAIL "GET /api/health failed"
+  fi
 
   if curl -fsS "$DASHBOARD_URL/api/v2/documents" >/tmp/dev-agent-dashboard-docs.json 2>/dev/null; then
     if python3 -c 'import json, sys

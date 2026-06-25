@@ -26,6 +26,7 @@ This verifies:
 When Gateway is already running, the same script also checks:
 
 - `GET /health`
+- `GET /agent-health`
 - `GET /pipelines`
 - `GET /v1/workflows`
 - `GET /v1/templates`
@@ -43,6 +44,7 @@ When Gateway is already running, the same script also checks:
 When Dashboard is already running, the same script also checks:
 
 - `GET /`
+- `GET /api/health`
 - `GET /api/v2/documents`
 - `GET /api/workflows`
 - `GET /api/workflows/templates`

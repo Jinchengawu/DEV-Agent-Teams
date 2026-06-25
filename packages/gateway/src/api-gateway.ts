@@ -16,7 +16,7 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { homedir } from 'node:os';
 import { config } from 'dotenv';
-import { createAgentApp } from '@dev-agent/core';
+import { createAgentApp, createHermesAgentClient } from '@dev-agent/core';
 import type { OrchestratorEvent, MeetingProgressEvent } from '@dev-agent/core';
 import Busboy from 'busboy';
 import { randomUUID } from 'node:crypto';
@@ -121,6 +121,35 @@ function serializePipelineDefinition(pipeline: Record<string, any>): Record<stri
     ...pipeline,
     source: deletable ? 'runtime-yaml' : 'builtin',
     deletable,
+  };
+}
+
+async function getHermesAgentHealth(): Promise<Record<string, any>> {
+  const client = createHermesAgentClient();
+  const statuses = await client.healthCheckAll(1500);
+  const agents = client.getInstances().map((instance) => {
+    const status = statuses.get(instance.id) || { online: false, latency: -1 };
+    return {
+      id: instance.id,
+      name: instance.id,
+      label: instance.label,
+      online: status.online,
+      latencyMs: status.latency,
+      hermesPort: instance.hermes_port || instance.port,
+      tags: instance.tags,
+      skills: instance.skills.length,
+      error: status.online ? undefined : 'Hermes health check failed',
+    };
+  });
+  const onlineCount = agents.filter((agent) => agent.online).length;
+
+  return {
+    timestamp: Date.now(),
+    onlineCount,
+    totalAgents: agents.length,
+    totalSkills: agents.reduce((sum, agent) => sum + agent.skills, 0),
+    livePipelineReady: onlineCount === agents.length && agents.length > 0,
+    agents,
   };
 }
 
@@ -245,6 +274,20 @@ async function main(): Promise<void> {
         const agents = agentApp.orchestrator.getStatus().teamAgents;
         res.writeHead(200, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ agents }));
+        writeAuditLog({
+          timestamp: new Date().toISOString(),
+          method: 'GET',
+          path,
+          status: 200,
+          latencyMs: Date.now() - startTime,
+        }, config.auditFile);
+        return;
+      }
+
+      if (path === '/agent-health' && req.method === 'GET') {
+        const health = await getHermesAgentHealth();
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify(health));
         writeAuditLog({
           timestamp: new Date().toISOString(),
           method: 'GET',
