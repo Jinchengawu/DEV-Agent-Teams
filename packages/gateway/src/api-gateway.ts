@@ -470,10 +470,18 @@ async function main(): Promise<void> {
 
       // 列出所有 Pipeline 实例
       if (path === '/pipeline-instances' && req.method === 'GET') {
-        const instances = agentApp.pipelineOrchestrator.listInstances();
+        const status = url.searchParams.get('status');
+        const pipelineId = url.searchParams.get('pipelineId');
+        const limitParam = Number(url.searchParams.get('limit') || 100);
+        const limit = Number.isFinite(limitParam) ? Math.min(Math.max(Math.trunc(limitParam), 1), 500) : 100;
+        const instances = agentApp.pipelineOrchestrator.listInstances()
+          .filter((instance) => !status || status === 'all' || instance.status === status)
+          .filter((instance) => !pipelineId || instance.pipelineId === pipelineId)
+          .slice(0, limit);
         res.writeHead(200, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({
           instances: instances.map((i) => agentApp.pipelineOrchestrator.serializeInstance(i)),
+          filters: { status: status || 'all', pipelineId: pipelineId || null, limit },
         }));
         return;
       }

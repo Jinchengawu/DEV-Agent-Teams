@@ -86,6 +86,8 @@ the cancel and timeout flows, so repository side effects are reported as a deliv
 When Dashboard is available, the same control gate verifies that the Dashboard Pipeline API
 forwards the selected `surfaceTimeoutMs` option by starting a 1ms dry-run and observing the
 expected failed Surface.
+The gate also checks Gateway and Dashboard Pipeline instance filters (`status`, `pipelineId`,
+and `limit`) so long-running MVP sessions can keep history views bounded and reviewable.
 
 To verify restart recovery, opt in with:
 

@@ -93,6 +93,13 @@ const SURFACE_TIMEOUT_OPTIONS = [
   { label: '300 秒', value: 300_000 },
   { label: '600 秒', value: 600_000 },
 ];
+const HISTORY_STATUS_OPTIONS = [
+  { label: '全部', value: 'all' },
+  { label: '执行中', value: 'running' },
+  { label: '失败', value: 'failed' },
+  { label: '已取消', value: 'cancelled' },
+  { label: '完成', value: 'completed' },
+];
 const YAML_DRAFT = `id: custom-dev-loop
 name: Custom Dev Loop
 version: "0.1.0"
@@ -185,6 +192,7 @@ export default function PipelinePage() {
   const [importingYaml, setImportingYaml] = useState(false);
   const [executionMode, setExecutionMode] = useState<'dry-run' | 'live'>('dry-run');
   const [surfaceTimeoutMs, setSurfaceTimeoutMs] = useState(90_000);
+  const [historyStatusFilter, setHistoryStatusFilter] = useState('all');
   const [now, setNow] = useState(Date.now());
 
   const livePipelineReady = agentStats.livePipelineReady;
@@ -221,7 +229,7 @@ export default function PipelinePage() {
       const storedIds: string[] = stored ? JSON.parse(stored) : [];
       const uniqueIds = Array.from(new Set(storedIds)).filter(Boolean);
 
-      const res = await fetch('/api/pipeline-instances');
+      const res = await fetch('/api/pipeline-instances?limit=100');
       if (!res.ok) return;
 
       const data = await res.json();
@@ -233,7 +241,7 @@ export default function PipelinePage() {
       const recent = instances.filter((instance) => !uniqueIds.includes(instance.id));
       const merged = [...preferred, ...recent]
         .sort((a, b) => b.startedAt - a.startedAt)
-        .slice(0, 50);
+        .slice(0, 100);
 
       setInstanceHistory(merged);
 
@@ -353,7 +361,7 @@ export default function PipelinePage() {
       if (!res.ok) return;
       const data = await res.json();
       setCurrentInstance(data);
-      setInstanceHistory((prev) => [data, ...prev.filter((i) => i.id !== data.id)].slice(0, 50));
+      setInstanceHistory((prev) => [data, ...prev.filter((i) => i.id !== data.id)].slice(0, 100));
       saveInstanceId(data.id);
       if (data.status === 'running') {
         startPolling(data.id);
@@ -401,7 +409,7 @@ export default function PipelinePage() {
           surfaceResults: data.surfaceResults || {},
         };
         setCurrentInstance(instance);
-        setInstanceHistory(prev => [instance, ...prev.filter(i => i.id !== instance.id)].slice(0, 50));
+        setInstanceHistory(prev => [instance, ...prev.filter(i => i.id !== instance.id)].slice(0, 100));
         saveInstanceId(data.instanceId);
         if (data.status === 'running') {
           startPolling(data.instanceId);
@@ -431,7 +439,7 @@ export default function PipelinePage() {
         // 更新历史中的该实例
         setInstanceHistory(prev => {
           const filtered = prev.filter(i => i.id !== data.id);
-          return [data, ...filtered].slice(0, 50); // 保留最近50个
+          return [data, ...filtered].slice(0, 100);
         });
 
         if (TERMINAL_STATUSES.has(data.status)) {
@@ -502,7 +510,7 @@ export default function PipelinePage() {
         setPollInterval(null);
       }
       setCurrentInstance(data);
-      setInstanceHistory(prev => [data, ...prev.filter(i => i.id !== data.id)].slice(0, 50));
+      setInstanceHistory(prev => [data, ...prev.filter(i => i.id !== data.id)].slice(0, 100));
       showToast('Pipeline cancelled', 'success');
     } catch (e) {
       const msg = e instanceof Error ? e.message : 'Unknown error';
@@ -748,6 +756,9 @@ export default function PipelinePage() {
   const currentProgress = currentInstance
     ? buildProgressSummary(currentPipeline, currentInstance, now)
     : null;
+  const filteredInstanceHistory = historyStatusFilter === 'all'
+    ? instanceHistory
+    : instanceHistory.filter((instance) => instance.status === historyStatusFilter);
 
   return (
     <div className="min-h-screen bg-gray-50 p-6">
@@ -875,17 +886,34 @@ export default function PipelinePage() {
         {instanceHistory.length > 0 && (
           <Card className="mb-6 border-l-4 border-l-amber-500">
             <CardHeader className="pb-2">
-              <div className="flex justify-between items-center">
-                <CardTitle className="text-lg">执行历史 ({instanceHistory.length})</CardTitle>
-                <Button variant="outline" size="sm" onClick={() => setShowHistory(!showHistory)}>
-                  {showHistory ? '收起' : '展开'}
-                </Button>
+              <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                <CardTitle className="text-lg">
+                  执行历史 ({filteredInstanceHistory.length}/{instanceHistory.length})
+                </CardTitle>
+                <div className="flex items-center gap-2">
+                  <select
+                    value={historyStatusFilter}
+                    onChange={(event) => setHistoryStatusFilter(event.target.value)}
+                    className="h-9 rounded-md border border-gray-300 bg-white px-3 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100"
+                    aria-label="Pipeline history status filter"
+                    data-testid="pipeline-history-status-filter"
+                  >
+                    {HISTORY_STATUS_OPTIONS.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+                  <Button variant="outline" size="sm" onClick={() => setShowHistory(!showHistory)}>
+                    {showHistory ? '收起' : '展开'}
+                  </Button>
+                </div>
               </div>
             </CardHeader>
             {showHistory && (
               <CardContent>
                 <div className="space-y-2">
-                  {instanceHistory.map((instance) => (
+                  {filteredInstanceHistory.map((instance) => (
                     <div
                       key={instance.id}
                       className={`flex items-center justify-between p-3 rounded border cursor-pointer hover:bg-gray-50 ${
@@ -911,6 +939,11 @@ export default function PipelinePage() {
                       </div>
                     </div>
                   ))}
+                  {filteredInstanceHistory.length === 0 && (
+                    <div className="rounded border border-gray-200 bg-gray-50 p-4 text-center text-sm text-gray-500">
+                      当前筛选下没有执行记录
+                    </div>
+                  )}
                 </div>
               </CardContent>
             )}

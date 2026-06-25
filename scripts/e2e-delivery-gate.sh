@@ -284,6 +284,34 @@ raise SystemExit(0 if any(t.get("id") == "dev-team-minimum-loop" for t in templa
     record "gateway workflow templates" FAIL "GET /v1/templates failed"
   fi
 
+  if curl -fsS "$GATEWAY_URL/pipeline-instances?status=failed&limit=3" >/tmp/dev-agent-pipeline-instances-filtered.json 2>/dev/null; then
+    if python3 -c 'import json, sys
+with open(sys.argv[1], "r", encoding="utf-8") as f:
+    data = json.load(f)
+instances = data.get("instances", [])
+filters = data.get("filters", {})
+ok = (
+    isinstance(instances, list)
+    and len(instances) <= 3
+    and filters.get("status") == "failed"
+    and int(filters.get("limit") or 0) == 3
+    and all(instance.get("status") == "failed" for instance in instances)
+)
+raise SystemExit(0 if ok else 1)' /tmp/dev-agent-pipeline-instances-filtered.json
+    then
+      filtered_summary="$(python3 -c 'import json, sys
+with open(sys.argv[1], "r", encoding="utf-8") as f:
+    data = json.load(f)
+instances = data.get("instances", [])
+print("status=failed limit=3 returned={}".format(len(instances)))' /tmp/dev-agent-pipeline-instances-filtered.json)"
+      record "gateway pipeline instance filters" PASS "$filtered_summary"
+    else
+      record "gateway pipeline instance filters" FAIL "filtered instance response was invalid"
+    fi
+  else
+    record "gateway pipeline instance filters" FAIL "GET /pipeline-instances?status=failed&limit=3 failed"
+  fi
+
   if [ "${RUN_PIPELINE_CONTROL_SMOKE:-0}" = "1" ]; then
     repo_status_before_control="$(repo_status_snapshot)"
     set +e
@@ -710,6 +738,34 @@ print("instances={} bound={} latest={} status={}".format(len(instances), len(bou
     fi
   else
     record "dashboard pipeline instances proxy" FAIL "GET /api/pipeline-instances failed"
+  fi
+
+  if curl -fsS "$DASHBOARD_URL/api/pipeline-instances?status=failed&limit=3" >/tmp/dev-agent-dashboard-pipeline-instances-filtered.json 2>/dev/null; then
+    if python3 -c 'import json, sys
+with open(sys.argv[1], "r", encoding="utf-8") as f:
+    data = json.load(f)
+instances = data.get("instances", [])
+filters = data.get("filters", {})
+ok = (
+    isinstance(instances, list)
+    and len(instances) <= 3
+    and filters.get("status") == "failed"
+    and int(filters.get("limit") or 0) == 3
+    and all(instance.get("status") == "failed" for instance in instances)
+)
+raise SystemExit(0 if ok else 1)' /tmp/dev-agent-dashboard-pipeline-instances-filtered.json
+    then
+      dashboard_filtered_summary="$(python3 -c 'import json, sys
+with open(sys.argv[1], "r", encoding="utf-8") as f:
+    data = json.load(f)
+instances = data.get("instances", [])
+print("status=failed limit=3 returned={}".format(len(instances)))' /tmp/dev-agent-dashboard-pipeline-instances-filtered.json)"
+      record "dashboard pipeline instance filters" PASS "$dashboard_filtered_summary"
+    else
+      record "dashboard pipeline instance filters" FAIL "filtered Dashboard instance response was invalid"
+    fi
+  else
+    record "dashboard pipeline instance filters" FAIL "GET /api/pipeline-instances?status=failed&limit=3 failed"
   fi
 
   if curl -fsS "$DASHBOARD_URL/api/workflows/templates" >/tmp/dev-agent-dashboard-templates.json 2>/dev/null; then

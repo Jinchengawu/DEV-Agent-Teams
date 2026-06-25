@@ -1,10 +1,11 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 
 const GATEWAY_URL = process.env.GATEWAY_URL || 'http://127.0.0.1:8400';
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
-    const res = await fetch(`${GATEWAY_URL}/pipeline-instances`, { cache: 'no-store' });
+    const query = request.nextUrl.searchParams.toString();
+    const res = await fetch(`${GATEWAY_URL}/pipeline-instances${query ? `?${query}` : ''}`, { cache: 'no-store' });
     if (!res.ok) {
       return NextResponse.json({ error: 'Failed to fetch instances' }, { status: res.status });
     }
