@@ -109,6 +109,15 @@ for part in sys.argv[1].split("."):
 print("" if cur is None else cur)' "$1"
 }
 
+quit_screen_sessions() {
+  local session="$1"
+  screen -ls 2>/dev/null \
+    | awk -v name="\\.${session}[[:space:]]" '$0 ~ name { print $1 }' \
+    | while read -r screen_id; do
+      [ -n "$screen_id" ] && screen -S "$screen_id" -X quit >/dev/null 2>&1 || true
+    done
+}
+
 write_report_header
 
 echo "E2E Delivery Gate"
@@ -450,7 +459,30 @@ if (
   })}`);
 }
 
-console.log(`instance=${data.instanceId} failedSurfaces=${failedSurfaces.map((result) => result.surfaceId).join(',')} blocked=${blockedCount}/${statuses.length} experience=${experienceDocId}`);
+const terminalCancelRes = await fetch(`${base}/pipeline-instances/${data.instanceId}/cancel`, {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({ reason: 'E2E terminal cancel guard' }),
+});
+const terminalCancel = await terminalCancelRes.json();
+if (
+  terminalCancelRes.status !== 409 ||
+  terminalCancel.supported !== false ||
+  !/cannot be cancelled/i.test(terminalCancel.error || '')
+) {
+  throw new Error(`terminal pipeline cancel should be rejected: ${terminalCancelRes.status} ${JSON.stringify(terminalCancel)}`);
+}
+
+const afterCancelRes = await fetch(`${base}/pipeline-instances/${data.instanceId}`);
+const afterCancel = await afterCancelRes.json();
+if (!afterCancelRes.ok || afterCancel.status !== 'failed') {
+  throw new Error(`terminal cancel mutated failed pipeline status: ${afterCancelRes.status} ${JSON.stringify({
+    status: afterCancel.status,
+    error: afterCancel.error,
+  })}`);
+}
+
+console.log(`instance=${data.instanceId} failedSurfaces=${failedSurfaces.map((result) => result.surfaceId).join(',')} blocked=${blockedCount}/${statuses.length} experience=${experienceDocId} terminalCancel=409`);
 NODE
 )"
     timeout_code=$?
@@ -501,9 +533,10 @@ NODE
       recovery_json="$(echo "$recovery_output" | tail -n 1)"
       instance_id="$(printf '%s' "$recovery_json" | python3 -c 'import json,sys; print(json.load(sys.stdin)["instanceId"])' 2>/dev/null)"
 
-      screen -S dev-agent-gateway -X quit >/dev/null 2>&1 || true
-      gateway_pid="$(lsof -tiTCP:8400 -sTCP:LISTEN 2>/dev/null || true)"
-      if [ -n "$gateway_pid" ]; then kill $gateway_pid >/dev/null 2>&1 || true; fi
+      quit_screen_sessions dev-agent-gateway
+      lsof -tiTCP:8400 -sTCP:LISTEN 2>/dev/null | xargs kill -9 >/dev/null 2>&1 || true
+      pkill -f "$ROOT/packages/gateway.*pnpm dev" >/dev/null 2>&1 || true
+      pkill -f "$ROOT/packages/gateway.*tsx" >/dev/null 2>&1 || true
       sleep 2
       screen -dmS dev-agent-gateway bash -lc "cd '$ROOT/packages/gateway' && env PATH='$CODEX_NODE_BIN':\$PATH GATEWAY_PORT=8400 ./node_modules/.bin/tsx src/api-gateway.ts 2>&1 | tee -a ../../.codex-run/logs/gateway-screen.log"
       sleep 5

@@ -492,8 +492,12 @@ async function main(): Promise<void> {
           res.end(JSON.stringify(instance ? agentApp.pipelineOrchestrator.serializeInstance(instance) : { ok: true }));
         } catch (error) {
           const errorMsg = error instanceof Error ? error.message : 'Unknown error';
-          res.writeHead(404, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({ error: errorMsg }));
+          const statusCode = errorMsg.includes('未找到') ? 404 : 409;
+          res.writeHead(statusCode, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({
+            error: errorMsg,
+            supported: statusCode !== 409,
+          }));
         }
         return;
       }

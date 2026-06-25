@@ -35,6 +35,15 @@ show_help() {
     echo "  ./dev-agent test"
 }
 
+stop_screen_sessions() {
+    local session="$1"
+    screen -ls 2>/dev/null \
+        | awk -v name="\\.${session}[[:space:]]" '$0 ~ name { print $1 }' \
+        | while read -r screen_id; do
+            [ -n "$screen_id" ] && screen -S "$screen_id" -X quit >/dev/null 2>&1 || true
+        done
+}
+
 # 启动服务
 start_services() {
     echo -e "${BLUE}🚀 启动 DEV-Agent 服务...${NC}"
@@ -49,10 +58,18 @@ start_services() {
 # 停止服务
 stop_services() {
     echo -e "${BLUE}🛑 停止 DEV-Agent 服务...${NC}"
+
+    # 停止 screen 会话（如果由 start-all.sh 启动）。先关会话可以带走 tee/bash/pnpm
+    # 进程树，后续端口和命令模式清理用于处理历史残留进程。
+    for session in hermes-frontend hermes-backend hermes-testing hermes-devops hermes-pm hermes-project-admin dev-agent-gateway dev-agent-dashboard; do
+        stop_screen_sessions "$session"
+    done
     
     # 停止 Gateway (端口 8400)
     echo -e "${YELLOW}停止 Gateway...${NC}"
     lsof -ti:8400 | xargs kill -9 2>/dev/null || true
+    pkill -f "$SCRIPT_DIR/packages/gateway.*pnpm dev" 2>/dev/null || true
+    pkill -f "$SCRIPT_DIR/packages/gateway.*tsx" 2>/dev/null || true
     
     # 停止各 Agent (当前 Hermes 端口 8002-8007；兼容旧端口 8201-8206)
     echo -e "${YELLOW}停止 Agent 实例...${NC}"
@@ -66,11 +83,8 @@ stop_services() {
     # 停止 Dashboard (端口 3000)
     echo -e "${YELLOW}停止 Dashboard...${NC}"
     lsof -ti:3000 | xargs kill -9 2>/dev/null || true
-
-    # 停止 screen 会话（如果由 start-all.sh 启动）
-    for session in hermes-frontend hermes-backend hermes-testing hermes-devops hermes-pm hermes-project-admin dev-agent-gateway dev-agent-dashboard; do
-        screen -S "$session" -X quit >/dev/null 2>&1 || true
-    done
+    pkill -f "$SCRIPT_DIR/packages/dashboard.*pnpm dev" 2>/dev/null || true
+    pkill -f "$SCRIPT_DIR/packages/dashboard.*next dev" 2>/dev/null || true
     
     echo -e "${GREEN}✅ 所有服务已停止${NC}"
 }
@@ -100,7 +114,7 @@ show_status() {
 
     echo ""
     echo "Dashboard:"
-    if curl -s "http://127.0.0.1:3000/" > /dev/null 2>&1; then
+    if curl -fsS "http://127.0.0.1:3000/api/health" > /dev/null 2>&1; then
         echo -e "  ${GREEN}✅ 端口 3000 - 运行中${NC}"
     else
         echo -e "  ${RED}❌ 端口 3000 - 未运行${NC}"

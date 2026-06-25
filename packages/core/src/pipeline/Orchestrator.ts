@@ -76,6 +76,10 @@ interface DryRunGuard {
   baseline: string[];
 }
 
+function isTerminalPipelineStatus(status: PipelineStatus): boolean {
+  return status === 'completed' || status === 'failed' || status === 'rolled_back';
+}
+
 /**
  * Pipeline 编排器
  */
@@ -503,6 +507,12 @@ export class PipelineOrchestrator {
     const liveInstance = this.instances.get(instanceId);
     const instance = liveInstance || this.restorePipelineInstance(instanceId);
     if (!instance) throw new Error(`实例 ${instanceId} 未找到`);
+    if (instance.status === 'cancelled') {
+      return;
+    }
+    if (isTerminalPipelineStatus(instance.status)) {
+      throw new Error(`Pipeline ${instanceId} is already ${instance.status} and cannot be cancelled.`);
+    }
 
     this.controllers.get(instanceId)?.abort(new Error(reason));
     instance.status = 'cancelled';
