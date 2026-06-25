@@ -2,8 +2,19 @@ import { NextResponse } from 'next/server';
 import Database from 'better-sqlite3';
 
 const DB_PATH = process.env.SESSION_DB_PATH || `${process.env.HOME}/.dev-agent/data/sessions.db`;
+const GATEWAY_URL = process.env.GATEWAY_URL || 'http://127.0.0.1:8400';
+
+function isCoordinationTask(id: string): boolean {
+  return id.startsWith('task-');
+}
 
 export async function GET(_: Request, { params }: { params: { id: string } }) {
+  if (isCoordinationTask(params.id)) {
+    const res = await fetch(`${GATEWAY_URL}/api/v2/tasks/${params.id}`, { cache: 'no-store' });
+    const data = await res.json();
+    return NextResponse.json(data, { status: res.status });
+  }
+
   const db = new Database(DB_PATH, { readonly: true });
   try {
     const task = db.prepare('SELECT * FROM tasks WHERE id = ?').get(params.id);
@@ -16,6 +27,18 @@ export async function GET(_: Request, { params }: { params: { id: string } }) {
 
 export async function PUT(request: Request, { params }: { params: { id: string } }) {
   const body = await request.json();
+
+  if (isCoordinationTask(params.id)) {
+    const res = await fetch(`${GATEWAY_URL}/api/v2/tasks/${params.id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ status: body.status }),
+      cache: 'no-store',
+    });
+    const data = await res.json();
+    return NextResponse.json(data, { status: res.status });
+  }
+
   const db = new Database(DB_PATH);
   try {
     const existing: any = db.prepare('SELECT * FROM tasks WHERE id = ?').get(params.id);
@@ -53,6 +76,10 @@ export async function PUT(request: Request, { params }: { params: { id: string }
 }
 
 export async function DELETE(_: Request, { params }: { params: { id: string } }) {
+  if (isCoordinationTask(params.id)) {
+    return NextResponse.json({ error: 'Coordination tasks are managed by Pipeline history' }, { status: 405 });
+  }
+
   const db = new Database(DB_PATH);
   try {
     db.prepare('DELETE FROM tasks WHERE id = ?').run(params.id);

@@ -2,41 +2,84 @@ import { NextResponse } from 'next/server';
 import Database from 'better-sqlite3';
 
 const DB_PATH = process.env.SESSION_DB_PATH || `${process.env.HOME}/.dev-agent/data/sessions.db`;
+const GATEWAY_URL = process.env.GATEWAY_URL || 'http://127.0.0.1:8400';
+
+type KanbanTask = {
+  id: string;
+  title: string;
+  description: string;
+  status: string;
+  assignee: string;
+  priority: string;
+  task_type: string;
+  progress: number;
+  due_at: string | null;
+  created_at: string;
+  updated_at: string;
+  source?: 'local' | 'coordination';
+  project_id?: string;
+};
+
+function mapCoordinationTask(task: any): KanbanTask {
+  return {
+    id: task.id,
+    title: task.title,
+    description: task.description || '',
+    status: task.status,
+    assignee: task.assignee || '',
+    priority: 'medium',
+    task_type: 'pipeline',
+    progress: task.status === 'done' ? 100 : task.status === 'in_progress' ? 50 : 0,
+    due_at: null,
+    created_at: new Date(task.createdAt).toISOString(),
+    updated_at: new Date(task.updatedAt).toISOString(),
+    source: 'coordination',
+    project_id: task.projectId,
+  };
+}
+
+async function fetchCoordinationTasks(): Promise<KanbanTask[]> {
+  try {
+    const res = await fetch(`${GATEWAY_URL}/api/v2/tasks`, { cache: 'no-store' });
+    if (!res.ok) return [];
+    const data = await res.json();
+    return (data.tasks || []).map(mapCoordinationTask);
+  } catch {
+    return [];
+  }
+}
 
 export async function GET() {
   const db = new Database(DB_PATH, { readonly: true });
   try {
-    const tasks = db.prepare('SELECT * FROM tasks ORDER BY updated_at DESC').all();
+    const localTasks = db.prepare('SELECT * FROM tasks ORDER BY updated_at DESC').all() as KanbanTask[];
+    const coordinationTasks = await fetchCoordinationTasks();
+    const tasks = [
+      ...coordinationTasks,
+      ...localTasks.map((task) => ({ ...task, source: 'local' as const })),
+    ];
     const milestones = db.prepare('SELECT * FROM milestones ORDER BY target_date ASC').all();
 
     // 按 Agent 统计
-    const agentStats = db.prepare(`
-      SELECT assignee,
-        COUNT(*) as total,
-        SUM(CASE WHEN status = 'todo' THEN 1 ELSE 0 END) as todo,
-        SUM(CASE WHEN status = 'in_progress' THEN 1 ELSE 0 END) as in_progress,
-        SUM(CASE WHEN status = 'review' THEN 1 ELSE 0 END) as review,
-        SUM(CASE WHEN status = 'done' THEN 1 ELSE 0 END) as done,
-        SUM(CASE WHEN status = 'blocked' THEN 1 ELSE 0 END) as blocked
-      FROM tasks
-      WHERE assignee != ''
-      GROUP BY assignee
-    `).all();
+    const agentStats = tasks.reduce((acc: any, task: any) => {
+      if (!task.assignee) return acc;
+      acc[task.assignee] ||= { assignee: task.assignee, total: 0, todo: 0, in_progress: 0, review: 0, done: 0, blocked: 0 };
+      acc[task.assignee].total += 1;
+      if (task.status in acc[task.assignee]) acc[task.assignee][task.status] += 1;
+      return acc;
+    }, {});
 
-    const total = (tasks as any[]).length;
-    const completed = (tasks as any[]).filter(t => t.status === 'done').length;
-    const blocked = (tasks as any[]).filter(t => t.status === 'blocked').length;
-    const overdue = (tasks as any[]).filter(
+    const total = tasks.length;
+    const completed = tasks.filter(t => t.status === 'done').length;
+    const blocked = tasks.filter(t => t.status === 'blocked').length;
+    const overdue = tasks.filter(
       t => t.due_at && t.due_at < new Date().toISOString() && t.status !== 'done'
     ).length;
 
     return NextResponse.json({
       tasks,
       milestones,
-      agent_stats: (agentStats as any[]).reduce((acc: any, row: any) => {
-        acc[row.assignee] = row;
-        return acc;
-      }, {}),
+      agent_stats: agentStats,
       summary: {
         total_tasks: total,
         completed,

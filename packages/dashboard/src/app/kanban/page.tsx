@@ -14,6 +14,8 @@ interface Task {
   due_at: string | null
   created_at: string
   updated_at: string
+  source?: 'local' | 'coordination'
+  project_id?: string
 }
 
 interface Milestone {
@@ -216,9 +218,17 @@ export default function KanbanPage() {
                   <div key={task.id} className="bg-white rounded-lg shadow-sm p-3 text-sm">
                     <div className="flex items-start justify-between gap-2">
                       <span className="font-medium text-gray-900 leading-tight">{task.title}</span>
-                      <button onClick={() => handleDeleteTask(task.id)} className="text-gray-400 hover:text-red-500 text-xs">✕</button>
+                      {task.source !== 'coordination' && (
+                        <button onClick={() => handleDeleteTask(task.id)} className="text-gray-400 hover:text-red-500 text-xs">✕</button>
+                      )}
                     </div>
                     {task.description && <p className="text-xs text-gray-500 mt-1 line-clamp-2">{task.description}</p>}
+                    {task.source === 'coordination' && (
+                      <div className="mt-2 rounded border border-blue-100 bg-blue-50 px-2 py-1 text-[11px] text-blue-700">
+                        Pipeline 协作任务
+                        {task.project_id && <span className="ml-1 font-mono">{task.project_id}</span>}
+                      </div>
+                    )}
                     <div className="flex items-center gap-2 mt-2">
                       <span className="text-xs">{AGENT_ICONS[task.assignee] ?? '🤖'}</span>
                       <span className={`text-xs px-1.5 py-0.5 rounded ${PRIORITY_COLORS[task.priority]}`}>{task.priority}</span>

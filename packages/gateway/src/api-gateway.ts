@@ -705,6 +705,39 @@ async function main(): Promise<void> {
           }
         }
 
+        const taskIdMatch = path.match(/^\/api\/v2\/tasks\/([^\/]+)$/);
+        if (taskIdMatch) {
+          const taskId = taskIdMatch[1];
+          if (req.method === 'GET') {
+            const task = dm.getTask(taskId);
+            if (!task) {
+              res.writeHead(404, { 'Content-Type': 'application/json' });
+              res.end(JSON.stringify({ error: 'Task not found' }));
+              return;
+            }
+            res.writeHead(200, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify(task));
+            return;
+          }
+          if (req.method === 'PUT') {
+            const updates = JSON.parse(body || '{}');
+            if (!updates.status) {
+              res.writeHead(400, { 'Content-Type': 'application/json' });
+              res.end(JSON.stringify({ error: 'status is required' }));
+              return;
+            }
+            const task = dm.updateTaskStatus(taskId, updates.status);
+            if (!task) {
+              res.writeHead(404, { 'Content-Type': 'application/json' });
+              res.end(JSON.stringify({ error: 'Task not found' }));
+              return;
+            }
+            res.writeHead(200, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify(task));
+            return;
+          }
+        }
+
         // 文档 API
         if (path === '/api/v2/documents') {
           if (req.method === 'POST') {
