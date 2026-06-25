@@ -965,6 +965,35 @@ NODE
   fi
 
   set +e
+  dashboard_kanban_filter_output="$(DASHBOARD_URL="$DASHBOARD_URL" node <<'NODE' 2>&1
+const base = process.env.DASHBOARD_URL;
+const res = await fetch(`${base}/api/kanban?source=coordination`, { cache: 'no-store' });
+const data = await res.json();
+if (
+  !res.ok ||
+  data.filters?.source !== 'coordination' ||
+  !Array.isArray(data.tasks) ||
+  data.tasks.length < 1 ||
+  !data.tasks.every((task) => task.source === 'coordination')
+) {
+  throw new Error(`kanban source filter failed: ${res.status} ${JSON.stringify({
+    filters: data.filters,
+    taskCount: data.tasks?.length,
+    sample: data.tasks?.slice?.(0, 3),
+  })}`);
+}
+console.log(`source=${data.filters.source} tasks=${data.tasks.length}`);
+NODE
+)"
+  dashboard_kanban_filter_code=$?
+  set -e
+  if [ "$dashboard_kanban_filter_code" -eq 0 ]; then
+    record "dashboard kanban filters" PASS "$(echo "$dashboard_kanban_filter_output" | tail -n 1 | sed 's/|/\\|/g')"
+  else
+    record "dashboard kanban filters" FAIL "exit $dashboard_kanban_filter_code: $(echo "$dashboard_kanban_filter_output" | tail -n 3 | tr '\n' ' ' | sed 's/|/\\|/g')"
+  fi
+
+  set +e
   dashboard_kanban_task_output="$(DASHBOARD_URL="$DASHBOARD_URL" node <<'NODE' 2>&1
 const base = process.env.DASHBOARD_URL;
 const createRes = await fetch(`${base}/api/kanban/tasks`, {

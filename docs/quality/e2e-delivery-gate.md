@@ -92,6 +92,8 @@ Workflow list filters are covered in the same way, including Gateway and Dashboa
 checks for `status` and `limit`.
 Dashboard Kanban local task operations are also exercised as a closed loop:
 create a task, update its status/progress, delete it, and confirm it no longer resolves.
+Kanban board filtering is covered for coordination tasks so large task sets stay usable
+during long MVP sessions.
 
 To verify restart recovery, opt in with:
 

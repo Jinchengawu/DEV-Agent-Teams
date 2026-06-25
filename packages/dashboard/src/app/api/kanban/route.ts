@@ -103,15 +103,22 @@ async function fetchCoordinationTasks(): Promise<KanbanTask[]> {
   }
 }
 
-export async function GET() {
+export async function GET(request: Request) {
+  const { searchParams } = new URL(request.url);
+  const sourceFilter = searchParams.get('source');
+  const assigneeFilter = searchParams.get('assignee');
+
   const db = new Database(DB_PATH, { readonly: true });
   try {
     const localTasks = db.prepare('SELECT * FROM tasks ORDER BY updated_at DESC').all() as KanbanTask[];
     const coordinationTasks = await fetchCoordinationTasks();
-    const tasks = [
+    const allTasks = [
       ...coordinationTasks,
       ...localTasks.map((task) => ({ ...task, source: 'local' as const })),
     ];
+    const tasks = allTasks
+      .filter((task) => !sourceFilter || sourceFilter === 'all' || task.source === sourceFilter)
+      .filter((task) => !assigneeFilter || assigneeFilter === 'all' || task.assignee === assigneeFilter);
     const milestones = db.prepare('SELECT * FROM milestones ORDER BY target_date ASC').all();
 
     // 按 Agent 统计
@@ -140,6 +147,10 @@ export async function GET() {
         blocked,
         overdue,
         active_milestones: (milestones as any[]).filter(m => m.status === 'active').length,
+      },
+      filters: {
+        source: sourceFilter || 'all',
+        assignee: assigneeFilter || 'all',
       },
     });
   } finally {

@@ -68,19 +68,41 @@ const AGENT_ICONS: Record<string, string> = {
   'project-admin': '📊',
 }
 
+const AGENT_FILTERS = [
+  { value: 'all', label: '全部负责人' },
+  { value: 'dev-frontend', label: 'Frontend' },
+  { value: 'dev-backend', label: 'Backend' },
+  { value: 'dev-testing', label: 'Testing' },
+  { value: 'dev-devops', label: 'DevOps' },
+  { value: 'dev-pm', label: 'PM' },
+  { value: 'project-admin', label: 'Project Admin' },
+]
+
+const SOURCE_FILTERS = [
+  { value: 'all', label: '全部来源' },
+  { value: 'coordination', label: 'Pipeline 协作' },
+  { value: 'local', label: '本地任务' },
+]
+
 export default function KanbanPage() {
   const [data, setData] = useState<KanbanData | null>(null)
   const [loading, setLoading] = useState(true)
   const [showCreate, setShowCreate] = useState(false)
   const [newTask, setNewTask] = useState({ title: '', description: '', assignee: 'dev-frontend', priority: 'medium' })
+  const [sourceFilter, setSourceFilter] = useState('all')
+  const [assigneeFilter, setAssigneeFilter] = useState('all')
 
   const fetchKanban = useCallback(() => {
-    fetch('/api/kanban')
+    const params = new URLSearchParams()
+    if (sourceFilter !== 'all') params.set('source', sourceFilter)
+    if (assigneeFilter !== 'all') params.set('assignee', assigneeFilter)
+    const query = params.toString()
+    fetch(`/api/kanban${query ? `?${query}` : ''}`)
       .then(r => r.json())
       .then(setData)
       .catch(console.error)
       .finally(() => setLoading(false))
-  }, [])
+  }, [sourceFilter, assigneeFilter])
 
   useEffect(() => { fetchKanban() }, [fetchKanban])
 
@@ -160,6 +182,39 @@ export default function KanbanPage() {
           <div className="text-2xl font-bold text-orange-600">{summary?.overdue ?? 0}</div>
           <div className="text-xs text-gray-500">逾期</div>
         </div>
+      </div>
+
+      <div className="flex flex-col gap-3 rounded-lg border border-gray-200 bg-white p-4 shadow-sm md:flex-row md:items-center md:justify-between">
+        <div className="flex flex-wrap items-center gap-2">
+          <select
+            value={sourceFilter}
+            onChange={e => setSourceFilter(e.target.value)}
+            className="h-9 rounded-md border border-gray-300 bg-white px-3 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100"
+            aria-label="Kanban source filter"
+            data-testid="kanban-source-filter"
+          >
+            {SOURCE_FILTERS.map(option => (
+              <option key={option.value} value={option.value}>{option.label}</option>
+            ))}
+          </select>
+          <select
+            value={assigneeFilter}
+            onChange={e => setAssigneeFilter(e.target.value)}
+            className="h-9 rounded-md border border-gray-300 bg-white px-3 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100"
+            aria-label="Kanban assignee filter"
+            data-testid="kanban-assignee-filter"
+          >
+            {AGENT_FILTERS.map(option => (
+              <option key={option.value} value={option.value}>{option.label}</option>
+            ))}
+          </select>
+        </div>
+        <button
+          onClick={fetchKanban}
+          className="h-9 rounded-md border border-gray-300 px-3 text-sm text-gray-700 hover:bg-gray-50"
+        >
+          刷新
+        </button>
       </div>
 
       {/* Create Task Form */}
