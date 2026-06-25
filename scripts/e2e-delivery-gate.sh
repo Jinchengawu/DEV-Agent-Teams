@@ -1072,8 +1072,9 @@ else
 fi
 
 if [ "${RUN_LIVE_PIPELINE:-0}" = "1" ]; then
-  live_request="${E2E_LIVE_USER_REQUEST:-E2E delivery gate dry-run: verify the dev-team-minimum-loop coordination lifecycle only. Produce markdown-only planning artifacts. Do not create, edit, delete, install, build, or write repository files. Do not run package managers. If a surface would normally implement code, describe the intended artifact and verification evidence instead.}"
-  payload="$(E2E_LIVE_REQUEST="$live_request" python3 -c 'import json, os
+  if [ "${RUN_LIVE_PIPELINE_FULL:-0}" = "1" ]; then
+    live_request="${E2E_LIVE_USER_REQUEST:-E2E delivery gate dry-run: verify the dev-team-minimum-loop coordination lifecycle only. Produce markdown-only planning artifacts. Do not create, edit, delete, install, build, or write repository files. Do not run package managers. If a surface would normally implement code, describe the intended artifact and verification evidence instead.}"
+    payload="$(E2E_LIVE_REQUEST="$live_request" python3 -c 'import json, os
 print(json.dumps({
     "pipelineId": "dev-team-minimum-loop",
     "initialInput": {"userRequest": os.environ["E2E_LIVE_REQUEST"]},
@@ -1083,15 +1084,15 @@ print(json.dumps({
     },
 }))')"
 
-  if curl -fsS -X POST "$GATEWAY_URL/v1/pipeline/execute" \
-    -H "Content-Type: application/json" \
-    -d "$payload" >/tmp/dev-agent-pipeline-run.json; then
-    status="$(json_field status < /tmp/dev-agent-pipeline-run.json 2>/dev/null || echo unknown)"
-    instance_id="$(json_field instanceId < /tmp/dev-agent-pipeline-run.json 2>/dev/null || echo unknown)"
-    if [ "$status" = "completed" ]; then
-      record "live minimum lifecycle pipeline" PASS "instance=$instance_id status=$status"
-    else
-      failed_surfaces="$(python3 -c 'import json, sys
+    if curl -fsS -X POST "$GATEWAY_URL/v1/pipeline/execute" \
+      -H "Content-Type: application/json" \
+      -d "$payload" >/tmp/dev-agent-pipeline-run.json; then
+      status="$(json_field status < /tmp/dev-agent-pipeline-run.json 2>/dev/null || echo unknown)"
+      instance_id="$(json_field instanceId < /tmp/dev-agent-pipeline-run.json 2>/dev/null || echo unknown)"
+      if [ "$status" = "completed" ]; then
+        record "live minimum lifecycle pipeline" PASS "instance=$instance_id status=$status"
+      else
+        failed_surfaces="$(python3 -c 'import json, sys
 with open(sys.argv[1], "r", encoding="utf-8") as f:
     data = json.load(f)
 surfaces = data.get("surfaceResults", {}) or {}
@@ -1100,13 +1101,87 @@ for name, result in surfaces.items():
     if result.get("status") == "failed":
         failed.append("{}: {}".format(name, result.get("error", "unknown error")))
 print("; ".join(failed) or "no failed surface detail")' /tmp/dev-agent-pipeline-run.json | sed 's/|/\\|/g')"
-      record "live minimum lifecycle pipeline" FAIL "instance=$instance_id status=$status; $failed_surfaces"
+        record "live minimum lifecycle pipeline" FAIL "instance=$instance_id status=$status; $failed_surfaces"
+      fi
+    else
+      record "live minimum lifecycle pipeline" FAIL "pipeline execution request failed"
     fi
   else
-    record "live minimum lifecycle pipeline" FAIL "pipeline execution request failed"
+    set +e
+    live_cancel_output="$(GATEWAY_URL="$GATEWAY_URL" E2E_LIVE_SURFACE_TIMEOUT_MS="${E2E_LIVE_SURFACE_TIMEOUT_MS:-60000}" node <<'NODE' 2>&1
+const base = process.env.GATEWAY_URL;
+const timeoutMs = Number(process.env.E2E_LIVE_SURFACE_TIMEOUT_MS || 60000);
+const payload = {
+  pipelineId: 'dev-team-minimum-loop',
+  initialInput: {
+    userRequest: 'E2E live smoke: call real Hermes Agent path, keep dry-run/no-write contract, then cancel safely.',
+    requestedBy: 'e2e-live-cancel-smoke',
+  },
+  options: { dryRun: true, surfaceTimeoutMs: timeoutMs },
+};
+
+const startRes = await fetch(`${base}/v1/pipeline/start`, {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify(payload),
+});
+const started = await startRes.json();
+if (!startRes.ok || !started.instanceId || started.status !== 'running') {
+  throw new Error(`live start failed: ${startRes.status} ${JSON.stringify(started)}`);
+}
+
+let runningInstance = started;
+for (let i = 0; i < 20; i += 1) {
+  await new Promise((resolve) => setTimeout(resolve, 250));
+  const res = await fetch(`${base}/pipeline-instances/${started.instanceId}`);
+  runningInstance = await res.json();
+  if (!res.ok) {
+    throw new Error(`live status failed: ${res.status} ${JSON.stringify(runningInstance)}`);
+  }
+  const runningSurfaces = Object.values(runningInstance.surfaceResults || {}).filter((result) => result?.status === 'running');
+  if (runningSurfaces.length > 0) break;
+}
+
+const cancelRes = await fetch(`${base}/pipeline-instances/${started.instanceId}/cancel`, {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({ reason: 'E2E live cancel smoke' }),
+});
+const cancelled = await cancelRes.json();
+if (cancelRes.status !== 200 || cancelled.status !== 'cancelled') {
+  throw new Error(`live cancel failed: ${cancelRes.status} ${JSON.stringify(cancelled)}`);
+}
+
+await new Promise((resolve) => setTimeout(resolve, 500));
+const coordinationRes = await fetch(`${base}/pipeline-instances/${started.instanceId}/coordination`);
+const coordination = await coordinationRes.json();
+const statuses = coordination.bindings?.map((binding) => binding.task?.status) || [];
+const blockedCount = statuses.filter((status) => status === 'blocked').length;
+const experienceDocId = coordination.instance?.coordination?.documentIdsBySurface?._experience;
+if (!coordinationRes.ok || statuses.length < 1 || blockedCount !== statuses.length || !experienceDocId) {
+  throw new Error(`live cancel coordination failed: ${coordinationRes.status} ${JSON.stringify({
+    statuses,
+    blockedCount,
+    experienceDocId,
+  })}`);
+}
+
+const runningSurfaces = Object.values(runningInstance.surfaceResults || {})
+  .filter((result) => result?.status === 'running')
+  .map((result) => result.surfaceId);
+console.log(`instance=${started.instanceId} runningSurfaces=${runningSurfaces.join(',') || 'none'} blocked=${blockedCount}/${statuses.length} experience=${experienceDocId}`);
+NODE
+)"
+    live_cancel_code=$?
+    set -e
+    if [ "$live_cancel_code" -eq 0 ]; then
+      record "live pipeline start cancel smoke" PASS "$(echo "$live_cancel_output" | tail -n 1 | sed 's/|/\\|/g')"
+    else
+      record "live pipeline start cancel smoke" FAIL "exit $live_cancel_code: $(echo "$live_cancel_output" | tail -n 3 | tr '\n' ' ' | sed 's/|/\\|/g')"
+    fi
   fi
 else
-  record "live minimum lifecycle pipeline" WARN "skipped; set RUN_LIVE_PIPELINE=1 when Hermes Agents are available"
+  record "live pipeline start cancel smoke" WARN "skipped; set RUN_LIVE_PIPELINE=1 when Hermes Agents are available"
 fi
 
 {

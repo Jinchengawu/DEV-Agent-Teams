@@ -114,13 +114,25 @@ When Hermes Agent instances and model credentials are available, run:
 RUN_LIVE_PIPELINE=1 bash scripts/e2e-delivery-gate.sh
 ```
 
-This triggers the minimum lifecycle pipeline through the Gateway:
+By default this starts the minimum lifecycle pipeline asynchronously through the Gateway,
+waits for the real Hermes-backed execution path to become observable, then cancels the
+instance and verifies that Kanban tasks are blocked and an `_experience` document is
+captured. This keeps live verification bounded while still proving that live Agent work can
+be stopped cleanly.
+
+To force a full live lifecycle completion check, add `RUN_LIVE_PIPELINE_FULL=1`:
+
+```bash
+RUN_LIVE_PIPELINE=1 RUN_LIVE_PIPELINE_FULL=1 bash scripts/e2e-delivery-gate.sh
+```
+
+The full run triggers the entire minimum lifecycle pipeline:
 
 ```text
 discovery -> planning -> [frontend, backend] -> testing -> release -> retrospective
 ```
 
-Live pipeline verification is intentionally opt-in because it may call external model
+Full live pipeline verification is intentionally opt-in because it may call external model
 APIs and can take several minutes.
 
 The default live prompt is a dry-run coordination check. It instructs Agents to produce
@@ -128,8 +140,9 @@ markdown-only artifacts and avoid modifying the repository. If you intentionally
 the team to write files, set `E2E_LIVE_USER_REQUEST` explicitly and inspect the resulting
 git diff before accepting the run.
 
-Live surface calls default to `300000ms` because real Hermes Agents, especially DevOps
-release checks, can take longer than the UI dry-run path. Override with
+The bounded live start/cancel smoke defaults to `60000ms` per Surface. Full live surface
+calls default to `300000ms` because real Hermes Agents, especially DevOps release checks,
+can take longer than the UI dry-run path. Override either path with
 `E2E_LIVE_SURFACE_TIMEOUT_MS` when debugging latency.
 
 Live runs also pass structured execution options to the Gateway:
@@ -138,7 +151,8 @@ Live runs also pass structured execution options to the Gateway:
   execution contract.
 - dry-run Pipeline execution records a Git worktree status baseline and fails the run
   if repository status changes after a Surface completes or before the run exits.
-- `surfaceTimeoutMs` defaults to `300000`; override it with `E2E_LIVE_SURFACE_TIMEOUT_MS`.
+- `surfaceTimeoutMs` defaults to `60000` for bounded live smoke and `300000` for full live
+  completion; override it with `E2E_LIVE_SURFACE_TIMEOUT_MS`.
 - `RUN_PIPELINE_CONTROL_SMOKE=1` compares Git status before and after a dry-run
   control flow so repository side effects are visible in the delivery report.
 - Dashboard-triggered Pipelines use the same dry-run and timeout defaults, but run
