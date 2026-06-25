@@ -55,6 +55,7 @@ When Dashboard is already running, the same script also checks:
 - Dashboard workflow templates include runtime YAML metadata for custom Pipelines
 - Dashboard Pipeline history can recover persisted instances with coordination bindings
 - Dashboard Workflows records link to their Pipeline instance and project documents
+- Dashboard Workflows records expose stable navigation links to Pipeline, Knowledge, and Kanban
 - Dashboard Pipeline page exposes a YAML importer for runtime custom workflows
 - Knowledge links can preserve project/task context for workflow documents
 - Kanban coordination tasks expose project links and related document counts

@@ -17,6 +17,9 @@ interface WorkflowRecord {
   pipeline_id?: string
   project_id?: string
   coordination_task_count?: number
+  pipeline_url?: string
+  knowledge_url?: string
+  kanban_url?: string
   status: string
   current_step: number
   created_at: string
@@ -271,7 +274,7 @@ export default function WorkflowsPage() {
                     <div className="flex flex-wrap justify-end gap-2">
                       {wf.pipeline_instance_id && (
                         <a
-                          href={`/pipeline?instanceId=${encodeURIComponent(wf.pipeline_instance_id)}`}
+                          href={wf.pipeline_url || `/pipeline?instanceId=${encodeURIComponent(wf.pipeline_instance_id)}`}
                           className="text-blue-600 hover:underline"
                           data-testid={`workflow-pipeline-${wf.id}`}
                         >
@@ -280,11 +283,20 @@ export default function WorkflowsPage() {
                       )}
                       {wf.project_id && (
                         <a
-                          href={`/knowledge?projectId=${encodeURIComponent(wf.project_id)}`}
+                          href={wf.knowledge_url || `/knowledge?projectId=${encodeURIComponent(wf.project_id)}`}
                           className="text-emerald-700 hover:underline"
                           data-testid={`workflow-knowledge-${wf.id}`}
                         >
                           文档
+                        </a>
+                      )}
+                      {wf.kanban_url && (
+                        <a
+                          href={wf.kanban_url}
+                          className="text-slate-600 hover:underline"
+                          data-testid={`workflow-kanban-${wf.id}`}
+                        >
+                          看板
                         </a>
                       )}
                     </div>

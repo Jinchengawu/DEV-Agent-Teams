@@ -737,6 +737,70 @@ print("workflows={} bound={} latest={} project={} tasks={}".format(len(workflows
     record "dashboard workflow proxy" FAIL "GET /api/workflows failed"
   fi
 
+  set +e
+  dashboard_workflow_links_output="$(DASHBOARD_URL="$DASHBOARD_URL" node <<'NODE' 2>&1
+const base = process.env.DASHBOARD_URL;
+const res = await fetch(`${base}/api/workflows?limit=10`, { cache: 'no-store' });
+const data = await res.json();
+if (!res.ok || !Array.isArray(data.workflows)) {
+  throw new Error(`workflow list failed: ${res.status} ${JSON.stringify(data)}`);
+}
+const workflow = data.workflows.find((item) =>
+  item.pipeline_instance_id &&
+  item.project_id &&
+  item.pipeline_url &&
+  item.knowledge_url &&
+  item.kanban_url
+);
+if (!workflow) {
+  throw new Error(`workflow missing navigation links: ${JSON.stringify(data.workflows.slice(0, 3))}`);
+}
+const pipelineUrl = new URL(workflow.pipeline_url, base);
+if (pipelineUrl.pathname !== '/pipeline' || pipelineUrl.searchParams.get('instanceId') !== workflow.pipeline_instance_id) {
+  throw new Error(`workflow pipeline link is not instance-scoped: ${JSON.stringify(workflow)}`);
+}
+const instanceRes = await fetch(`${base}/api/pipeline-instances/${encodeURIComponent(workflow.pipeline_instance_id)}`);
+const instance = await instanceRes.json();
+if (!instanceRes.ok || instance.id !== workflow.pipeline_instance_id) {
+  throw new Error(`workflow pipeline link did not resolve: ${instanceRes.status} ${JSON.stringify(instance)}`);
+}
+const knowledgeUrl = new URL(workflow.knowledge_url, base);
+if (knowledgeUrl.pathname !== '/knowledge' || knowledgeUrl.searchParams.get('projectId') !== workflow.project_id) {
+  throw new Error(`workflow knowledge link is not project-scoped: ${JSON.stringify(workflow)}`);
+}
+const docsRes = await fetch(`${base}/api/v2/documents?${knowledgeUrl.searchParams.toString()}&limit=50`);
+const docs = await docsRes.json();
+if (!docsRes.ok || !docs.documents?.some((doc) => doc.projectId === workflow.project_id)) {
+  throw new Error(`workflow knowledge link did not resolve documents: ${docsRes.status} ${JSON.stringify({
+    workflowId: workflow.id,
+    projectId: workflow.project_id,
+    documents: (docs.documents || []).map((doc) => ({ id: doc.id, projectId: doc.projectId })),
+  })}`);
+}
+const kanbanUrl = new URL(workflow.kanban_url, base);
+if (kanbanUrl.pathname !== '/kanban' || kanbanUrl.searchParams.get('source') !== 'coordination') {
+  throw new Error(`workflow kanban link is not coordination-scoped: ${JSON.stringify(workflow)}`);
+}
+const kanbanRes = await fetch(`${base}/api/kanban?${kanbanUrl.searchParams.toString()}`, { cache: 'no-store' });
+const kanban = await kanbanRes.json();
+if (!kanbanRes.ok || !kanban.tasks?.some((task) => task.project_id === workflow.project_id)) {
+  throw new Error(`workflow kanban link did not resolve project tasks: ${kanbanRes.status} ${JSON.stringify({
+    workflowId: workflow.id,
+    projectId: workflow.project_id,
+    taskCount: kanban.tasks?.length,
+  })}`);
+}
+console.log(`workflow=${workflow.id} project=${workflow.project_id} docs=${docs.documents.length} tasks=${kanban.tasks.length}`);
+NODE
+)"
+  dashboard_workflow_links_code=$?
+  set -e
+  if [ "$dashboard_workflow_links_code" -eq 0 ]; then
+    record "dashboard workflow navigation links" PASS "$(echo "$dashboard_workflow_links_output" | tail -n 1 | sed 's/|/\\|/g')"
+  else
+    record "dashboard workflow navigation links" FAIL "exit $dashboard_workflow_links_code: $(echo "$dashboard_workflow_links_output" | tail -n 3 | tr '\n' ' ' | sed 's/|/\\|/g')"
+  fi
+
   if curl -fsS "$DASHBOARD_URL/api/workflows?status=failed&limit=3" >/tmp/dev-agent-dashboard-workflows-filtered.json 2>/dev/null; then
     if python3 -c 'import json, sys
 with open(sys.argv[1], "r", encoding="utf-8") as f:

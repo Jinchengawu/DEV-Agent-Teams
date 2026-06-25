@@ -61,6 +61,9 @@ function serializeWorkflow(workflow: any): Record<string, unknown> {
     error: workflow.error,
     created_at: new Date(workflow.createdAt).toISOString(),
     updated_at: new Date(workflow.updatedAt).toISOString(),
+    pipeline_url: isPipelineWorkflow ? `/pipeline?instanceId=${encodeURIComponent(workflow.id)}` : undefined,
+    knowledge_url: coordination.projectId ? `/knowledge?projectId=${encodeURIComponent(coordination.projectId)}` : undefined,
+    kanban_url: coordination.projectId ? '/kanban?source=coordination' : undefined,
   };
 }
 
