@@ -6,7 +6,7 @@
 set -e
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-CODEX_NODE_BIN="/Users/zhuizhui/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/bin"
+CODEX_NODE_BIN="${CODEX_NODE_BIN:-$HOME/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/bin}"
 
 if [ -x "$CODEX_NODE_BIN/node" ]; then
     export PATH="$CODEX_NODE_BIN:$PATH"

@@ -11,7 +11,7 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 LOG_DIR="$ROOT/.codex-run/logs"
-CODEX_NODE_BIN="/Users/zhuizhui/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/bin"
+CODEX_NODE_BIN="${CODEX_NODE_BIN:-$HOME/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/bin}"
 
 cd "$ROOT"
 mkdir -p "$LOG_DIR"
