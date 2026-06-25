@@ -25,6 +25,7 @@ show_help() {
     echo "  ${GREEN}start${NC}           启动所有 Agent 和 Gateway"
     echo "  ${GREEN}stop${NC}            停止所有服务"
     echo "  ${GREEN}status${NC}          查看服务状态"
+    echo "  ${GREEN}doctor${NC}          深度诊断本地 MVP 就绪状态"
     echo "  ${GREEN}test${NC}            运行测试"
     echo "  ${GREEN}logs${NC}            查看日志"
     echo "  ${GREEN}help${NC}            显示帮助信息"
@@ -32,6 +33,7 @@ show_help() {
     echo "示例:"
     echo "  ./dev-agent start"
     echo "  ./dev-agent status"
+    echo "  ./dev-agent doctor"
     echo "  ./dev-agent test"
 }
 
@@ -121,6 +123,151 @@ show_status() {
     fi
 }
 
+DOCTOR_FAILED=0
+
+doctor_pass() {
+    echo -e "  ${GREEN}✅ $1${NC}"
+}
+
+doctor_fail() {
+    echo -e "  ${RED}❌ $1${NC}"
+    DOCTOR_FAILED=1
+}
+
+doctor_info() {
+    echo -e "  ${BLUE}ℹ $1${NC}"
+}
+
+doctor_check_command() {
+    local command_name="$1"
+    local label="$2"
+
+    if command -v "$command_name" >/dev/null 2>&1; then
+        doctor_pass "$label: $($command_name --version 2>/dev/null | head -n 1) ($(command -v "$command_name"))"
+    else
+        doctor_fail "$label 未安装或不在 PATH"
+    fi
+}
+
+doctor_check_native_module() {
+    local package_dir="$1"
+    local module_name="$2"
+    local label="$3"
+
+    if [ ! -d "$package_dir/node_modules" ]; then
+        doctor_fail "$label 缺少 node_modules: $package_dir"
+        return
+    fi
+
+    if (cd "$package_dir" && node -e "require(process.argv[1])" "$module_name") >/dev/null 2>&1; then
+        doctor_pass "$label native module 可加载: $module_name"
+    else
+        doctor_fail "$label native module 不兼容: $module_name；请用当前 Node 重新 pnpm install"
+    fi
+}
+
+doctor_check_http() {
+    local url="$1"
+    local label="$2"
+
+    if curl -fsS "$url" >/dev/null 2>&1; then
+        doctor_pass "$label 可访问: $url"
+    else
+        doctor_fail "$label 不可访问: $url"
+    fi
+}
+
+doctor_check_port() {
+    local port="$1"
+    local label="$2"
+
+    if lsof -tiTCP:"$port" -sTCP:LISTEN >/dev/null 2>&1; then
+        doctor_pass "$label 端口监听中: :$port"
+    else
+        doctor_fail "$label 端口未监听: :$port"
+    fi
+}
+
+doctor_check_agent_health() {
+    local tmp_file
+    tmp_file="$(mktemp)"
+
+    if ! curl -fsS "http://127.0.0.1:8400/agent-health" > "$tmp_file" 2>/dev/null; then
+        rm -f "$tmp_file"
+        doctor_fail "Gateway Agent Health 不可访问"
+        return
+    fi
+
+    if python3 - "$tmp_file" <<'PY'
+import json
+import sys
+
+with open(sys.argv[1], "r", encoding="utf-8") as f:
+    data = json.load(f)
+
+agents = data.get("agents", [])
+ok = (
+    data.get("livePipelineReady") is True
+    and data.get("onlineCount") == data.get("totalAgents") == 6
+    and len(agents) == 6
+    and all(agent.get("online") is True for agent in agents)
+)
+
+raise SystemExit(0 if ok else 1)
+PY
+    then
+        local summary
+        summary="$(python3 - "$tmp_file" <<'PY'
+import json
+import sys
+
+with open(sys.argv[1], "r", encoding="utf-8") as f:
+    data = json.load(f)
+
+print(f"online={data.get('onlineCount')}/{data.get('totalAgents')} liveReady={data.get('livePipelineReady')}")
+PY
+)"
+        doctor_pass "Agent 团队就绪: $summary"
+    else
+        doctor_fail "Agent 团队未完全就绪；请检查 ./dev-agent status 和 Gateway 日志"
+    fi
+
+    rm -f "$tmp_file"
+}
+
+run_doctor() {
+    echo -e "${BLUE}🩺 DEV-Agent MVP Doctor${NC}"
+    echo ""
+
+    echo "Runtime:"
+    doctor_check_command node "Node.js"
+    doctor_check_command pnpm "pnpm"
+    doctor_check_command hermes "Hermes"
+    doctor_info "当前 PATH Node: $(command -v node 2>/dev/null || echo missing)"
+
+    echo ""
+    echo "Native modules:"
+    doctor_check_native_module "$SCRIPT_DIR/packages/core" "better-sqlite3" "Core session/document store"
+    doctor_check_native_module "$SCRIPT_DIR/packages/dashboard" "better-sqlite3" "Dashboard kanban/document APIs"
+
+    echo ""
+    echo "HTTP services:"
+    for port in 8002 8003 8004 8005 8006 8007; do
+        doctor_check_port "$port" "Hermes Agent"
+    done
+    doctor_check_http "http://127.0.0.1:8400/health" "Gateway"
+    doctor_check_http "http://127.0.0.1:3000/api/health" "Dashboard API"
+    doctor_check_agent_health
+
+    echo ""
+    if [ "$DOCTOR_FAILED" -eq 0 ]; then
+        echo -e "${GREEN}✅ Doctor 通过：本地 Team Coordination Loop 具备 MVP 测试条件${NC}"
+    else
+        echo -e "${RED}❌ Doctor 未通过：请先修复上述失败项${NC}"
+        return 1
+    fi
+}
+
 # 运行测试
 run_tests() {
     echo -e "${BLUE}🧪 运行测试...${NC}"
@@ -144,6 +291,9 @@ main() {
             ;;
         status)
             show_status
+            ;;
+        doctor)
+            run_doctor
             ;;
         test)
             run_tests

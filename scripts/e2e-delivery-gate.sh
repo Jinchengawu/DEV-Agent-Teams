@@ -89,7 +89,7 @@ record_repo_status_result() {
   local after="$2"
 
   if [ "$after" = "$before" ]; then
-    record "dry-run repository side effects" PASS "git status unchanged; tracked entries=$(repo_status_count "$after")"
+    record "dry-run repository side effects" PASS "git status unchanged; git status entries=$(repo_status_count "$after")"
   else
     local diff_output
     set +e
@@ -749,6 +749,12 @@ print("online={}/{} gateway={} liveReady={}".format(data.get("onlineCount"), dat
     fi
   else
     record "dashboard agent health" FAIL "GET /api/health failed"
+  fi
+
+  if curl -fsS "$GATEWAY_URL/agent-health" >/dev/null 2>&1 && curl -fsS "$DASHBOARD_URL/api/health" >/dev/null 2>&1; then
+    run_cmd "dev-agent doctor" ./dev-agent doctor
+  else
+    record "dev-agent doctor" WARN "skipped; Gateway or Dashboard readiness endpoint is unavailable"
   fi
 
   if curl -fsS "$DASHBOARD_URL/api/v2/documents" >/tmp/dev-agent-dashboard-docs.json 2>/dev/null; then
