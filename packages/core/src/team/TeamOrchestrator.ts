@@ -95,7 +95,11 @@ export class TeamOrchestrator implements IOrchestrator {
    * runAgent — 单 Agent 执行
    * 直接调用 Hermes Agent 实例，让 Hermes 处理工具、记忆、RAG
    */
-  async runAgent(agentId: string, goal: string, sessionId?: string): Promise<AgentRunResult> {
+  async runAgent(agentId: string, goal: string, sessionId?: string, options?: {
+    signal?: AbortSignal;
+    timeoutMs?: number;
+    maxTokens?: number;
+  }): Promise<AgentRunResult> {
     const config = this.agentConfigs.get(agentId);
     if (!config) throw new Error(`Agent "${agentId}" not found`);
 
@@ -106,7 +110,10 @@ export class TeamOrchestrator implements IOrchestrator {
 
     const hermesResult = await this.hermesClient.callAgent(agentId, goal, {
       systemPrompt: config.systemPrompt,
-      maxTokens: 4000,
+      maxTokens: options?.maxTokens || 4000,
+      sessionId,
+      signal: options?.signal,
+      timeoutMs: options?.timeoutMs,
     });
 
     // 跟踪 Token 使用

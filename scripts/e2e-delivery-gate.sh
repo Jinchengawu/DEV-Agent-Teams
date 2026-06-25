@@ -215,6 +215,10 @@ if [ "${RUN_LIVE_PIPELINE:-0}" = "1" ]; then
 print(json.dumps({
     "pipelineId": "dev-team-minimum-loop",
     "initialInput": {"userRequest": os.environ["E2E_LIVE_REQUEST"]},
+    "options": {
+        "dryRun": True,
+        "surfaceTimeoutMs": int(os.environ.get("E2E_LIVE_SURFACE_TIMEOUT_MS", "90000")),
+    },
 }))')"
 
   if curl -fsS -X POST "$GATEWAY_URL/v1/pipeline/execute" \

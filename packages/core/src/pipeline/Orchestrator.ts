@@ -23,6 +23,7 @@ import type {
   SurfaceDefinition,
   Edge,
   SurfaceResult,
+  PipelineExecuteOptions,
 } from './types.js';
 import type { KnowledgeCenter } from '../knowledge/KnowledgeCenter.js';
 import type { DocumentManager } from '../knowledge/DocumentManager.js';
@@ -60,6 +61,7 @@ export class PipelineOrchestrator {
   private knowledgeCenter?: KnowledgeCenter;
   private documentManager?: DocumentManager;
   private loopStates: Map<string, Map<string, LoopState>> = new Map(); // instanceId -> edgeKey -> LoopState
+  private controllers: Map<string, AbortController> = new Map();
 
   constructor(
     teamOrchestrator: TeamOrchestrator,
@@ -112,7 +114,43 @@ export class PipelineOrchestrator {
    * 4. 传递输入/输出产物
    * 5. 产物自动沉淀到知识中心
    */
-  async execute(pipelineId: string, initialInput?: Record<string, any>): Promise<PipelineInstance> {
+  async execute(
+    pipelineId: string,
+    initialInput?: Record<string, any>,
+    options: PipelineExecuteOptions = {},
+  ): Promise<PipelineInstance> {
+    const { pipeline, instance, signal } = this.prepareRun(pipelineId, options);
+    await this.runPipeline(pipeline, instance, initialInput, { ...options, signal });
+    return instance;
+  }
+
+  /**
+   * 后台启动 Pipeline，立即返回实例；调用方可轮询实例状态。
+   */
+  start(
+    pipelineId: string,
+    initialInput?: Record<string, any>,
+    options: PipelineExecuteOptions = {},
+  ): PipelineInstance {
+    const { pipeline, instance, signal } = this.prepareRun(pipelineId, options);
+    void this.runPipeline(pipeline, instance, initialInput, { ...options, signal }).catch((error) => {
+      const errorMsg = error instanceof Error ? error.message : 'Unknown error';
+      instance.status = signal.aborted ? 'cancelled' : 'failed';
+      instance.error = errorMsg;
+      instance.completedAt = Date.now();
+      if (instance.status === 'cancelled') {
+        this.stateManager?.cancel(instance.id, errorMsg);
+      } else {
+        this.stateManager?.fail(instance.id, errorMsg);
+      }
+    });
+    return instance;
+  }
+
+  private prepareRun(
+    pipelineId: string,
+    options: PipelineExecuteOptions = {},
+  ): { pipeline: PipelineDefinition; instance: PipelineInstance; signal: AbortSignal } {
     const pipeline = this.pipelines.get(pipelineId);
     if (!pipeline) {
       throw new Error(`Pipeline "${pipelineId}" 未找到`);
@@ -132,6 +170,17 @@ export class PipelineOrchestrator {
     this.loopStates.set(instance.id, new Map());
     this.stateManager?.createState(`Pipeline: ${pipeline.name}`, pipeline.surfaces.length, instance.id);
 
+    const controller = new AbortController();
+    const abortFromCaller = () => {
+      controller.abort(options.signal?.reason || new Error('Pipeline cancelled by caller'));
+    };
+    if (options.signal?.aborted) {
+      abortFromCaller();
+    } else {
+      options.signal?.addEventListener('abort', abortFromCaller, { once: true });
+    }
+    this.controllers.set(instance.id, controller);
+
     console.log(`[PipelineOrchestrator] Pipeline "${pipeline.name}" 开始执行 (instance: ${instance.id})`);
 
     // 发布 Pipeline 开始事件
@@ -146,6 +195,17 @@ export class PipelineOrchestrator {
       },
     });
 
+    return { pipeline, instance, signal: controller.signal };
+  }
+
+  private async runPipeline(
+    pipeline: PipelineDefinition,
+    instance: PipelineInstance,
+    initialInput?: Record<string, any>,
+    options: PipelineExecuteOptions = {},
+  ): Promise<void> {
+    const signal = options.signal;
+
     try {
       // 构建 DAG 和执行顺序
       const dag = this.buildDAG(pipeline);
@@ -153,15 +213,17 @@ export class PipelineOrchestrator {
 
       // 按批次执行（支持并行）
       for (let batchIndex = 0; batchIndex < executionOrder.length; batchIndex++) {
+        this.throwIfCancelled(signal);
         const batch = executionOrder[batchIndex];
         console.log(`[PipelineOrchestrator] 执行批次: ${batch.join(', ')}`);
 
         // 并行执行当前批次
         const batchPromises = batch.map((surfaceId) =>
-          this.executeSurface(pipeline, surfaceId, instance, initialInput),
+          this.executeSurface(pipeline, surfaceId, instance, initialInput, options),
         );
 
         await Promise.all(batchPromises);
+        this.throwIfCancelled(signal);
 
         // 检查是否有失败
         const hasFailure = batch.some((sid) => {
@@ -222,14 +284,20 @@ export class PipelineOrchestrator {
             
             // 清除上游面的结果，重新执行
             instance.surfaceResults.delete(edge.from);
-            const upstreamResult = await this.executeSurface(pipeline, edge.from, instance, {
-              ...initialInput,
-              __loop_feedback: feedbackArtifact,
-            });
+            await this.executeSurface(
+              pipeline,
+              edge.from,
+              instance,
+              {
+                ...initialInput,
+                __loop_feedback: feedbackArtifact,
+              },
+              options,
+            );
 
             // 重新执行下游面
             instance.surfaceResults.delete(downstreamId);
-            const newDownstreamResult = await this.executeSurface(pipeline, downstreamId, instance, initialInput);
+            const newDownstreamResult = await this.executeSurface(pipeline, downstreamId, instance, initialInput, options);
 
             // 如果 gate 通过了，跳出循环
             if (this.checkGatePassed(newDownstreamResult, edge)) {
@@ -247,7 +315,7 @@ export class PipelineOrchestrator {
         if (instance.status === 'failed') break;
       }
 
-      if (instance.status !== 'failed') {
+      if (instance.status !== 'failed' && instance.status !== 'cancelled') {
         instance.status = 'completed';
         instance.completedAt = Date.now();
 
@@ -259,7 +327,7 @@ export class PipelineOrchestrator {
           payload: {
             workflowId: instance.id,
             taskId: pipeline.name,
-            pipelineId,
+            pipelineId: pipeline.id,
             output: 'Pipeline 执行完成',
           },
         });
@@ -267,33 +335,33 @@ export class PipelineOrchestrator {
       }
     } catch (error) {
       const errorMsg = error instanceof Error ? error.message : 'Unknown error';
-      instance.status = 'failed';
+      instance.status = signal?.aborted ? 'cancelled' : 'failed';
       instance.error = errorMsg;
       instance.completedAt = Date.now();
 
-      // 发布 Pipeline 失败事件
+      // 发布 Pipeline 失败/取消事件
       eventBus.emit({
-        type: 'workflow.failed',
+        type: signal?.aborted ? 'workflow.cancelled' : 'workflow.failed',
         source: 'workflow',
         timestamp: Date.now(),
         payload: {
           workflowId: instance.id,
           taskId: pipeline.name,
-          pipelineId,
+          pipelineId: pipeline.id,
           error: errorMsg,
         },
       });
-      this.stateManager?.fail(instance.id, errorMsg);
     }
 
-    if (instance.status === 'failed') {
+    if (instance.status === 'cancelled') {
+      this.stateManager?.cancel(instance.id, instance.error || 'Pipeline cancelled');
+    } else if (instance.status === 'failed') {
       this.stateManager?.fail(instance.id, instance.error || 'Pipeline 执行失败');
     }
 
     // 清理循环状态
     this.loopStates.delete(instance.id);
-
-    return instance;
+    this.controllers.delete(instance.id);
   }
 
   /**
@@ -346,6 +414,33 @@ export class PipelineOrchestrator {
     if (!instance) throw new Error(`实例 ${instanceId} 未找到`);
     instance.status = 'paused';
     console.log(`[PipelineOrchestrator] Pipeline ${instanceId} 已暂停`);
+  }
+
+  /**
+   * 取消 Pipeline
+   */
+  async cancel(instanceId: string, reason: string = 'Pipeline cancelled'): Promise<void> {
+    const instance = this.instances.get(instanceId);
+    if (!instance) throw new Error(`实例 ${instanceId} 未找到`);
+
+    this.controllers.get(instanceId)?.abort(new Error(reason));
+    instance.status = 'cancelled';
+    instance.error = reason;
+    instance.completedAt = Date.now();
+    this.stateManager?.cancel(instanceId, reason);
+
+    eventBus.emit({
+      type: 'workflow.cancelled',
+      source: 'workflow',
+      timestamp: Date.now(),
+      payload: {
+        workflowId: instanceId,
+        taskId: instance.pipelineId,
+        error: reason,
+      },
+    });
+
+    console.log(`[PipelineOrchestrator] Pipeline ${instanceId} 已取消: ${reason}`);
   }
 
   /**
@@ -743,7 +838,9 @@ ${JSON.stringify(artifacts, null, 2)}
     surfaceId: string,
     instance: PipelineInstance,
     initialInput?: Record<string, any>,
+    options: PipelineExecuteOptions = {},
   ): Promise<SurfaceResult> {
+    this.throwIfCancelled(options.signal);
     const surfaceDef = pipeline.surfaces.find((s) => s.id === surfaceId);
     if (!surfaceDef) {
       throw new Error(`面 ${surfaceId} 未定义`);
@@ -819,7 +916,11 @@ ${JSON.stringify(artifacts, null, 2)}
     console.log(`  → 面 ${surfaceId} 最终输入 keys: [${Array.from(surface.getInputKeys()).join(', ')}]`);
 
     // 执行面
-    const result = await surface.execute();
+    const result = await surface.execute({
+      signal: options.signal,
+      timeoutMs: surfaceDef.timeout ?? options.surfaceTimeoutMs ?? pipeline.context?.execution?.surfaceTimeoutMs,
+      dryRun: options.dryRun ?? pipeline.context?.execution?.dryRun,
+    });
     instance.surfaceResults.set(surfaceId, result);
 
     const stepIndex = Math.max(0, pipeline.surfaces.findIndex((s) => s.id === surfaceId));
@@ -827,7 +928,13 @@ ${JSON.stringify(artifacts, null, 2)}
       agentId: surfaceDef.agent,
       goal: surfaceDef.workflow?.goal || surfaceDef.name,
       output: result.artifacts?.output || result.error || '',
-      status: result.status === 'completed' ? 'completed' : result.status === 'failed' ? 'failed' : 'running',
+      status: result.status === 'completed'
+        ? 'completed'
+        : result.status === 'failed'
+          ? 'failed'
+          : result.status === 'cancelled'
+            ? 'cancelled'
+            : 'running',
       startedAt: result.startedAt,
       completedAt: result.completedAt,
       error: result.error,
@@ -837,6 +944,13 @@ ${JSON.stringify(artifacts, null, 2)}
     this.sinkToKnowledgeCenter(surfaceId, surfaceDef.name, surfaceDef.agent, result, instance.id);
 
     return result;
+  }
+
+  private throwIfCancelled(signal?: AbortSignal): void {
+    if (signal?.aborted) {
+      const reason = signal.reason;
+      throw reason instanceof Error ? reason : new Error(String(reason || 'Pipeline cancelled'));
+    }
   }
 }
 

@@ -120,6 +120,8 @@ export class HermesAgentClient {
     systemPrompt?: string;
     maxTokens?: number;
     sessionId?: string;
+    signal?: AbortSignal;
+    timeoutMs?: number;
   }): Promise<HermesAgentResult> {
     const instance = this.instanceMap.get(agentId);
     if (!instance) {
@@ -153,11 +155,22 @@ export class HermesAgentClient {
     const startTime = Date.now();
     console.log(`[HermesClient] 调用 ${agentId} @ ${url} → "${goal.substring(0, 60)}..."`);
 
+    const controller = new AbortController();
+    const timeoutMs = options?.timeoutMs ?? instance.timeout_ms ?? 120000;
+    const timeout = setTimeout(() => controller.abort(new Error(`Hermes request timed out after ${timeoutMs}ms`)), timeoutMs);
+    const onAbort = () => controller.abort(options?.signal?.reason || new Error('Hermes request cancelled'));
+    if (options?.signal?.aborted) {
+      onAbort();
+    } else {
+      options?.signal?.addEventListener('abort', onAbort, { once: true });
+    }
+
     try {
       const response = await fetch(url, {
         method: 'POST',
         headers,
         body: JSON.stringify(requestBody),
+        signal: controller.signal,
       });
 
       if (!response.ok) {
@@ -195,6 +208,9 @@ export class HermesAgentClient {
         tokenUsage: { input_tokens: 0, output_tokens: 0 },
         toolCalls: [],
       };
+    } finally {
+      clearTimeout(timeout);
+      options?.signal?.removeEventListener('abort', onAbort);
     }
   }
 

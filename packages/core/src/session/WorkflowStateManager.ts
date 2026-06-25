@@ -19,7 +19,7 @@ export interface WorkflowStepState {
   agentId: string;
   goal: string;
   output: string;
-  status: 'pending' | 'running' | 'completed' | 'failed';
+  status: 'pending' | 'running' | 'completed' | 'failed' | 'cancelled';
   startedAt?: number;
   completedAt?: number;
   error?: string;
@@ -34,7 +34,7 @@ export interface WorkflowContext {
 export interface WorkflowState {
   id: string;
   goal: string;
-  status: 'running' | 'paused' | 'completed' | 'failed';
+  status: 'running' | 'paused' | 'completed' | 'failed' | 'cancelled';
   currentStep: number;
   totalSteps: number;
   steps: WorkflowStepState[];
@@ -58,7 +58,7 @@ export class WorkflowStateManager {
       CREATE TABLE IF NOT EXISTS workflow_states (
         id TEXT PRIMARY KEY,
         goal TEXT NOT NULL,
-        status TEXT NOT NULL DEFAULT 'running',
+        status TEXT NOT NULL DEFAULT 'running' CHECK(status IN ('running', 'paused', 'completed', 'failed', 'cancelled')),
         current_step INTEGER NOT NULL DEFAULT 0,
         total_steps INTEGER NOT NULL DEFAULT 0,
         steps TEXT NOT NULL DEFAULT '[]',
@@ -68,6 +68,41 @@ export class WorkflowStateManager {
         created_at TEXT NOT NULL,
         updated_at TEXT NOT NULL
       )
+    `);
+    this.migrateCancelledStatusConstraint();
+  }
+
+  private migrateCancelledStatusConstraint(): void {
+    const table = this.db.prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'workflow_states'").get() as { sql?: string } | undefined;
+    if (!table?.sql || table.sql.includes("'cancelled'")) return;
+
+    this.db.exec(`
+      ALTER TABLE workflow_states RENAME TO workflow_states_legacy_status_constraint;
+
+      CREATE TABLE workflow_states (
+        id TEXT PRIMARY KEY,
+        goal TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'running' CHECK(status IN ('running', 'paused', 'completed', 'failed', 'cancelled')),
+        current_step INTEGER NOT NULL DEFAULT 0,
+        total_steps INTEGER NOT NULL DEFAULT 0,
+        steps TEXT NOT NULL DEFAULT '[]',
+        context TEXT NOT NULL DEFAULT '{}',
+        token_usage TEXT NOT NULL DEFAULT '{"input_tokens":0,"output_tokens":0}',
+        error TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      );
+
+      INSERT INTO workflow_states (
+        id, goal, status, current_step, total_steps,
+        steps, context, token_usage, error, created_at, updated_at
+      )
+      SELECT
+        id, goal, status, current_step, total_steps,
+        steps, context, token_usage, error, created_at, updated_at
+      FROM workflow_states_legacy_status_constraint;
+
+      DROP TABLE workflow_states_legacy_status_constraint;
     `);
   }
 
@@ -265,6 +300,30 @@ export class WorkflowStateManager {
         workflowId,
         taskId: state.goal.substring(0, 50),
         error,
+      },
+    });
+  }
+
+  /**
+   * 取消工作流
+   */
+  cancel(workflowId: string, reason: string = 'Workflow cancelled'): void {
+    const state = this.load(workflowId);
+    if (!state) return;
+
+    state.status = 'cancelled';
+    state.error = reason;
+    state.updatedAt = Date.now();
+    this.save(state);
+
+    eventBus.emit({
+      type: 'workflow.cancelled',
+      source: 'workflow',
+      timestamp: Date.now(),
+      payload: {
+        workflowId,
+        taskId: state.goal.substring(0, 50),
+        error: reason,
       },
     });
   }

@@ -48,6 +48,7 @@ interface PipelineInstance {
 }
 
 const STORAGE_KEY = 'pipeline-execution-history';
+const TERMINAL_STATUSES = new Set(['completed', 'failed', 'cancelled']);
 
 export default function PipelinePage() {
   const { showToast } = useToast();
@@ -133,6 +134,10 @@ export default function PipelinePage() {
             userRequest: `Dashboard requested execution of ${pipelineId}. Produce concise coordination artifacts and preserve results as documents.`,
             requestedBy: 'dashboard',
           },
+          options: {
+            dryRun: true,
+            surfaceTimeoutMs: 90_000,
+          },
         }),
       });
       const data = await res.json();
@@ -181,7 +186,7 @@ export default function PipelinePage() {
           return [data, ...filtered].slice(0, 50); // 保留最近50个
         });
 
-        if (data.status === 'completed' || data.status === 'failed') {
+        if (TERMINAL_STATUSES.has(data.status)) {
           clearInterval(interval);
           setPollInterval(null);
         }
@@ -199,6 +204,7 @@ export default function PipelinePage() {
       case 'completed': return 'bg-green-500';
       case 'running': return 'bg-blue-500 animate-pulse';
       case 'failed': return 'bg-red-500';
+      case 'cancelled': return 'bg-amber-500';
       case 'pending': return 'bg-gray-400';
       default: return 'bg-gray-400';
     }
@@ -209,8 +215,32 @@ export default function PipelinePage() {
       case 'completed': return <Badge className="bg-green-500">完成</Badge>;
       case 'running': return <Badge className="bg-blue-500">执行中</Badge>;
       case 'failed': return <Badge className="bg-red-500">失败</Badge>;
+      case 'cancelled': return <Badge className="bg-amber-500">已取消</Badge>;
       case 'pending': return <Badge variant="secondary">等待</Badge>;
       default: return <Badge variant="secondary">{status}</Badge>;
+    }
+  };
+
+  const cancelPipeline = async (instanceId: string) => {
+    try {
+      const res = await fetch(`/api/pipeline-instances/${instanceId}/cancel`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ reason: 'Cancelled from Dashboard' }),
+      });
+      const data = await res.json();
+      if (!res.ok || data.error) throw new Error(data.error || 'Cancel failed');
+
+      if (pollInterval) {
+        clearInterval(pollInterval);
+        setPollInterval(null);
+      }
+      setCurrentInstance(data);
+      setInstanceHistory(prev => [data, ...prev.filter(i => i.id !== data.id)].slice(0, 50));
+      showToast('Pipeline cancelled', 'success');
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : 'Unknown error';
+      showToast(msg, 'error');
     }
   };
 
@@ -327,6 +357,7 @@ export default function PipelinePage() {
                         status === 'running' ? 'border-blue-500 bg-blue-50' :
                         status === 'completed' ? 'border-green-500 bg-green-50' :
                         status === 'failed' ? 'border-red-500 bg-red-50' :
+                        status === 'cancelled' ? 'border-amber-500 bg-amber-50' :
                         'border-gray-200 bg-white'
                       }`}>
                         {/* 状态指示器和名称 */}
@@ -468,13 +499,13 @@ export default function PipelinePage() {
                     <CardTitle className="text-xl">{pipeline.name}</CardTitle>
                     <p className="text-sm text-gray-500 mt-1">ID: {pipeline.id} | 版本: {pipeline.version || '1.0'}</p>
                   </div>
-                  <Button
-                    onClick={() => executePipeline(pipeline.id)}
-                    disabled={executing === pipeline.id}
-                    className="min-w-[100px]"
-                  >
-                    {executing === pipeline.id ? '执行中...' : '执行'}
-                  </Button>
+                <Button
+                  onClick={() => executePipeline(pipeline.id)}
+                  disabled={executing === pipeline.id}
+                  className="min-w-[100px]"
+                >
+                  {executing === pipeline.id ? '执行中...' : '执行'}
+                </Button>
                 </div>
               </CardHeader>
               <CardContent>
@@ -488,7 +519,19 @@ export default function PipelinePage() {
         {currentInstance && (
           <Card className="border-l-4 border-l-purple-500">
             <CardHeader>
-              <CardTitle>当前执行实例</CardTitle>
+              <div className="flex items-center justify-between gap-3">
+                <CardTitle>当前执行实例</CardTitle>
+                {currentInstance.status === 'running' && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => cancelPipeline(currentInstance.id)}
+                    className="border-amber-300 text-amber-700 hover:bg-amber-50"
+                  >
+                    停止
+                  </Button>
+                )}
+              </div>
             </CardHeader>
             <CardContent>
               <div className="grid grid-cols-2 gap-4 text-sm">

@@ -69,6 +69,16 @@ function pipelineToTemplate(pipeline: any): Record<string, unknown> {
   };
 }
 
+function createRequestAbortSignal(res: { writableEnded: boolean; on: (event: string, listener: () => void) => unknown }): AbortSignal {
+  const controller = new AbortController();
+  res.on('close', () => {
+    if (!res.writableEnded && !controller.signal.aborted) {
+      controller.abort(new Error('HTTP client disconnected'));
+    }
+  });
+  return controller.signal;
+}
+
 // ============================================================================
 // Main
 // ============================================================================
@@ -238,8 +248,8 @@ async function main(): Promise<void> {
 
       // Pipeline 执行
       if (path === '/v1/pipeline/execute' && req.method === 'POST') {
-        const request = body ? JSON.parse(body) : {};
-        const { pipelineId, initialInput } = request;
+        const request = parsedBody || {};
+        const { pipelineId, initialInput, options = {} } = request;
 
         if (!pipelineId) {
           res.writeHead(400, { 'Content-Type': 'application/json' });
@@ -248,7 +258,11 @@ async function main(): Promise<void> {
         }
 
         try {
-          const instance = await agentApp.pipelineOrchestrator.execute(pipelineId, initialInput);
+          const instance = await agentApp.pipelineOrchestrator.execute(pipelineId, initialInput, {
+            dryRun: options.dryRun,
+            surfaceTimeoutMs: options.surfaceTimeoutMs,
+            signal: createRequestAbortSignal(res),
+          });
           res.writeHead(200, { 'Content-Type': 'application/json' });
           res.end(JSON.stringify({
             instanceId: instance.id,
@@ -256,6 +270,37 @@ async function main(): Promise<void> {
             surfaceResults: Object.fromEntries(instance.surfaceResults),
             startedAt: instance.startedAt,
             completedAt: instance.completedAt,
+          }));
+        } catch (error) {
+          const errorMsg = error instanceof Error ? error.message : 'Unknown error';
+          res.writeHead(500, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: errorMsg }));
+        }
+        return;
+      }
+
+      // Pipeline 后台启动：立即返回实例，Dashboard 可轮询状态或取消
+      if (path === '/v1/pipeline/start' && req.method === 'POST') {
+        const request = parsedBody || {};
+        const { pipelineId, initialInput, options = {} } = request;
+
+        if (!pipelineId) {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: 'pipelineId is required' }));
+          return;
+        }
+
+        try {
+          const instance = agentApp.pipelineOrchestrator.start(pipelineId, initialInput, {
+            dryRun: options.dryRun,
+            surfaceTimeoutMs: options.surfaceTimeoutMs,
+          });
+          res.writeHead(202, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({
+            instanceId: instance.id,
+            status: instance.status,
+            surfaceResults: Object.fromEntries(instance.surfaceResults),
+            startedAt: instance.startedAt,
           }));
         } catch (error) {
           const errorMsg = error instanceof Error ? error.message : 'Unknown error';
@@ -280,6 +325,26 @@ async function main(): Promise<void> {
         res.end(JSON.stringify({
           instances: instances.map((i) => agentApp.pipelineOrchestrator.serializeInstance(i)),
         }));
+        return;
+      }
+
+      // 取消 Pipeline 实例
+      if (path.match(/^\/pipeline-instances\/[^/]+\/cancel$/) && req.method === 'POST') {
+        const instanceId = path.split('/')[2];
+        const reason = typeof parsedBody?.reason === 'string' && parsedBody.reason.trim()
+          ? parsedBody.reason.trim()
+          : 'Cancelled from Dashboard';
+
+        try {
+          await agentApp.pipelineOrchestrator.cancel(instanceId, reason);
+          const instance = agentApp.pipelineOrchestrator.getStatus(instanceId);
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify(instance ? agentApp.pipelineOrchestrator.serializeInstance(instance) : { ok: true }));
+        } catch (error) {
+          const errorMsg = error instanceof Error ? error.message : 'Unknown error';
+          res.writeHead(404, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: errorMsg }));
+        }
         return;
       }
 

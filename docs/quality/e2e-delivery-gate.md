@@ -60,6 +60,15 @@ markdown-only artifacts and avoid modifying the repository. If you intentionally
 the team to write files, set `E2E_LIVE_USER_REQUEST` explicitly and inspect the resulting
 git diff before accepting the run.
 
+Live runs also pass structured execution options to the Gateway:
+
+- `dryRun: true` is forwarded into every Pipeline surface so Agents receive a no-write
+  execution contract.
+- `surfaceTimeoutMs` defaults to `90000`; override it with `E2E_LIVE_SURFACE_TIMEOUT_MS`.
+- Dashboard-triggered Pipelines use the same dry-run and timeout defaults, but run
+  asynchronously through `POST /v1/pipeline/start` so the UI can poll or cancel the
+  instance.
+
 ## Definition of Done
 
 A change is not considered delivered until the final response reports:

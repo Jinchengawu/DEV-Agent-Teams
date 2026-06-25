@@ -20,6 +20,12 @@ import type {
 } from './types.js';
 import type { TeamOrchestrator } from '../team/TeamOrchestrator.js';
 
+export interface SurfaceExecuteOptions {
+  signal?: AbortSignal;
+  timeoutMs?: number;
+  dryRun?: boolean;
+}
+
 /**
  * Surface（面）执行器
  */
@@ -117,7 +123,7 @@ export class Surface {
    * 4. 处理出口关卡
    * 5. 返回输出产物
    */
-  async execute(): Promise<SurfaceResult> {
+  async execute(options: SurfaceExecuteOptions = {}): Promise<SurfaceResult> {
     const startTime = Date.now();
     const result: SurfaceResult = {
       surfaceId: this.id,
@@ -127,6 +133,10 @@ export class Surface {
     };
 
     try {
+      if (options.signal?.aborted) {
+        throw new Error('Surface execution cancelled before start');
+      }
+
       // 1. 验证输入
       const validation = this.validateInput();
       if (!validation.valid) {
@@ -147,11 +157,14 @@ export class Surface {
       });
 
       // 2. 构建执行目标
-      const goal = this.buildGoal();
+      const goal = this.buildGoal(options);
       console.log(`[Surface] ${this.id} 执行: ${goal.substring(0, 100)}...`);
 
       // 3. 调用 Agent 执行
-      const agentResult = await this.orchestrator.runAgent(this.agent, goal, this.sessionId);
+      const agentResult = await this.orchestrator.runAgent(this.agent, goal, this.sessionId, {
+        signal: options.signal,
+        timeoutMs: options.timeoutMs ?? this.definition.timeout,
+      });
       if (!agentResult.success) {
         throw new Error(`Agent ${this.agent} 执行失败: ${agentResult.output || 'unknown error'}`);
       }
@@ -197,15 +210,16 @@ export class Surface {
       return result;
     } catch (error) {
       const errorMsg = error instanceof Error ? error.message : 'Unknown error';
-      result.status = 'failed';
+      const cancelled = options.signal?.aborted;
+      result.status = cancelled ? 'cancelled' : 'failed';
       result.error = errorMsg;
       result.completedAt = Date.now();
 
       result.logs?.push(`错误: ${errorMsg}`);
 
-      // 发布面失败事件
+      // 发布面失败/取消事件
       eventBus.emit({
-        type: 'workflow.failed',
+        type: cancelled ? 'workflow.cancelled' : 'workflow.failed',
         source: 'workflow',
         timestamp: Date.now(),
         payload: {
@@ -223,7 +237,7 @@ export class Surface {
   /**
    * 构建执行目标（包含输入上下文）
    */
-  private buildGoal(): string {
+  private buildGoal(options: SurfaceExecuteOptions = {}): string {
     const workflow = this.definition.workflow;
     if (!workflow) {
       return `执行 ${this.name} 面`;
@@ -231,6 +245,14 @@ export class Surface {
 
     // 构建目标描述
     let goal = workflow.goal;
+
+    if (options.dryRun) {
+      goal = [
+        'DRY-RUN MODE: Do not create, edit, delete, move, install, build, or run package-manager commands in the repository or filesystem. Produce markdown-only planning text in the response. If you would normally write files, describe the intended file paths and content summary instead.',
+        '',
+        goal,
+      ].join('\n');
+    }
 
     // 添加上下文输入
     const context = workflow.context || '';
