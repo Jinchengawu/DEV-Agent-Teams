@@ -169,6 +169,9 @@ if (loadRes.status !== 201 || loaded.pipeline?.id !== id) {
 if (loaded.pipeline?.source !== 'runtime-yaml' || loaded.pipeline?.deletable !== true) {
   throw new Error(`inline loaded pipeline missing runtime metadata: ${JSON.stringify(loaded.pipeline)}`);
 }
+if (!loaded.pipelines?.some((pipeline) => pipeline.id === id && pipeline.source === 'runtime-yaml' && pipeline.deletable === true)) {
+  throw new Error(`inline load response did not return full pipeline definitions: ${JSON.stringify(loaded.pipelines)}`);
+}
 const listRes = await fetch(`${base}/pipelines`);
 const listed = await listRes.json();
 if (!listed.pipelines?.some((pipeline) => pipeline.id === id && pipeline.source === 'runtime-yaml' && pipeline.deletable === true)) {
@@ -521,6 +524,9 @@ if (res.status !== 201 || data.pipeline?.id !== id) {
 }
 if (data.pipeline?.source !== 'runtime-yaml' || data.pipeline?.deletable !== true) {
   throw new Error(`dashboard yaml proxy missing runtime metadata: ${JSON.stringify(data.pipeline)}`);
+}
+if (!data.pipelines?.some((pipeline) => pipeline.id === id && pipeline.source === 'runtime-yaml' && pipeline.deletable === true)) {
+  throw new Error(`dashboard yaml proxy response did not return full pipeline definitions: ${JSON.stringify(data.pipelines)}`);
 }
 const templateRes = await fetch(`${base}/api/workflows/templates`, { cache: 'no-store' });
 const templateData = await templateRes.json();

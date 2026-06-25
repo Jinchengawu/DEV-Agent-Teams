@@ -378,7 +378,7 @@ async function main(): Promise<void> {
           writeFileSync(runtimePipelinePath(loaded.id), yamlContent, 'utf8');
           const pipelines = agentApp.pipelineOrchestrator.listPipelines().map((pipeline) => serializePipelineDefinition(pipeline));
           res.writeHead(201, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({ pipeline: serializePipelineDefinition(loaded), pipelines: pipelines.map((pipeline) => pipeline.id) }));
+          res.end(JSON.stringify({ pipeline: serializePipelineDefinition(loaded), pipelines }));
         } catch (error) {
           const errorMsg = error instanceof Error ? error.message : 'Unknown error';
           res.writeHead(400, { 'Content-Type': 'application/json' });

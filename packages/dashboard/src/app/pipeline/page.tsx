@@ -86,6 +86,39 @@ interface CoordinationSummary {
 
 const STORAGE_KEY = 'pipeline-execution-history';
 const TERMINAL_STATUSES = new Set(['completed', 'failed', 'cancelled']);
+const YAML_DRAFT = `id: custom-dev-loop
+name: Custom Dev Loop
+version: "0.1.0"
+surfaces:
+  - id: discovery
+    name: Discovery
+    agent: dev-pm
+    workflow:
+      goal: Clarify the request and produce a concise plan.
+edges: []
+`;
+
+function normalizePipeline(item: unknown): PipelineDef | null {
+  if (!item || typeof item !== 'object') return null;
+  const candidate = item as Partial<PipelineDef>;
+  if (!candidate.id || !candidate.name) return null;
+
+  return {
+    ...candidate,
+    id: String(candidate.id),
+    name: String(candidate.name),
+    version: candidate.version ? String(candidate.version) : undefined,
+    source: candidate.source ? String(candidate.source) : undefined,
+    deletable: Boolean(candidate.deletable),
+    surfaces: Array.isArray(candidate.surfaces) ? candidate.surfaces : [],
+    edges: Array.isArray(candidate.edges) ? candidate.edges : [],
+  };
+}
+
+function normalizePipelines(items: unknown): PipelineDef[] {
+  if (!Array.isArray(items)) return [];
+  return items.map(normalizePipeline).filter((item): item is PipelineDef => item !== null);
+}
 
 export default function PipelinePage() {
   const { showToast } = useToast();
@@ -97,6 +130,9 @@ export default function PipelinePage() {
   const [coordinationSummary, setCoordinationSummary] = useState<CoordinationSummary | null>(null);
   const [pollInterval, setPollInterval] = useState<NodeJS.Timeout | null>(null);
   const [showHistory, setShowHistory] = useState(false);
+  const [yamlDraft, setYamlDraft] = useState(YAML_DRAFT);
+  const [yamlSource, setYamlSource] = useState('dashboard:pipeline-page');
+  const [importingYaml, setImportingYaml] = useState(false);
 
   // 加载 Pipeline 列表 + 恢复历史
   useEffect(() => {
@@ -161,7 +197,7 @@ export default function PipelinePage() {
       const res = await fetch('/api/pipelines');
       if (!res.ok) throw new Error('Failed to fetch');
       const data = await res.json();
-      setPipelines(data.pipelines || []);
+      setPipelines(normalizePipelines(data.pipelines));
     } catch (e) {
       showToast('Failed to load pipelines', 'error');
     }
@@ -185,6 +221,46 @@ export default function PipelinePage() {
     } catch (e) {
       const msg = e instanceof Error ? e.message : 'Unknown error';
       showToast(msg, 'error');
+    }
+  };
+
+  const importYamlPipeline = async () => {
+    if (!yamlDraft.trim()) {
+      showToast('YAML definition is required', 'error');
+      return;
+    }
+
+    setImportingYaml(true);
+    try {
+      const res = await fetch('/api/pipelines/load-yaml', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          yaml: yamlDraft,
+          source: yamlSource.trim() || 'dashboard:pipeline-page',
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok || data.error || !data.pipeline?.id) {
+        throw new Error(data.error || 'Import failed');
+      }
+
+      const nextPipelines = normalizePipelines(data.pipelines);
+      const loadedPipeline = normalizePipeline(data.pipeline);
+      if (nextPipelines.length > 0) {
+        setPipelines(nextPipelines);
+      } else if (loadedPipeline) {
+        setPipelines((prev) => [loadedPipeline, ...prev.filter((item) => item.id !== loadedPipeline.id)]);
+      } else {
+        await fetchPipelines();
+      }
+      setYamlDraft(YAML_DRAFT.replace('custom-dev-loop', `custom-dev-loop-${Date.now()}`));
+      showToast(`Pipeline imported: ${data.pipeline.id}`, 'success');
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : 'Unknown error';
+      showToast(msg, 'error');
+    } finally {
+      setImportingYaml(false);
     }
   };
 
@@ -344,8 +420,10 @@ export default function PipelinePage() {
   // 构建 DAG 拓扑排序（前端版本）
   const buildExecutionBatches = (pipeline: PipelineDef): string[][] => {
     const dag = new Map<string, Set<string>>();
-    for (const s of pipeline.surfaces) dag.set(s.id, new Set());
-    for (const edge of pipeline.edges) {
+    const surfaces = Array.isArray(pipeline.surfaces) ? pipeline.surfaces : [];
+    const edges = Array.isArray(pipeline.edges) ? pipeline.edges : [];
+    for (const s of surfaces) dag.set(s.id, new Set());
+    for (const edge of edges) {
       if ((edge as any).loop) continue; // 循环边不加入 DAG
       const downstream = Array.isArray(edge.to) ? edge.to : [edge.to];
       for (const toId of downstream) {
@@ -386,7 +464,8 @@ export default function PipelinePage() {
 
   // 获取循环边
   const getLoopEdges = (pipeline: PipelineDef): { from: string; to: string }[] => {
-    return pipeline.edges
+    const edges = Array.isArray(pipeline.edges) ? pipeline.edges : [];
+    return edges
       .filter((e) => (e as any).loop)
       .flatMap((e) => {
         const downstream = Array.isArray(e.to) ? e.to : [e.to];
@@ -398,7 +477,8 @@ export default function PipelinePage() {
   const renderPipelineDAG = (pipeline: PipelineDef, instance: PipelineInstance | null) => {
     const batches = buildExecutionBatches(pipeline);
     const loopEdges = getLoopEdges(pipeline);
-    const surfaceMap = new Map(pipeline.surfaces.map((s) => [s.id, s]));
+    const surfaces = Array.isArray(pipeline.surfaces) ? pipeline.surfaces : [];
+    const surfaceMap = new Map(surfaces.map((s) => [s.id, s]));
     const taskBySurface = new Map(
       (coordinationSummary?.bindings || []).map((binding) => [binding.surfaceId, binding.task])
     );
@@ -575,6 +655,44 @@ export default function PipelinePage() {
         <h1 className="text-3xl font-bold mb-2">Pipeline 流水线</h1>
         <p className="text-gray-500 mb-8">基于"一体多面"哲学的面编排引擎</p>
 
+        <Card className="mb-6 border-l-4 border-l-emerald-500" data-testid="pipeline-yaml-importer">
+          <CardHeader className="pb-3">
+            <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+              <div>
+                <CardTitle className="text-lg">导入 YAML Pipeline</CardTitle>
+                <p className="mt-1 text-sm text-gray-500">注册后会出现在 Pipeline 列表和工作流模板中</p>
+              </div>
+              <div className="flex items-center gap-2">
+                <input
+                  value={yamlSource}
+                  onChange={(event) => setYamlSource(event.target.value)}
+                  className="h-9 w-56 rounded-md border border-gray-300 px-3 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100"
+                  aria-label="YAML source"
+                  data-testid="pipeline-yaml-source"
+                />
+                <Button
+                  onClick={importYamlPipeline}
+                  disabled={importingYaml}
+                  className="min-w-[96px]"
+                  data-testid="pipeline-yaml-import"
+                >
+                  {importingYaml ? '导入中...' : '导入'}
+                </Button>
+              </div>
+            </div>
+          </CardHeader>
+          <CardContent>
+            <textarea
+              value={yamlDraft}
+              onChange={(event) => setYamlDraft(event.target.value)}
+              className="min-h-[180px] w-full resize-y rounded-md border border-gray-300 bg-gray-950 p-3 font-mono text-sm text-gray-50 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+              spellCheck={false}
+              aria-label="Pipeline YAML definition"
+              data-testid="pipeline-yaml-definition"
+            />
+          </CardContent>
+        </Card>
+
         {/* 执行历史 */}
         {instanceHistory.length > 0 && (
           <Card className="mb-6 border-l-4 border-l-amber-500">
@@ -624,7 +742,11 @@ export default function PipelinePage() {
         {/* Pipeline 列表 */}
         <div className="grid gap-6 mb-8">
           {pipelines.map((pipeline) => (
-            <Card key={pipeline.id} className="border-l-4 border-l-blue-500">
+            <Card
+              key={pipeline.id}
+              className="border-l-4 border-l-blue-500"
+              data-testid={`pipeline-card-${pipeline.id}`}
+            >
               <CardHeader className="pb-2">
                 <div className="flex justify-between items-start">
                   <div>
@@ -645,6 +767,7 @@ export default function PipelinePage() {
                         onClick={() => deletePipeline(pipeline)}
                         disabled={executing === pipeline.id}
                         className="border-red-200 text-red-600 hover:bg-red-50"
+                        data-testid={`pipeline-delete-${pipeline.id}`}
                       >
                         删除
                       </Button>
