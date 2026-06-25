@@ -460,13 +460,15 @@ export class PipelineOrchestrator {
   }
 
   /**
-   * 暂停 Pipeline（待实现）
+   * 暂停 Pipeline
+   *
+   * 当前 Pipeline Surface 执行由 Hermes 请求驱动，尚没有可安全挂起并恢复的
+   * checkpoint 协议。这里明确拒绝，避免把内存状态改成 paused 但后台仍在执行。
    */
   async pause(instanceId: string): Promise<void> {
-    const instance = this.instances.get(instanceId);
+    const instance = this.instances.get(instanceId) || this.restorePipelineInstance(instanceId);
     if (!instance) throw new Error(`实例 ${instanceId} 未找到`);
-    instance.status = 'paused';
-    console.log(`[PipelineOrchestrator] Pipeline ${instanceId} 已暂停`);
+    throw new Error('Pipeline pause is not supported yet. Use cancel to stop the run safely.');
   }
 
   /**
@@ -506,25 +508,30 @@ export class PipelineOrchestrator {
   }
 
   /**
-   * 恢复 Pipeline（待实现）
+   * 恢复 Pipeline
+   *
+   * 恢复需要 Surface 级 checkpoint/replay 协议。当前只能从持久化状态恢复只读投影，
+   * 不能继续执行未完成的 Surface，因此明确拒绝。
    */
   async resume(instanceId: string): Promise<void> {
-    const instance = this.instances.get(instanceId);
+    const instance = this.instances.get(instanceId) || this.restorePipelineInstance(instanceId);
     if (!instance) throw new Error(`实例 ${instanceId} 未找到`);
-    instance.status = 'running';
-    console.log(`[PipelineOrchestrator] Pipeline ${instanceId} 已恢复`);
+    throw new Error('Pipeline resume is not supported yet. Re-run the Pipeline from the desired input after reviewing recovered state.');
   }
 
   /**
-   * 回滚到指定面（待实现）
+   * 回滚到指定面
+   *
+   * 当前只能恢复状态投影，不能保证 Agent 外部副作用可逆。为避免假回滚，先明确拒绝。
    */
   async rollback(instanceId: string, surfaceId: string): Promise<void> {
-    const instance = this.instances.get(instanceId);
+    const instance = this.instances.get(instanceId) || this.restorePipelineInstance(instanceId);
     if (!instance) throw new Error(`实例 ${instanceId} 未找到`);
-    console.log(`[PipelineOrchestrator] Pipeline ${instanceId} 回滚到 ${surfaceId}`);
-    instance.status = 'rolled_back';
-
-    // TODO: 从缓存恢复上下文
+    const pipeline = this.pipelines.get(instance.pipelineId);
+    if (!pipeline?.surfaces.some((surface) => surface.id === surfaceId)) {
+      throw new Error(`面 ${surfaceId} 未定义`);
+    }
+    throw new Error('Pipeline rollback is not supported yet. Current dry-run guard can detect side effects, but cannot reverse them safely.');
   }
 
   /**

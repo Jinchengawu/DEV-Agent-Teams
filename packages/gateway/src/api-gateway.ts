@@ -348,6 +348,64 @@ async function main(): Promise<void> {
         return;
       }
 
+      // Pipeline 控制面：明确暴露暂未支持的动作，避免客户端误判为成功。
+      if (path.match(/^\/pipeline-instances\/[^/]+\/pause$/) && req.method === 'POST') {
+        const instanceId = path.split('/')[2];
+        try {
+          await agentApp.pipelineOrchestrator.pause(instanceId);
+          const instance = agentApp.pipelineOrchestrator.getStatus(instanceId);
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify(instance ? agentApp.pipelineOrchestrator.serializeInstance(instance) : { ok: true }));
+        } catch (error) {
+          const errorMsg = error instanceof Error ? error.message : 'Unknown error';
+          res.writeHead(errorMsg.includes('未找到') ? 404 : 409, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: errorMsg, supported: false }));
+        }
+        return;
+      }
+
+      if (path.match(/^\/pipeline-instances\/[^/]+\/resume$/) && req.method === 'POST') {
+        const instanceId = path.split('/')[2];
+        try {
+          await agentApp.pipelineOrchestrator.resume(instanceId);
+          const instance = agentApp.pipelineOrchestrator.getStatus(instanceId);
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify(instance ? agentApp.pipelineOrchestrator.serializeInstance(instance) : { ok: true }));
+        } catch (error) {
+          const errorMsg = error instanceof Error ? error.message : 'Unknown error';
+          res.writeHead(errorMsg.includes('未找到') ? 404 : 409, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: errorMsg, supported: false }));
+        }
+        return;
+      }
+
+      if (path.match(/^\/pipeline-instances\/[^/]+\/rollback$/) && req.method === 'POST') {
+        const instanceId = path.split('/')[2];
+        const surfaceId = typeof parsedBody?.surfaceId === 'string' ? parsedBody.surfaceId : '';
+        if (!surfaceId) {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: 'surfaceId is required', supported: false }));
+          return;
+        }
+
+        try {
+          await agentApp.pipelineOrchestrator.rollback(instanceId, surfaceId);
+          const instance = agentApp.pipelineOrchestrator.getStatus(instanceId);
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify(instance ? agentApp.pipelineOrchestrator.serializeInstance(instance) : { ok: true }));
+        } catch (error) {
+          const errorMsg = error instanceof Error ? error.message : 'Unknown error';
+          const statusCode = errorMsg.includes('未找到')
+            ? 404
+            : errorMsg.includes('未定义')
+              ? 400
+              : 409;
+          res.writeHead(statusCode, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: errorMsg, supported: false }));
+        }
+        return;
+      }
+
       // Pipeline 协作脉络汇总：实例 -> 项目 -> 任务 -> 文档
       if (path.match(/^\/pipeline-instances\/[^/]+\/coordination$/) && req.method === 'GET') {
         const instanceId = path.split('/')[2];

@@ -217,7 +217,24 @@ if (!experienceDocId || !retroDocIds.includes(experienceDocId)) {
   })}`);
 }
 
-console.log(`instance=${started.instanceId} project=${cancelled.coordination?.projectId || 'none'} tasks=${taskCount} blocked=${blockedCount} experience=${experienceDocId}`);
+const controlChecks = [
+  ['pause', { url: `${base}/pipeline-instances/${started.instanceId}/pause`, body: {} }],
+  ['resume', { url: `${base}/pipeline-instances/${started.instanceId}/resume`, body: {} }],
+  ['rollback', { url: `${base}/pipeline-instances/${started.instanceId}/rollback`, body: { surfaceId: 'planning' } }],
+];
+for (const [name, request] of controlChecks) {
+  const res = await fetch(request.url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(request.body),
+  });
+  const data = await res.json();
+  if (res.ok || data.supported !== false || !data.error) {
+    throw new Error(`${name} control should fail honestly: ${res.status} ${JSON.stringify(data)}`);
+  }
+}
+
+console.log(`instance=${started.instanceId} project=${cancelled.coordination?.projectId || 'none'} tasks=${taskCount} blocked=${blockedCount} experience=${experienceDocId} unsupportedControls=3`);
 NODE
 )"
     control_code=$?
