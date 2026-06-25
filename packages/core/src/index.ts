@@ -104,12 +104,35 @@ export type {
   KnowledgeResult,
   KnowledgeCenterConfig,
 } from './knowledge/KnowledgeCenter.js';
+
+// ── 增强文档管理（新增 — 支持项目/任务/Agent关联、评论、版本）──
+export {
+  DocumentManager,
+  createDocumentManager,
+  getGlobalDocumentManager,
+  resetGlobalDocumentManager,
+} from './knowledge/DocumentManager.js';
+export type {
+  DocumentV2,
+  DocumentComment,
+  DocumentQuery,
+  Project,
+  Task,
+  DocumentManagerConfig,
+} from './knowledge/DocumentManager.js';
 export { MessageBus, getGlobalMessageBus, resetGlobalMessageBus } from './event/MessageBus';
 export type { AgentMessage, MessageBusOptions } from './event/MessageBus';
 
 // ── Token 预算管理（新增 — Phase 5: 成本控制）──
 export { TokenBudgetManager, getGlobalTokenBudgetManager, resetGlobalTokenBudgetManager } from './telemetry/TokenBudgetManager';
 export type { TokenBudget, BudgetCheckResult } from './telemetry/TokenBudgetManager';
+
+// ── 认证系统（新增）──
+export { AuthService } from './auth/AuthService';
+export { createAuthRoutes } from './auth/routes';
+export { createAuthMiddleware } from './auth/middleware';
+export type { User, AuthTokens, RegisterInput, LoginInput } from './auth/AuthService';
+export { AppError } from './auth/AuthService';
 
 // ── HTTP API 层 ──
 export { createAgentApp } from './agent-factory';

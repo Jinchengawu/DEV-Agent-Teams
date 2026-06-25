@@ -523,6 +523,256 @@ async function main(): Promise<void> {
         return;
       }
 
+      // ============================================================================
+      // DocumentManager V2 API — 增强文档管理
+      // ============================================================================
+      const dm = agentApp.documentManager;
+      if (dm) {
+        // 项目 API
+        if (path === '/api/v2/projects') {
+          if (req.method === 'POST') {
+            const { name, description } = JSON.parse(body || '{}');
+            const project = dm.createProject(name, description);
+            res.writeHead(201, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify(project));
+            return;
+          }
+          if (req.method === 'GET') {
+            const projects = dm.listProjects();
+            res.writeHead(200, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ projects }));
+            return;
+          }
+        }
+
+        if (path.match(/^\/api\/v2\/projects\/[^\/]+$/)) {
+          const id = path.split('/').pop()!;
+          const project = dm.getProject(id);
+          if (!project) {
+            res.writeHead(404, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ error: 'Project not found' }));
+            return;
+          }
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify(project));
+          return;
+        }
+
+        // 任务 API
+        if (path === '/api/v2/tasks') {
+          if (req.method === 'POST') {
+            const { projectId, title, description, assignee } = JSON.parse(body || '{}');
+            const task = dm.createTask(projectId, title, description, assignee);
+            res.writeHead(201, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify(task));
+            return;
+          }
+          if (req.method === 'GET') {
+            const projectId = url.searchParams.get('projectId') || undefined;
+            const tasks = dm.listTasks(projectId);
+            res.writeHead(200, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ tasks }));
+            return;
+          }
+        }
+
+        // 文档 API
+        if (path === '/api/v2/documents') {
+          if (req.method === 'POST') {
+            const docData = JSON.parse(body || '{}');
+            const doc = dm.createDocument(docData);
+            res.writeHead(201, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify(doc));
+            return;
+          }
+          if (req.method === 'GET') {
+            const projectId = url.searchParams.get('projectId') || undefined;
+            const taskId = url.searchParams.get('taskId') || undefined;
+            const type = url.searchParams.get('type') || undefined;
+            const authorId = url.searchParams.get('authorId') || undefined;
+            const sortBy = (url.searchParams.get('sortBy') as any) || 'updatedAt';
+            const sortOrder = (url.searchParams.get('sortOrder') as any) || 'desc';
+            const limit = parseInt(url.searchParams.get('limit') || '20', 10);
+            const offset = parseInt(url.searchParams.get('offset') || '0', 10);
+            const result = dm.queryDocuments({ projectId, taskId, type, authorId, sortBy, sortOrder, limit, offset });
+            res.writeHead(200, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify(result));
+            return;
+          }
+        }
+
+        // 单文档操作
+        const docIdMatch = path.match(/^\/api\/v2\/documents\/([^\/]+)$/);
+        if (docIdMatch) {
+          const docId = docIdMatch[1];
+          if (req.method === 'GET') {
+            const doc = dm.getDocument(docId);
+            if (!doc) {
+              res.writeHead(404, { 'Content-Type': 'application/json' });
+              res.end(JSON.stringify({ error: 'Document not found' }));
+              return;
+            }
+            res.writeHead(200, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify(doc));
+            return;
+          }
+          if (req.method === 'PUT') {
+            const updates = JSON.parse(body || '{}');
+            const doc = dm.updateDocument(docId, updates, updates.authorId, updates.authorName);
+            res.writeHead(200, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify(doc));
+            return;
+          }
+          if (req.method === 'DELETE') {
+            dm.deleteDocument(docId);
+            res.writeHead(204);
+            res.end();
+            return;
+          }
+        }
+
+        // 搜索文档
+        if (path === '/api/v2/documents/search') {
+          const q = url.searchParams.get('q') || '';
+          const projectId = url.searchParams.get('projectId') || undefined;
+          const type = url.searchParams.get('type') || undefined;
+          const docs = dm.searchDocuments(q, { projectId, type });
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ documents: docs, total: docs.length }));
+          return;
+        }
+
+        // 按 Agent 查询
+        if (path.match(/^\/api\/v2\/agents\/[^\/]+\/documents$/)) {
+          const agentId = path.split('/')[4];
+          const projectId = url.searchParams.get('projectId') || undefined;
+          const type = url.searchParams.get('type') || undefined;
+          const docs = dm.getDocumentsByAgent(agentId, { projectId, type });
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ documents: docs, total: docs.length }));
+          return;
+        }
+
+        // 按项目分组
+        if (path.match(/^\/api\/v2\/projects\/[^\/]+\/documents$/)) {
+          const projectId = path.split('/')[4];
+          const grouped = dm.getDocumentsByProject(projectId);
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ grouped }));
+          return;
+        }
+
+        // 评论 API
+        if (path.match(/^\/api\/v2\/documents\/[^\/]+\/comments$/)) {
+          const docId = path.split('/')[4];
+          if (req.method === 'POST') {
+            const { authorId, authorName, content, parentId } = JSON.parse(body || '{}');
+            const comment = dm.addComment({ documentId: docId, authorId, authorName, content, parentId, resolved: false });
+            res.writeHead(201, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify(comment));
+            return;
+          }
+          if (req.method === 'GET') {
+            const comments = dm.getComments(docId);
+            res.writeHead(200, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ comments }));
+            return;
+          }
+        }
+
+        // 评论操作
+        const commentMatch = path.match(/^\/api\/v2\/comments\/([^\/]+)\/(resolve|delete)$/);
+        if (commentMatch) {
+          const commentId = commentMatch[1];
+          const action = commentMatch[2];
+          if (action === 'resolve') {
+            dm.resolveComment(commentId);
+            res.writeHead(200, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ success: true }));
+            return;
+          }
+          if (action === 'delete') {
+            dm.deleteComment(commentId);
+            res.writeHead(204);
+            res.end();
+            return;
+          }
+        }
+
+        // 版本历史
+        if (path.match(/^\/api\/v2\/documents\/[^\/]+\/versions$/)) {
+          const docId = path.split('/')[4];
+          const versions = dm.getVersions(docId);
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ versions }));
+          return;
+        }
+
+        // 统计
+        if (path === '/api/v2/stats') {
+          const stats = dm.stats();
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify(stats));
+          return;
+        }
+      }
+
+      // ── 认证系统 ──
+      if (path === '/auth/register' && req.method === 'POST') {
+        try {
+          const { username, password, email, name } = JSON.parse(body);
+          const result = agentApp.authService.register({ username, password, email, name });
+          res.writeHead(201, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({
+            user: result.user,
+            accessToken: result.tokens.accessToken,
+            expiresIn: result.tokens.expiresIn,
+          }));
+        } catch (err) {
+          const e = err as { statusCode?: number; message?: string };
+          res.writeHead(e.statusCode || 500, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: e.message || '注册失败' }));
+        }
+        return;
+      }
+
+      if (path === '/auth/login' && req.method === 'POST') {
+        try {
+          const { username, password } = JSON.parse(body);
+          const result = agentApp.authService.login({ username, password });
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({
+            user: result.user,
+            accessToken: result.tokens.accessToken,
+            expiresIn: result.tokens.expiresIn,
+          }));
+        } catch (err) {
+          const e = err as { statusCode?: number; message?: string };
+          res.writeHead(e.statusCode || 500, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: e.message || '登录失败' }));
+        }
+        return;
+      }
+
+      if (path === '/auth/me' && req.method === 'GET') {
+        const authHeader = req.headers['authorization'];
+        if (!authHeader || !authHeader.startsWith('Bearer ')) {
+          res.writeHead(401, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: '请先登录' }));
+          return;
+        }
+        try {
+          const user = agentApp.authService.verifyToken(authHeader.slice(7));
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ user }));
+        } catch (err) {
+          const e = err as { statusCode?: number; message?: string };
+          res.writeHead(e.statusCode || 401, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: e.message || '令牌无效' }));
+        }
+        return;
+      }
+
       // 404
       res.writeHead(404, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ error: 'Not Found' }));
@@ -548,10 +798,13 @@ async function main(): Promise<void> {
     console.log(`✅ Gateway 就绪 → http://${config.host}:${config.port}`);
     console.log('');
     console.log('📡 端点:');
-    console.log('  GET  /health              — 健康检查');
-    console.log('  GET  /agents              — Agent 列表');
-    console.log('  POST /v1/chat/completions — 对话（OpenAI 兼容）');
-    console.log('  GET  /v1/sessions         — 会话列表');
+    console.log('  POST /auth/register        — 用户注册');
+    console.log('  POST /auth/login           — 用户登录');
+    console.log('  GET  /auth/me              — 当前用户');
+    console.log('  GET  /health               — 健康检查');
+    console.log('  GET  /agents               — Agent 列表');
+    console.log('  POST /v1/chat/completions  — 对话（OpenAI 兼容）');
+    console.log('  GET  /v1/sessions          — 会话列表');
     console.log('');
   });
 

@@ -16,11 +16,15 @@ import { SessionManager } from './session/SessionManager';
 import { WorkflowStateManager } from './session/WorkflowStateManager';
 import { TokenBudgetManager } from './telemetry/TokenBudgetManager';
 import { TeamOrchestrator, createDevTeamOrchestrator } from './team/TeamOrchestrator';
+import { AuthService } from './auth/AuthService';
+import { createAuthRoutes } from './auth/routes';
 import type { OrchestratorEvent } from './orchestrator/types.js';
 import { setKanbanDatabase, createKanbanTools } from './tools/kanban-tools.js';
 import { createDocumentTools } from './tools/document-tools.js';
+import { createDocumentToolsV2 } from './tools/document-tools-v2.js';
 import { createPipelineOrchestrator } from './pipeline/Orchestrator.js';
 import { getGlobalKnowledgeCenter } from './knowledge/KnowledgeCenter.js';
+import { getGlobalDocumentManager } from './knowledge/DocumentManager.js';
 
 // ============================================================================
 // Types
@@ -40,6 +44,8 @@ export interface AgentApp {
   tokenBudgetManager: TokenBudgetManager;
   pipelineOrchestrator: import('./pipeline/Orchestrator.js').PipelineOrchestrator;
   knowledgeCenter: import('./knowledge/KnowledgeCenter.js').KnowledgeCenter;
+  documentManager: import('./knowledge/DocumentManager.js').DocumentManager;
+  authService: AuthService;
   close: () => Promise<void>;
 }
 
@@ -87,7 +93,7 @@ export async function createAgentApp(config: AgentAppConfig = {}): Promise<Agent
 
   // 初始化看板工具的数据库连接
   setKanbanDatabase(sessionManager.getDb());
-  const extraCustomTools = [...createDocumentTools(), ...createKanbanTools()];
+  const extraCustomTools = [...createDocumentTools(), ...createDocumentToolsV2(), ...createKanbanTools()];
 
   const orchestrator = createDevTeamOrchestrator({ 
     onProgress: config.onProgress,
@@ -96,13 +102,21 @@ export async function createAgentApp(config: AgentAppConfig = {}): Promise<Agent
     extraCustomTools,
   });
 
-  // 创建 Pipeline 编排器（注入知识中心）
+  // 创建知识中心和文档管理器
   const knowledgeCenter = getGlobalKnowledgeCenter({ dbPath: path.join(dataDir, 'knowledge.db') });
-  const pipelineOrchestrator = createPipelineOrchestrator(orchestrator, workflowStateManager, knowledgeCenter);
+  const documentManager = getGlobalDocumentManager({ dbPath: path.join(dataDir, 'documents.db') });
   console.log(`[AgentApp] KnowledgeCenter 已初始化: ${dataDir}/knowledge.db`);
+  console.log(`[AgentApp] DocumentManager V2 已初始化: ${dataDir}/documents.db`);
 
   const app = express();
   app.use(express.json({ limit: '1mb' }));
+
+  // ── 认证系统 ──
+  // AuthService 使用和 SessionManager 同一个 SQLite 数据库
+  const authService = new AuthService(sessionManager.getDb());
+  const authRoutes = createAuthRoutes(authService);
+  app.use('/auth', authRoutes);
+  console.log('[AgentApp] AuthService 已初始化');
 
   // Per-session concurrency lock
   const sessionLocks = new Map<string, Promise<void>>();
@@ -292,5 +306,5 @@ export async function createAgentApp(config: AgentAppConfig = {}): Promise<Agent
     sessionManager.close();
   };
 
-  return { app, sessionManager, orchestrator, tokenBudgetManager, pipelineOrchestrator, knowledgeCenter, close };
+  return { app, sessionManager, orchestrator, tokenBudgetManager, pipelineOrchestrator, knowledgeCenter, documentManager, authService, close };
 }
