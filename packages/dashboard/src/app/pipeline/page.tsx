@@ -74,6 +74,7 @@ interface CoordinationBinding {
   task?: CoordinationTask | null;
   documentId?: string;
   documents?: CoordinationDocument[];
+  knowledge_url?: string;
 }
 
 interface CoordinationSummary {
@@ -83,6 +84,11 @@ interface CoordinationSummary {
   } | null;
   tasks: CoordinationTask[];
   bindings: CoordinationBinding[];
+  navigation?: {
+    pipeline_url?: string;
+    knowledge_url?: string;
+    kanban_url?: string;
+  };
 }
 
 const STORAGE_KEY = 'pipeline-execution-history';
@@ -1087,7 +1093,7 @@ export default function PipelinePage() {
                   <div>
                     <span className="text-gray-500">协作项目:</span>
                     <a
-                      href={`/knowledge?projectId=${encodeURIComponent(currentInstance.coordination.projectId)}`}
+                      href={coordinationSummary?.navigation?.knowledge_url || `/knowledge?projectId=${encodeURIComponent(currentInstance.coordination.projectId)}`}
                       className="ml-2 font-mono text-blue-600 hover:underline"
                     >
                       {currentInstance.coordination.projectId}
@@ -1144,7 +1150,7 @@ export default function PipelinePage() {
                     <div className="flex items-center gap-2">
                       {binding.task?.status && getStatusBadge(binding.task.status)}
                       <a
-                        href={`/knowledge?projectId=${encodeURIComponent(coordinationSummary.project?.id || currentInstance.coordination?.projectId || '')}&taskId=${encodeURIComponent(binding.taskId)}`}
+                        href={binding.knowledge_url || `/knowledge?projectId=${encodeURIComponent(coordinationSummary.project?.id || currentInstance.coordination?.projectId || '')}&taskId=${encodeURIComponent(binding.taskId)}`}
                         className="text-xs text-blue-600 hover:underline"
                       >
                         文档

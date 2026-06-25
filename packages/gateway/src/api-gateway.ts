@@ -609,6 +609,7 @@ async function main(): Promise<void> {
         const project = coordination?.projectId ? dm.getProject(coordination.projectId) : null;
         const taskIdsBySurface = coordination?.taskIdsBySurface || {};
         const documentIdsBySurface = coordination?.documentIdsBySurface || {};
+        const projectId = coordination?.projectId ? String(coordination.projectId) : '';
         const taskById: Record<string, unknown> = {};
         const documentsByTaskId: Record<string, unknown[]> = {};
         const bindings = Object.entries(taskIdsBySurface).map(([surfaceId, taskId]) => {
@@ -622,6 +623,7 @@ async function main(): Promise<void> {
             task,
             documentId: documentIdsBySurface[surfaceId],
             documents,
+            knowledge_url: projectId ? `/knowledge?projectId=${encodeURIComponent(projectId)}&taskId=${encodeURIComponent(String(taskId))}` : undefined,
           };
         });
 
@@ -632,6 +634,11 @@ async function main(): Promise<void> {
           tasks: Object.values(taskById).filter(Boolean),
           documentsByTaskId,
           bindings,
+          navigation: {
+            pipeline_url: `/pipeline?instanceId=${encodeURIComponent(instanceId)}`,
+            knowledge_url: projectId ? `/knowledge?projectId=${encodeURIComponent(projectId)}` : undefined,
+            kanban_url: projectId ? '/kanban?source=coordination' : undefined,
+          },
         }));
         return;
       }

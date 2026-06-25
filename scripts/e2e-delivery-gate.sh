@@ -858,6 +858,73 @@ print("instances={} bound={} latest={} status={}".format(len(instances), len(bou
     record "dashboard pipeline instances proxy" FAIL "GET /api/pipeline-instances failed"
   fi
 
+  set +e
+  dashboard_pipeline_coordination_links_output="$(DASHBOARD_URL="$DASHBOARD_URL" node <<'NODE' 2>&1
+const base = process.env.DASHBOARD_URL;
+const instancesRes = await fetch(`${base}/api/pipeline-instances?limit=10`, { cache: 'no-store' });
+const instancesPayload = await instancesRes.json();
+if (!instancesRes.ok || !Array.isArray(instancesPayload.instances)) {
+  throw new Error(`pipeline instance list failed: ${instancesRes.status} ${JSON.stringify(instancesPayload)}`);
+}
+const instance = instancesPayload.instances.find((item) => item.coordination?.projectId);
+if (!instance) {
+  throw new Error(`no coordinated pipeline instance found: ${JSON.stringify(instancesPayload.instances.slice(0, 3))}`);
+}
+const summaryRes = await fetch(`${base}/api/pipeline-instances/${encodeURIComponent(instance.id)}/coordination`);
+const summary = await summaryRes.json();
+if (!summaryRes.ok || summary.instance?.id !== instance.id || !summary.project?.id) {
+  throw new Error(`pipeline coordination summary failed: ${summaryRes.status} ${JSON.stringify(summary)}`);
+}
+const navigation = summary.navigation || {};
+const projectId = summary.project.id;
+const pipelineUrl = new URL(navigation.pipeline_url || '', base);
+const knowledgeUrl = new URL(navigation.knowledge_url || '', base);
+const kanbanUrl = new URL(navigation.kanban_url || '', base);
+if (
+  pipelineUrl.pathname !== '/pipeline' ||
+  pipelineUrl.searchParams.get('instanceId') !== instance.id ||
+  knowledgeUrl.pathname !== '/knowledge' ||
+  knowledgeUrl.searchParams.get('projectId') !== projectId ||
+  kanbanUrl.pathname !== '/kanban' ||
+  kanbanUrl.searchParams.get('source') !== 'coordination'
+) {
+  throw new Error(`pipeline coordination navigation is invalid: ${JSON.stringify({ navigation, projectId, instanceId: instance.id })}`);
+}
+const binding = (summary.bindings || []).find((item) =>
+  item.taskId &&
+  item.knowledge_url &&
+  (item.documents || []).some((doc) => doc.taskId === item.taskId && doc.projectId === projectId)
+);
+if (!binding) {
+  throw new Error(`pipeline coordination binding missing resolvable knowledge link: ${JSON.stringify((summary.bindings || []).slice(0, 3))}`);
+}
+const bindingKnowledgeUrl = new URL(binding.knowledge_url, base);
+if (
+  bindingKnowledgeUrl.pathname !== '/knowledge' ||
+  bindingKnowledgeUrl.searchParams.get('projectId') !== projectId ||
+  bindingKnowledgeUrl.searchParams.get('taskId') !== binding.taskId
+) {
+  throw new Error(`pipeline coordination binding link is not task-scoped: ${JSON.stringify(binding)}`);
+}
+const docsRes = await fetch(`${base}/api/v2/documents?${bindingKnowledgeUrl.searchParams.toString()}&limit=50`);
+const docs = await docsRes.json();
+if (!docsRes.ok || !docs.documents?.some((doc) => doc.taskId === binding.taskId && doc.projectId === projectId)) {
+  throw new Error(`pipeline coordination binding link did not resolve documents: ${docsRes.status} ${JSON.stringify({
+    binding,
+    documents: (docs.documents || []).map((doc) => ({ id: doc.id, projectId: doc.projectId, taskId: doc.taskId })),
+  })}`);
+}
+console.log(`instance=${instance.id} project=${projectId} bindings=${summary.bindings.length} linkedSurface=${binding.surfaceId} docs=${docs.documents.length}`);
+NODE
+)"
+  dashboard_pipeline_coordination_links_code=$?
+  set -e
+  if [ "$dashboard_pipeline_coordination_links_code" -eq 0 ]; then
+    record "dashboard pipeline coordination links" PASS "$(echo "$dashboard_pipeline_coordination_links_output" | tail -n 1 | sed 's/|/\\|/g')"
+  else
+    record "dashboard pipeline coordination links" FAIL "exit $dashboard_pipeline_coordination_links_code: $(echo "$dashboard_pipeline_coordination_links_output" | tail -n 3 | tr '\n' ' ' | sed 's/|/\\|/g')"
+  fi
+
   if curl -fsS "$DASHBOARD_URL/api/pipeline-instances?status=failed&limit=3" >/tmp/dev-agent-dashboard-pipeline-instances-filtered.json 2>/dev/null; then
     if python3 -c 'import json, sys
 with open(sys.argv[1], "r", encoding="utf-8") as f:
