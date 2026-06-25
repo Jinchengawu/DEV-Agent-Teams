@@ -156,6 +156,57 @@ raise SystemExit(0 if any(t.get("id") == "dev-team-minimum-loop" for t in templa
   else
     record "gateway workflow templates" FAIL "GET /v1/templates failed"
   fi
+
+  if [ "${RUN_PIPELINE_CONTROL_SMOKE:-0}" = "1" ]; then
+    set +e
+    control_output="$(GATEWAY_URL="$GATEWAY_URL" node <<'NODE' 2>&1
+const base = process.env.GATEWAY_URL;
+const payload = {
+  pipelineId: 'dev-team-minimum-loop',
+  initialInput: {
+    userRequest: 'E2E control smoke: start then cancel immediately. Dry-run only; do not write files.',
+    requestedBy: 'e2e-delivery-gate',
+  },
+  options: { dryRun: true, surfaceTimeoutMs: 1000 },
+};
+const startRes = await fetch(`${base}/v1/pipeline/start`, {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify(payload),
+});
+const started = await startRes.json();
+if (!startRes.ok || !started.instanceId) {
+  throw new Error(`start failed: ${startRes.status} ${JSON.stringify(started)}`);
+}
+
+const cancelRes = await fetch(`${base}/pipeline-instances/${started.instanceId}/cancel`, {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({ reason: 'E2E control smoke cancellation' }),
+});
+const cancelled = await cancelRes.json();
+const taskCount = Object.keys(cancelled.coordination?.taskIdsBySurface || {}).length;
+if (cancelRes.status !== 200 || cancelled.status !== 'cancelled' || taskCount < 1) {
+  throw new Error(`cancel/status failed: ${cancelRes.status} ${JSON.stringify({
+    status: cancelled.status,
+    taskCount,
+    projectId: cancelled.coordination?.projectId,
+  })}`);
+}
+
+console.log(`instance=${started.instanceId} project=${cancelled.coordination?.projectId || 'none'} tasks=${taskCount}`);
+NODE
+)"
+    control_code=$?
+    set -e
+    if [ "$control_code" -eq 0 ]; then
+      record "pipeline control smoke" PASS "$(echo "$control_output" | tail -n 1 | sed 's/|/\\|/g')"
+    else
+      record "pipeline control smoke" FAIL "exit $control_code: $(echo "$control_output" | tail -n 3 | tr '\n' ' ' | sed 's/|/\\|/g')"
+    fi
+  else
+    record "pipeline control smoke" WARN "skipped; set RUN_PIPELINE_CONTROL_SMOKE=1 to verify start/cancel/coordination binding"
+  fi
 else
   record "gateway health" WARN "Gateway is not running; skipped live HTTP checks"
 fi

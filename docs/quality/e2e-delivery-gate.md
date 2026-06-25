@@ -38,6 +38,17 @@ When Dashboard is already running, the same script also checks:
 - `GET /api/workflows`
 - `GET /api/workflows/templates`
 
+To verify the Pipeline control plane against a running Gateway, opt in with:
+
+```bash
+RUN_PIPELINE_CONTROL_SMOKE=1 bash scripts/e2e-delivery-gate.sh
+```
+
+This starts `dev-team-minimum-loop` in dry-run mode, immediately cancels it, and verifies
+that the returned instance includes coordination bindings such as `projectId` and Surface
+task IDs. It is opt-in because it creates a real Pipeline instance plus project/task
+records in the local document database.
+
 ### Level 3: Live Pipeline Gate
 
 When Hermes Agent instances and model credentials are available, run:
