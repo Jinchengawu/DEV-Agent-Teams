@@ -394,8 +394,10 @@ export class PipelineOrchestrator {
     }
 
     if (instance.status === 'cancelled') {
+      this.blockUnfinishedSurfaceTasks(pipeline, instance);
       this.stateManager?.cancel(instance.id, instance.error || 'Pipeline cancelled');
     } else if (instance.status === 'failed') {
+      this.blockUnfinishedSurfaceTasks(pipeline, instance);
       this.stateManager?.fail(instance.id, instance.error || 'Pipeline 执行失败');
     }
 
@@ -480,6 +482,10 @@ export class PipelineOrchestrator {
       this.instances.set(instanceId, instance);
     }
     this.stateManager?.cancel(instanceId, reason);
+    const pipeline = this.pipelines.get(instance.pipelineId);
+    if (pipeline) {
+      this.blockUnfinishedSurfaceTasks(pipeline, instance);
+    }
 
     eventBus.emit({
       type: 'workflow.cancelled',
@@ -870,7 +876,7 @@ ${JSON.stringify(artifacts, null, 2)}
   }
 
   private updateSurfaceTaskStatus(instanceId: string, surfaceId: string, status: Task['status']): void {
-    const taskId = this.coordinationBindings.get(instanceId)?.taskIdsBySurface.get(surfaceId);
+    const taskId = this.getSurfaceTaskId(instanceId, surfaceId);
     if (!taskId || !this.documentManager) return;
 
     try {
@@ -878,6 +884,26 @@ ${JSON.stringify(artifacts, null, 2)}
     } catch (error) {
       console.warn(`[PipelineOrchestrator] 任务状态更新失败: ${surfaceId} -> ${status}: ${error instanceof Error ? error.message : String(error)}`);
     }
+  }
+
+  private blockUnfinishedSurfaceTasks(pipeline: PipelineDefinition, instance: PipelineInstance): void {
+    for (const surface of pipeline.surfaces) {
+      const result = instance.surfaceResults.get(surface.id);
+      if (result?.status === 'completed') continue;
+      this.updateSurfaceTaskStatus(instance.id, surface.id, 'blocked');
+    }
+  }
+
+  private getSurfaceTaskId(instanceId: string, surfaceId: string): string | undefined {
+    const liveBindingTaskId = this.coordinationBindings.get(instanceId)?.taskIdsBySurface.get(surfaceId);
+    if (liveBindingTaskId) return liveBindingTaskId;
+
+    const liveInstanceTaskId = this.instances.get(instanceId)?.coordination?.taskIdsBySurface?.[surfaceId];
+    if (liveInstanceTaskId) return liveInstanceTaskId;
+
+    const state = this.stateManager?.load(instanceId);
+    const context = state?.context as PersistedPipelineContext | undefined;
+    return context?.coordination?.taskIdsBySurface?.[surfaceId];
   }
 
   private serializeCoordinationBinding(instanceId: string): PipelineInstance['coordination'] | undefined {
@@ -976,10 +1002,25 @@ ${JSON.stringify(artifacts, null, 2)}
 
     for (const state of interrupted) {
       this.stateManager.fail(state.id, 'Pipeline interrupted by Gateway restart before completion');
+      this.blockPersistedCoordinationTasks(state);
     }
 
     if (interrupted.length > 0) {
       console.warn(`[PipelineOrchestrator] 已标记 ${interrupted.length} 个中断的 Pipeline 实例: ${pipelineId}`);
+    }
+  }
+
+  private blockPersistedCoordinationTasks(state: WorkflowState): void {
+    if (!this.documentManager) return;
+
+    const context = state.context as PersistedPipelineContext;
+    const taskIds = Object.values(context.coordination?.taskIdsBySurface ?? {});
+    for (const taskId of taskIds) {
+      try {
+        this.documentManager.updateTaskStatus(taskId, 'blocked');
+      } catch (error) {
+        console.warn(`[PipelineOrchestrator] 中断任务状态更新失败: ${taskId}: ${error instanceof Error ? error.message : String(error)}`);
+      }
     }
   }
 
