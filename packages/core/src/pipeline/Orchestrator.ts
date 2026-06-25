@@ -397,6 +397,7 @@ export class PipelineOrchestrator {
     return {
       ...instance,
       surfaceResults,
+      coordination: this.serializeCoordinationBinding(instance.id),
     };
   }
 
@@ -725,6 +726,10 @@ ${JSON.stringify(artifacts, null, 2)}
           },
         });
         binding?.docIdsBySurface.set(surfaceId, doc.id);
+        const instance = this.instances.get(instanceId);
+        if (instance) {
+          instance.coordination = this.serializeCoordinationBinding(instanceId);
+        }
       }
 
       console.log(`[PipelineOrchestrator] 产物已沉淀到知识中心: ${surfaceId}`);
@@ -812,6 +817,7 @@ ${JSON.stringify(artifacts, null, 2)}
         taskIdsBySurface,
         docIdsBySurface: new Map(),
       });
+      instance.coordination = this.serializeCoordinationBinding(instance.id);
       console.log(`[PipelineOrchestrator] 协作脉络已创建: project=${project.id}, tasks=${taskIdsBySurface.size}`);
     } catch (error) {
       console.warn(`[PipelineOrchestrator] 协作脉络创建失败: ${error instanceof Error ? error.message : String(error)}`);
@@ -827,6 +833,17 @@ ${JSON.stringify(artifacts, null, 2)}
     } catch (error) {
       console.warn(`[PipelineOrchestrator] 任务状态更新失败: ${surfaceId} -> ${status}: ${error instanceof Error ? error.message : String(error)}`);
     }
+  }
+
+  private serializeCoordinationBinding(instanceId: string): PipelineInstance['coordination'] | undefined {
+    const binding = this.coordinationBindings.get(instanceId);
+    if (!binding) return undefined;
+
+    return {
+      projectId: binding.projectId,
+      taskIdsBySurface: Object.fromEntries(binding.taskIdsBySurface),
+      documentIdsBySurface: Object.fromEntries(binding.docIdsBySurface),
+    };
   }
 
   /**

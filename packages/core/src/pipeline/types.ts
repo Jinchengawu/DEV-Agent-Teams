@@ -203,6 +203,12 @@ export interface PipelineInstance {
   error?: string;
   /** 持久化工作流 ID（通常等于实例 ID） */
   workflowStateId?: string;
+  /** 项目/任务/文档绑定投影，用于 Dashboard 展示协作脉络 */
+  coordination?: {
+    projectId: string;
+    taskIdsBySurface: Record<string, string>;
+    documentIdsBySurface: Record<string, string>;
+  };
 }
 
 /** Pipeline 执行选项 */

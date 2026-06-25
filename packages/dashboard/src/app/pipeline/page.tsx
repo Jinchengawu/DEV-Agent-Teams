@@ -45,6 +45,11 @@ interface PipelineInstance {
   surfaceResults: Record<string, SurfaceResult>;
   startedAt: number;
   completedAt?: number;
+  coordination?: {
+    projectId: string;
+    taskIdsBySurface: Record<string, string>;
+    documentIdsBySurface: Record<string, string>;
+  };
 }
 
 const STORAGE_KEY = 'pipeline-execution-history';
@@ -339,6 +344,8 @@ export default function PipelinePage() {
                   if (!surface) return null;
                   const isCurrent = instance?.surfaceResults[surfaceId];
                   const status = isCurrent?.status || 'pending';
+                  const taskId = instance?.coordination?.taskIdsBySurface?.[surfaceId];
+                  const documentId = instance?.coordination?.documentIdsBySurface?.[surfaceId];
                   const isLoopSource = loopEdges.some((e) => e.from === surfaceId);
                   const isLoopTarget = loopEdges.some((e) => e.to === surfaceId);
 
@@ -370,6 +377,17 @@ export default function PipelinePage() {
                         <div className="text-xs text-gray-500 mb-2">
                           {surface.agent}
                         </div>
+
+                        {taskId && (
+                          <div className="mb-2 rounded border border-gray-200 bg-gray-50 px-2 py-1 text-[11px] text-gray-600">
+                            任务: <span className="font-mono">{taskId}</span>
+                            {documentId && (
+                              <span className="ml-2">
+                                文档: <span className="font-mono">{documentId}</span>
+                              </span>
+                            )}
+                          </div>
+                        )}
 
                         {/* 输入/输出 */}
                         <div className="text-xs text-gray-600 space-y-1">
@@ -551,6 +569,20 @@ export default function PipelinePage() {
                   <span className="text-gray-500">开始时间:</span>
                   <span className="ml-2">{new Date(currentInstance.startedAt).toLocaleString()}</span>
                 </div>
+                {currentInstance.coordination?.projectId && (
+                  <div>
+                    <span className="text-gray-500">协作项目:</span>
+                    <span className="ml-2 font-mono">{currentInstance.coordination.projectId}</span>
+                  </div>
+                )}
+                {currentInstance.coordination?.taskIdsBySurface && (
+                  <div>
+                    <span className="text-gray-500">绑定任务:</span>
+                    <span className="ml-2">
+                      {Object.keys(currentInstance.coordination.taskIdsBySurface).length} 个
+                    </span>
+                  </div>
+                )}
               </div>
             </CardContent>
           </Card>
