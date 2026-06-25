@@ -262,6 +262,7 @@ export default function PipelinePage() {
       case 'completed': return 'bg-green-500';
       case 'running': return 'bg-blue-500 animate-pulse';
       case 'failed': return 'bg-red-500';
+      case 'blocked': return 'bg-red-500';
       case 'cancelled': return 'bg-amber-500';
       case 'pending': return 'bg-gray-400';
       default: return 'bg-gray-400';
@@ -281,6 +282,18 @@ export default function PipelinePage() {
       case 'done': return <Badge className="bg-green-500">已完成</Badge>;
       case 'blocked': return <Badge className="bg-red-500">阻塞</Badge>;
       default: return <Badge variant="secondary">{status}</Badge>;
+    }
+  };
+
+  const getSurfaceStatusFromTask = (taskStatus?: string) => {
+    switch (taskStatus) {
+      case 'done': return 'completed';
+      case 'in_progress':
+      case 'review':
+        return 'running';
+      case 'blocked': return 'blocked';
+      case 'todo': return 'pending';
+      default: return undefined;
     }
   };
 
@@ -365,6 +378,9 @@ export default function PipelinePage() {
     const batches = buildExecutionBatches(pipeline);
     const loopEdges = getLoopEdges(pipeline);
     const surfaceMap = new Map(pipeline.surfaces.map((s) => [s.id, s]));
+    const taskBySurface = new Map(
+      (coordinationSummary?.bindings || []).map((binding) => [binding.surfaceId, binding.task])
+    );
 
     return (
       <div className="mt-4">
@@ -401,7 +417,13 @@ export default function PipelinePage() {
                   const surface = surfaceMap.get(surfaceId);
                   if (!surface) return null;
                   const isCurrent = instance?.surfaceResults[surfaceId];
-                  const status = isCurrent?.status || 'pending';
+                  const task = taskBySurface.get(surfaceId);
+                  const taskStatus = getSurfaceStatusFromTask(task?.status);
+                  const status = isCurrent?.status === 'completed'
+                    ? 'completed'
+                    : taskStatus === 'blocked'
+                      ? 'blocked'
+                      : isCurrent?.status || taskStatus || 'pending';
                   const taskId = instance?.coordination?.taskIdsBySurface?.[surfaceId];
                   const documentId = instance?.coordination?.documentIdsBySurface?.[surfaceId];
                   const isLoopSource = loopEdges.some((e) => e.from === surfaceId);
@@ -422,6 +444,7 @@ export default function PipelinePage() {
                         status === 'running' ? 'border-blue-500 bg-blue-50' :
                         status === 'completed' ? 'border-green-500 bg-green-50' :
                         status === 'failed' ? 'border-red-500 bg-red-50' :
+                        status === 'blocked' ? 'border-red-500 bg-red-50' :
                         status === 'cancelled' ? 'border-amber-500 bg-amber-50' :
                         'border-gray-200 bg-white'
                       }`}>
@@ -446,6 +469,11 @@ export default function PipelinePage() {
                             >
                               {taskId}
                             </a>
+                            {task?.status && (
+                              <span className="ml-2 inline-flex align-middle">
+                                {getStatusBadge(task.status)}
+                              </span>
+                            )}
                             {documentId && (
                               <span className="ml-2">
                                 文档: <span className="font-mono">{documentId}</span>

@@ -45,9 +45,11 @@ RUN_PIPELINE_CONTROL_SMOKE=1 bash scripts/e2e-delivery-gate.sh
 ```
 
 This starts `dev-team-minimum-loop` in dry-run mode, immediately cancels it, and verifies
-that the returned instance includes coordination bindings such as `projectId` and Surface
-task IDs. It is opt-in because it creates a real Pipeline instance plus project/task
-records in the local document database.
+that the instance includes coordination bindings such as `projectId` and Surface task IDs.
+It also fetches the coordination summary and asserts that all unfinished Surface tasks are
+marked `blocked`, so the Kanban projection does not show stale queued work. It is opt-in
+because it creates a real Pipeline instance plus project/task records in the local document
+database.
 
 To verify restart recovery, opt in with:
 
@@ -55,10 +57,10 @@ To verify restart recovery, opt in with:
 RUN_PIPELINE_RECOVERY_SMOKE=1 bash scripts/e2e-delivery-gate.sh
 ```
 
-This creates and cancels a dry-run Pipeline instance, restarts the local Gateway, and
-then verifies the same instance can be recovered from persisted workflow state with its
-coordination bindings intact. It is opt-in because it restarts the local Gateway and
-creates local project/task records.
+This starts a dry-run Pipeline instance, restarts the local Gateway while the run is still
+active, and then verifies that the interrupted instance is recovered as `failed` with a
+clear restart error. It also asserts that all coordination tasks are marked `blocked`. It is
+opt-in because it restarts the local Gateway and creates local project/task records.
 
 ### Level 3: Live Pipeline Gate
 
