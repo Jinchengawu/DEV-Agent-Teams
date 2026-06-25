@@ -632,19 +632,33 @@ export default function PipelinePage() {
             <CardHeader>
               <div className="flex items-center justify-between gap-3">
                 <CardTitle>当前执行实例</CardTitle>
-                {currentInstance.status === 'running' && (
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => cancelPipeline(currentInstance.id)}
-                    className="border-amber-300 text-amber-700 hover:bg-amber-50"
-                  >
-                    停止
+                <div className="flex items-center gap-2">
+                  {currentInstance.status === 'running' && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => cancelPipeline(currentInstance.id)}
+                      className="border-amber-300 text-amber-700 hover:bg-amber-50"
+                    >
+                      停止
+                    </Button>
+                  )}
+                  <Button variant="outline" size="sm" disabled title="暂停需要 Surface checkpoint 协议">
+                    暂停
                   </Button>
-                )}
+                  <Button variant="outline" size="sm" disabled title="恢复需要 Surface checkpoint/replay 协议">
+                    恢复
+                  </Button>
+                  <Button variant="outline" size="sm" disabled title="回滚需要可逆副作用协议">
+                    回滚
+                  </Button>
+                </div>
               </div>
             </CardHeader>
             <CardContent>
+              <div className="mb-4 rounded border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+                当前版本支持安全停止；暂停、恢复、回滚已在 API 层明确拒绝，等待 Surface checkpoint/replay 协议后开放。
+              </div>
               <div className="grid grid-cols-2 gap-4 text-sm">
                 <div>
                   <span className="text-gray-500">实例ID:</span>

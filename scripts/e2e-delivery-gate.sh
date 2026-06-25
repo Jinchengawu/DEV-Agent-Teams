@@ -384,6 +384,33 @@ raise SystemExit(0 if any(t.get("id") == "dev-team-minimum-loop" for t in templa
   else
     record "dashboard workflow templates proxy" FAIL "GET /api/workflows/templates failed"
   fi
+
+  if [ "${RUN_PIPELINE_CONTROL_SMOKE:-0}" = "1" ]; then
+    set +e
+    dashboard_control_output="$(DASHBOARD_URL="$DASHBOARD_URL" node <<'NODE' 2>&1
+const base = process.env.DASHBOARD_URL;
+const res = await fetch(`${base}/api/pipeline-instances/__missing__/pause`, {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({}),
+});
+const data = await res.json();
+if (res.ok || data.supported !== false || !data.error) {
+  throw new Error(`dashboard pause proxy should fail honestly: ${res.status} ${JSON.stringify(data)}`);
+}
+console.log(`status=${res.status} supported=${data.supported}`);
+NODE
+)"
+    dashboard_control_code=$?
+    set -e
+    if [ "$dashboard_control_code" -eq 0 ]; then
+      record "dashboard pipeline control proxy" PASS "$(echo "$dashboard_control_output" | tail -n 1 | sed 's/|/\\|/g')"
+    else
+      record "dashboard pipeline control proxy" FAIL "exit $dashboard_control_code: $(echo "$dashboard_control_output" | tail -n 3 | tr '\n' ' ' | sed 's/|/\\|/g')"
+    fi
+  else
+    record "dashboard pipeline control proxy" WARN "skipped; set RUN_PIPELINE_CONTROL_SMOKE=1 to verify Dashboard control proxy"
+  fi
 else
   record "dashboard root" WARN "Dashboard is not running; skipped Dashboard HTTP checks"
 fi
