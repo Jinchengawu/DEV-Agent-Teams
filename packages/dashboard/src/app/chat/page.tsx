@@ -53,9 +53,16 @@ export default function ChatPage() {
             </div>
           }
         >
-          {mode === 'chat' && <ChatContent />}
-          {mode === 'broadcast' && <BroadcastView />}
-          {mode === 'meeting' && <MeetingView />}
+          {/* 使用 hidden 控制显示，保持组件挂载，切换时不丢失状态和 SSE 连接 */}
+          <div className={mode === 'chat' ? 'h-full' : 'hidden'}>
+            <ChatContent />
+          </div>
+          <div className={mode === 'broadcast' ? 'h-full' : 'hidden'}>
+            <BroadcastView />
+          </div>
+          <div className={mode === 'meeting' ? 'h-full' : 'hidden'}>
+            <MeetingView />
+          </div>
         </Suspense>
       </div>
     </div>
