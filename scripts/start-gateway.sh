@@ -5,6 +5,13 @@
 
 set -e
 
+ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+CODEX_NODE_BIN="/Users/zhuizhui/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/bin"
+
+if [ -x "$CODEX_NODE_BIN/node" ]; then
+    export PATH="$CODEX_NODE_BIN:$PATH"
+fi
+
 echo "🚀 DEV-Agent Gateway 启动"
 echo "=========================="
 
@@ -17,7 +24,7 @@ fi
 echo "✅ Node.js 已安装: $(node --version)"
 
 # 进入 gateway 目录
-cd "$(dirname "$0")/packages/gateway"
+cd "$ROOT/packages/gateway"
 
 # 检查依赖是否已安装
 if [ ! -d "node_modules" ]; then
@@ -35,7 +42,9 @@ if [ ! -f "$CONFIG_FILE" ]; then
     echo "📝 创建配置文件..."
     mkdir -p "$CONFIG_DIR/logs"
     
-    cp "$(dirname "$0")/config/gateway-config.yaml" "$CONFIG_FILE"
+    if [ -f "$ROOT/config/gateway-config.yaml" ]; then
+        cp "$ROOT/config/gateway-config.yaml" "$CONFIG_FILE"
+    fi
     echo "   ✅ 配置文件已创建: $CONFIG_FILE"
 fi
 
@@ -45,4 +54,4 @@ echo "🚀 启动 Gateway..."
 echo "   按 Ctrl+C 停止"
 echo ""
 
-npm run dev
+pnpm dev

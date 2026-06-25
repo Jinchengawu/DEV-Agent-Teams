@@ -38,15 +38,11 @@ show_help() {
 # 启动服务
 start_services() {
     echo -e "${BLUE}🚀 启动 DEV-Agent 服务...${NC}"
-    
-    # 启动 Agent
-    echo -e "${YELLOW}启动 Agent 实例...${NC}"
+
+    # 启动 Hermes Agent、Gateway 和 Dashboard
+    echo -e "${YELLOW}启动本地服务...${NC}"
     bash "$SCRIPT_DIR/scripts/start-all.sh"
-    
-    # 启动 Gateway
-    echo -e "${YELLOW}启动 Gateway...${NC}"
-    bash "$SCRIPT_DIR/scripts/start-gateway.sh" &
-    
+
     echo -e "${GREEN}✅ 所有服务已启动${NC}"
 }
 
@@ -58,9 +54,9 @@ stop_services() {
     echo -e "${YELLOW}停止 Gateway...${NC}"
     lsof -ti:8400 | xargs kill -9 2>/dev/null || true
     
-    # 停止各 Agent (端口 8201-8206)
+    # 停止各 Agent (当前 Hermes 端口 8002-8007；兼容旧端口 8201-8206)
     echo -e "${YELLOW}停止 Agent 实例...${NC}"
-    for port in 8201 8202 8203 8204 8205 8206; do
+    for port in 8002 8003 8004 8005 8006 8007 8201 8202 8203 8204 8205 8206; do
         lsof -ti:$port | xargs kill -9 2>/dev/null || true
     done
     
@@ -70,6 +66,11 @@ stop_services() {
     # 停止 Dashboard (端口 3000)
     echo -e "${YELLOW}停止 Dashboard...${NC}"
     lsof -ti:3000 | xargs kill -9 2>/dev/null || true
+
+    # 停止 screen 会话（如果由 start-all.sh 启动）
+    for session in hermes-frontend hermes-backend hermes-testing hermes-devops hermes-pm hermes-project-admin dev-agent-gateway dev-agent-dashboard; do
+        screen -S "$session" -X quit >/dev/null 2>&1 || true
+    done
     
     echo -e "${GREEN}✅ 所有服务已停止${NC}"
 }
@@ -81,7 +82,7 @@ show_status() {
     
     # 检查 Agent
     echo "Agent 实例:"
-    for port in 8201 8202 8203 8204 8205 8206; do
+    for port in 8002 8003 8004 8005 8006 8007; do
         if curl -s "http://127.0.0.1:$port/" > /dev/null 2>&1; then
             echo -e "  ${GREEN}✅ 端口 $port - 运行中${NC}"
         else
@@ -95,6 +96,14 @@ show_status() {
         echo -e "  ${GREEN}✅ 端口 8400 - 运行中${NC}"
     else
         echo -e "  ${RED}❌ 端口 8400 - 未运行${NC}"
+    fi
+
+    echo ""
+    echo "Dashboard:"
+    if curl -s "http://127.0.0.1:3000/" > /dev/null 2>&1; then
+        echo -e "  ${GREEN}✅ 端口 3000 - 运行中${NC}"
+    else
+        echo -e "  ${RED}❌ 端口 3000 - 未运行${NC}"
     fi
 }
 

@@ -304,6 +304,18 @@ if (!started.coordination?.projectId || startTaskCount !== 7) {
   })}`);
 }
 
+await new Promise((resolve) => setTimeout(resolve, 300));
+const runningRes = await fetch(`${base}/pipeline-instances/${started.instanceId}`);
+const runningInstance = await runningRes.json();
+const runningSurfaces = Object.values(runningInstance.surfaceResults || {})
+  .filter((result) => result?.status === 'running')
+  .map((result) => result.surfaceId);
+if (!runningRes.ok || runningSurfaces.length < 1) {
+  throw new Error(`running surface progress was not observable: ${runningRes.status} ${JSON.stringify({
+    statuses: Object.fromEntries(Object.entries(runningInstance.surfaceResults || {}).map(([key, result]) => [key, result?.status])),
+  })}`);
+}
+
 const cancelRes = await fetch(`${base}/pipeline-instances/${started.instanceId}/cancel`, {
   method: 'POST',
   headers: { 'Content-Type': 'application/json' },
@@ -368,7 +380,7 @@ for (const [name, request] of controlChecks) {
   }
 }
 
-console.log(`instance=${started.instanceId} project=${started.coordination.projectId} startTasks=${startTaskCount} tasks=${taskCount} blocked=${blockedCount} experience=${experienceDocId} contextDocs=${filteredDocs.documents.length} unsupportedControls=3`);
+console.log(`instance=${started.instanceId} project=${started.coordination.projectId} startTasks=${startTaskCount} runningSurfaces=${runningSurfaces.join(',')} tasks=${taskCount} blocked=${blockedCount} experience=${experienceDocId} contextDocs=${filteredDocs.documents.length} unsupportedControls=3`);
 NODE
 )"
     control_code=$?

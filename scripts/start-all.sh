@@ -1,96 +1,93 @@
 #!/bin/bash
-###
- # @Author: dreamworks.cnn@gmail.com
- # @Date: 2026-06-20 15:04:16
- # @LastEditors: dreamworks.cnn@gmail.com
- # @LastEditTime: 2026-06-20 15:07:27
- # @FilePath: /DEV-Agent-Teams/scripts/start-all.sh
- # @Description: 
- # 
- # Copyright (c) 2026 by ${git_name_email}, All Rights Reserved. 
-### 
 
-# DEV-Agent-Teams 全部服务启动脚本
-# Agent 公开端口: 8201-8205
-# Hermes 内部端口: 9201-9205 (Agent 通过 internal port 调用 Hermes)
-# 使用方法: ./start-all.sh
+# DEV-Agent-Teams local service starter.
+#
+# Starts the services that the current Team Coordination Layer actually uses:
+# - Hermes HTTP Agent instances on 8002-8007
+# - Gateway on 8400
+# - Dashboard on 3000
 
-set -e
+set -euo pipefail
 
-SCRIPT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
-cd "$SCRIPT_DIR"
+ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+LOG_DIR="$ROOT/.codex-run/logs"
+CODEX_NODE_BIN="/Users/zhuizhui/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/bin"
 
-echo "🚀 DEV-Agent-Teams 多服务启动"
-echo "=============================="
+cd "$ROOT"
+mkdir -p "$LOG_DIR"
 
-# 加载环境变量
+if [ -x "$CODEX_NODE_BIN/node" ]; then
+  export PATH="$CODEX_NODE_BIN:$PATH"
+fi
+
 if [ -f .env ]; then
-    set -a
-    # shellcheck disable=SC1091
-    . ./.env
-    set +a
-    echo "✅ 已加载 .env 配置"
+  set -a
+  # shellcheck disable=SC1091
+  . ./.env
+  set +a
+  echo "Loaded .env"
 fi
 
-# 检查必要的环境变量
-if [ -z "$MODEL_PROVIDER" ]; then
-    echo "⚠️  MODEL_PROVIDER 未设置，使用默认值"
-    MODEL_PROVIDER=kimi
+MODEL_PROVIDER="${MODEL_PROVIDER:-deepseek}"
+MODEL_NAME="${MODEL_NAME:-deepseek-v4-pro}"
+MODEL_BASE_URL="${MODEL_BASE_URL:-https://api.deepseek.com/v1}"
+API_KEY="${API_KEY:-}"
+GATEWAY_PORT="${GATEWAY_PORT:-8400}"
+DASHBOARD_PORT="${DASHBOARD_PORT:-3000}"
+
+if ! command -v node >/dev/null 2>&1; then
+  echo "Node.js is required" >&2
+  exit 1
 fi
 
-if [ -z "$MODEL_NAME" ]; then
-    echo "⚠️  MODEL_NAME 未设置，使用默认值"
-    MODEL_NAME=k2.7
+if ! command -v hermes >/dev/null 2>&1; then
+  echo "Hermes is required" >&2
+  exit 1
 fi
 
-if [ -z "$MODEL_BASE_URL" ]; then
-    echo "⚠️  MODEL_BASE_URL 未设置，使用默认值"
-    MODEL_BASE_URL=https://api.moonshot.cn/v1
-fi
+port_listening() {
+  lsof -tiTCP:"$1" -sTCP:LISTEN >/dev/null 2>&1
+}
 
-# 检查依赖
-if ! command -v node &> /dev/null; then
-    echo "❌ Node.js 未安装"
-    exit 1
-fi
+wait_for_port() {
+  local port="$1"
+  local label="$2"
+  local attempt
 
-if ! command -v hermes &> /dev/null; then
-    echo "❌ Hermes 未安装"
-    exit 1
-fi
+  for attempt in $(seq 1 40); do
+    if port_listening "$port"; then
+      echo "  OK $label is listening on :$port"
+      return 0
+    fi
+    sleep 0.5
+  done
 
-echo "✅ Node.js 已安装: $(node --version)"
-echo "✅ Hermes 已安装"
-echo "✅ 模型配置: $MODEL_PROVIDER / $MODEL_NAME"
+  echo "  FAIL $label did not listen on :$port" >&2
+  return 1
+}
 
-# Hermes 配置 (兼容 macOS 默认 bash 3.2)
-export GATEWAY_ALLOW_ALL_USERS=true
-export HERMES_INFERENCE_PROVIDER=kimi
-export DEEPSEEK_API_KEY="${API_KEY:-}"
+run_detached() {
+  local session="$1"
+  local command="$2"
 
-# Agent 公开端口 / Hermes 内部端口 (port+1000)
-AGENTS=(
-    "frontend:${FRONTEND_AGENT_PORT:-8201}:9201:packages/agents/frontend:前端开发 Agent"
-    "backend:${BACKEND_AGENT_PORT:-8202}:9202:packages/agents/backend:后端开发 Agent"
-    "testing:${TESTING_AGENT_PORT:-8203}:9203:packages/agents/testing:测试开发 Agent"
-    "devops:${DEVOPS_AGENT_PORT:-8204}:9204:packages/agents/devops:DevOps Agent"
-    "pm:${PM_AGENT_PORT:-8205}:9205:packages/agents/pm:产品经理 Agent"
-    "project-admin:${PROJECT_ADMIN_AGENT_PORT:-8206}:9206:packages/agents/project-admin:项目管理员 Agent"
-)
+  if command -v screen >/dev/null 2>&1; then
+    screen -S "$session" -X quit >/dev/null 2>&1 || true
+    screen -dmS "$session" bash -lc "$command"
+  else
+    nohup bash -lc "$command" >/dev/null 2>&1 &
+  fi
+}
 
-# 步骤 1: 启动 Hermes 实例 (内部端口)
-echo ""
-echo "📦 步骤 1: 启动 Hermes 实例..."
+ensure_hermes_config() {
+  local home_dir="$1"
+  local port="$2"
 
-for entry in "${AGENTS[@]}"; do
-    IFS=':' read -r agent public_port hermes_port path label <<< "$entry"
+  mkdir -p "$home_dir"
+  if [ -f "$home_dir/config.yaml" ]; then
+    return
+  fi
 
-    echo "   启动 Hermes for $label (内部端口 $hermes_port)..."
-
-    HOME_DIR="$HOME/.hermes-dev-$agent"
-    mkdir -p "$HOME_DIR"
-
-    cat > "$HOME_DIR/config.yaml" << EOF
+  cat > "$home_dir/config.yaml" <<EOF
 model:
   default: $MODEL_NAME
   provider: $MODEL_PROVIDER
@@ -101,7 +98,7 @@ platforms:
     enabled: true
     extra:
       host: "127.0.0.1"
-      port: $hermes_port
+      port: $port
       model_name: "hermes-agent"
 
 agent:
@@ -114,97 +111,91 @@ delegation:
   model: $MODEL_NAME
   provider: $MODEL_PROVIDER
   base_url: $MODEL_BASE_URL
-  api_key: ${API_KEY:-}
+  api_key: $API_KEY
   orchestrator_enabled: true
   max_concurrent_children: 3
   max_spawn_depth: 1
   child_timeout_seconds: 600
   max_iterations: 50
 EOF
+}
 
-    HERMES_HOME="$HOME_DIR" hermes gateway run &
-    HERMES_PID=$!
+start_hermes() {
+  local id="$1"
+  local port="$2"
+  local home_dir="$3"
+  local label="$4"
+  local log_file="$LOG_DIR/hermes-$id.log"
 
-    echo "   ✅ Hermes 已启动 (PID: $HERMES_PID, 内部: $hermes_port → 公开: $public_port)"
+  ensure_hermes_config "$home_dir" "$port"
 
-    sleep 3
-done
+  if port_listening "$port"; then
+    echo "Hermes $label already running on :$port"
+    return
+  fi
 
-# 步骤 2: 启动 OpenClaw Gateway (编排层)
-echo ""
-echo "🧠 步骤 2: 启动 OpenClaw Gateway..."
+  echo "Starting Hermes $label on :$port"
+  run_detached "hermes-$id" "HERMES_HOME='$home_dir' hermes gateway run 2>&1 | tee -a '$log_file'"
+  wait_for_port "$port" "Hermes $label"
+}
 
-cd "$SCRIPT_DIR/packages/gateway"
+resolve_hermes_port() {
+  local configured="$1"
+  local default_port="$2"
+  local legacy_port="$3"
 
-if [ ! -d "node_modules" ]; then
-    echo "   📦 安装依赖..."
-    npm install --cache "$SCRIPT_DIR/.npm-cache"
-fi
+  if [ -z "$configured" ] || [ "$configured" = "$legacy_port" ]; then
+    echo "$default_port"
+  else
+    echo "$configured"
+  fi
+}
 
-npx tsx src/api-gateway.ts &
-GATEWAY_PID=$!
-echo "   ✅ OpenClaw Gateway 已启动 (PID: $GATEWAY_PID, 端口: 8400)"
+start_node_service() {
+  local session="$1"
+  local port="$2"
+  local dir="$3"
+  local command="$4"
+  local label="$5"
+  local log_file="$6"
 
-cd "$SCRIPT_DIR"
-sleep 2
+  if port_listening "$port"; then
+    echo "$label already running on :$port"
+    return
+  fi
 
-# 步骤 3: 启动 Agent 服务 (公开端口，注册到 OpenClaw Gateway)
-echo ""
-echo "📦 步骤 3: 启动 Agent 服务..."
+  echo "Starting $label on :$port"
+  run_detached "$session" "cd '$dir' && env PATH='$PATH' $command 2>&1 | tee -a '$log_file'"
+  wait_for_port "$port" "$label"
+}
 
-for entry in "${AGENTS[@]}"; do
-    IFS=':' read -r agent public_port hermes_port path label <<< "$entry"
+echo "Starting DEV-Agent-Teams services"
+echo "Model: $MODEL_PROVIDER / $MODEL_NAME"
 
-    echo "   启动 $label..."
+start_hermes "frontend" "$(resolve_hermes_port "${FRONTEND_AGENT_PORT:-}" 8002 8201)" "$HOME/.hermes-frontend" "Frontend Agent"
+start_hermes "backend" "$(resolve_hermes_port "${BACKEND_AGENT_PORT:-}" 8003 8202)" "$HOME/.hermes-backend" "Backend Agent"
+start_hermes "testing" "$(resolve_hermes_port "${TESTING_AGENT_PORT:-}" 8004 8203)" "$HOME/.hermes-testing" "Testing Agent"
+start_hermes "devops" "$(resolve_hermes_port "${DEVOPS_AGENT_PORT:-}" 8005 8204)" "$HOME/.hermes-devops" "DevOps Agent"
+start_hermes "pm" "$(resolve_hermes_port "${PM_AGENT_PORT:-}" 8006 8205)" "$HOME/.hermes-pm" "PM Agent"
+start_hermes "project-admin" "$(resolve_hermes_port "${PROJECT_ADMIN_AGENT_PORT:-}" 8007 8206)" "$HOME/.hermes-project-admin" "Project Admin Agent"
 
-    cd "$SCRIPT_DIR/$path"
+start_node_service \
+  "dev-agent-gateway" \
+  "$GATEWAY_PORT" \
+  "$ROOT/packages/gateway" \
+  "GATEWAY_PORT=$GATEWAY_PORT pnpm dev" \
+  "Gateway" \
+  "$LOG_DIR/gateway-screen.log"
 
-    if [ ! -d "node_modules" ]; then
-        echo "   📦 安装依赖..."
-        npm install --cache "$SCRIPT_DIR/.npm-cache"
-    fi
-
-    MODEL_BASE_URL="$MODEL_BASE_URL" \
-    MODEL_NAME="$MODEL_NAME" \
-    API_KEY="$API_KEY" \
-    AGENT_PORT=$public_port HERMES_PORT=$hermes_port npm run dev &
-    AGENT_PID=$!
-
-    echo "   ✅ Agent 已启动 (PID: $AGENT_PID, 端口: $public_port → Hermes: $hermes_port)"
-
-    cd "$SCRIPT_DIR"
-
-    sleep 2
-done
-
-# 创建 data 目录
-mkdir -p "$HOME/.dev-agent/data"
-
-echo ""
-echo "🎉 所有服务已启动！"
-echo ""
-echo "📋 服务状态："
-
-# 检查 Agent 状态 (公开端口)
-echo "OpenClaw Gateway:"
-if curl -s "http://127.0.0.1:8400/health" > /dev/null 2>&1; then
-    echo "   ✅ OpenClaw Gateway (:8400) — 运行中"
-else
-    echo "   ⚠️  OpenClaw Gateway (:8400) — 未响应（将使用降级直连）"
-fi
-
-echo ""
-echo "Agent 实例:"
-for entry in "${AGENTS[@]}"; do
-    IFS=':' read -r agent public_port hermes_port path label <<< "$entry"
-    if curl -s "http://127.0.0.1:$public_port/health" > /dev/null 2>&1; then
-        echo "   ✅ $label (Agent:$public_port Hermes:$hermes_port) - 运行中"
-    else
-        echo "   ❌ $label (Agent:$public_port) - 未响应"
-    fi
-done
+start_node_service \
+  "dev-agent-dashboard" \
+  "$DASHBOARD_PORT" \
+  "$ROOT/packages/dashboard" \
+  "PORT=$DASHBOARD_PORT pnpm dev" \
+  "Dashboard" \
+  "$LOG_DIR/dashboard-screen.log"
 
 echo ""
-echo "📋 下一步："
-echo "   1. 启动 Dashboard: cd packages/dashboard && npm run dev"
-echo "   2. 停止所有实例: pkill -f 'hermes gateway run' && pkill -f 'tsx watch'"
+echo "Services are ready:"
+echo "  Gateway:   http://127.0.0.1:$GATEWAY_PORT"
+echo "  Dashboard: http://127.0.0.1:$DASHBOARD_PORT"

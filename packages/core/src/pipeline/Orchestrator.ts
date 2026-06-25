@@ -1380,6 +1380,24 @@ ${JSON.stringify(artifacts, null, 2)}
     // 打印最终输入
     console.log(`  → 面 ${surfaceId} 最终输入 keys: [${Array.from(surface.getInputKeys()).join(', ')}]`);
 
+    const runningResult: SurfaceResult = {
+      surfaceId,
+      status: 'running',
+      startedAt: Date.now(),
+      logs: ['Surface execution started'],
+    };
+    instance.surfaceResults.set(surfaceId, runningResult);
+    this.updateSurfaceTaskStatus(instance.id, surfaceId, 'in_progress');
+
+    const stepIndex = Math.max(0, pipeline.surfaces.findIndex((s) => s.id === surfaceId));
+    this.stateManager?.updateStep(instance.id, stepIndex, {
+      agentId: surfaceDef.agent,
+      goal: surfaceDef.workflow?.goal || surfaceDef.name,
+      output: '',
+      status: 'running',
+      startedAt: runningResult.startedAt,
+    });
+
     // 执行面
     const result = await surface.execute({
       signal: options.signal,
@@ -1393,7 +1411,6 @@ ${JSON.stringify(artifacts, null, 2)}
       result.status === 'completed' ? 'done' : result.status === 'failed' || result.status === 'cancelled' ? 'blocked' : 'in_progress',
     );
 
-    const stepIndex = Math.max(0, pipeline.surfaces.findIndex((s) => s.id === surfaceId));
     this.stateManager?.updateStep(instance.id, stepIndex, {
       agentId: surfaceDef.agent,
       goal: surfaceDef.workflow?.goal || surfaceDef.name,

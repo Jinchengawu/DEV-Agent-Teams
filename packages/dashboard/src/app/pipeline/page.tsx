@@ -121,6 +121,48 @@ function normalizePipelines(items: unknown): PipelineDef[] {
   return items.map(normalizePipeline).filter((item): item is PipelineDef => item !== null);
 }
 
+function formatDuration(ms: number): string {
+  const totalSeconds = Math.max(0, Math.floor(ms / 1000));
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  if (minutes === 0) return `${seconds}s`;
+  return `${minutes}m ${seconds}s`;
+}
+
+function buildProgressSummary(pipeline: PipelineDef | undefined, instance: PipelineInstance, now: number) {
+  const surfaceResults = Object.values(instance.surfaceResults || {});
+  const total = Math.max(
+    pipeline?.surfaces?.length || 0,
+    Object.keys(instance.coordination?.taskIdsBySurface || {}).length,
+    surfaceResults.length,
+  );
+  const completedCount = surfaceResults.filter((result) => result.status === 'completed').length;
+  const finishedCount = surfaceResults.filter((result) => TERMINAL_STATUSES.has(result.status)).length;
+  const runningSurfaceIds = surfaceResults
+    .filter((result) => result.status === 'running')
+    .map((result) => result.surfaceId);
+  const pendingSurface = pipeline?.surfaces.find(
+    (surface) => !surfaceResults.some((result) => result.surfaceId === surface.id),
+  );
+  const surfaceNameById = new Map((pipeline?.surfaces || []).map((surface) => [surface.id, surface.name]));
+  const activeSurfaceLabels = runningSurfaceIds.length > 0
+    ? runningSurfaceIds.map((id) => surfaceNameById.get(id) || id)
+    : pendingSurface && instance.status === 'running'
+      ? [surfaceNameById.get(pendingSurface.id) || pendingSurface.id]
+      : [];
+  const elapsedMs = (instance.completedAt || now) - instance.startedAt;
+  const progressPercent = total > 0 ? Math.min(100, Math.round((finishedCount / total) * 100)) : 0;
+
+  return {
+    total,
+    completedCount,
+    finishedCount,
+    activeSurfaceLabels,
+    elapsed: formatDuration(elapsedMs),
+    progressPercent,
+  };
+}
+
 export default function PipelinePage() {
   const { showToast } = useToast();
   const { stats: agentStats, isLoading: agentHealthLoading } = useAgentHealth();
@@ -136,6 +178,7 @@ export default function PipelinePage() {
   const [yamlSource, setYamlSource] = useState('dashboard:pipeline-page');
   const [importingYaml, setImportingYaml] = useState(false);
   const [executionMode, setExecutionMode] = useState<'dry-run' | 'live'>('dry-run');
+  const [now, setNow] = useState(Date.now());
 
   const livePipelineReady = agentStats.livePipelineReady;
   const canExecuteLive = executionMode !== 'live' || livePipelineReady;
@@ -153,6 +196,12 @@ export default function PipelinePage() {
       setCoordinationSummary(null);
     }
   }, [currentInstance?.id]);
+
+  useEffect(() => {
+    if (currentInstance?.status !== 'running') return;
+    const timer = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(timer);
+  }, [currentInstance?.status, currentInstance?.id]);
 
   // 从 localStorage 恢复历史
   const restoreHistory = async () => {
@@ -663,6 +712,13 @@ export default function PipelinePage() {
     return renderPipelineDAG(pipeline, instance);
   };
 
+  const currentPipeline = currentInstance
+    ? pipelines.find((pipeline) => pipeline.id === currentInstance.pipelineId)
+    : undefined;
+  const currentProgress = currentInstance
+    ? buildProgressSummary(currentPipeline, currentInstance, now)
+    : null;
+
   return (
     <div className="min-h-screen bg-gray-50 p-6">
       <div className="max-w-6xl mx-auto">
@@ -889,6 +945,38 @@ export default function PipelinePage() {
               <div className="mb-4 rounded border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
                 当前版本支持安全停止；暂停、恢复、回滚已在 API 层明确拒绝，等待 Surface checkpoint/replay 协议后开放。
               </div>
+              {currentProgress && (
+                <div
+                  className="mb-4 rounded border border-blue-100 bg-blue-50 px-3 py-3"
+                  data-testid="pipeline-progress-summary"
+                >
+                  <div className="mb-2 flex flex-col gap-2 text-sm md:flex-row md:items-center md:justify-between">
+                    <div>
+                      <span className="font-medium text-blue-900">
+                        {currentInstance.status === 'running' ? '当前面' : '最后进度'}:
+                      </span>
+                      <span className="ml-2 text-blue-800">
+                        {currentProgress.activeSurfaceLabels.length > 0
+                          ? currentProgress.activeSurfaceLabels.join(', ')
+                          : '无运行中面'}
+                      </span>
+                    </div>
+                    <div className="text-xs text-blue-800">
+                      {currentProgress.finishedCount}/{currentProgress.total} 已结束
+                      <span className="mx-2 text-blue-300">|</span>
+                      {currentProgress.completedCount} 已完成
+                      <span className="mx-2 text-blue-300">|</span>
+                      耗时 {currentProgress.elapsed}
+                    </div>
+                  </div>
+                  <div className="h-2 overflow-hidden rounded bg-white">
+                    <div
+                      className="h-full rounded bg-blue-600 transition-all"
+                      style={{ width: `${currentProgress.progressPercent}%` }}
+                    />
+                  </div>
+                </div>
+              )}
               <div className="grid grid-cols-2 gap-4 text-sm">
                 <div>
                   <span className="text-gray-500">实例ID:</span>
