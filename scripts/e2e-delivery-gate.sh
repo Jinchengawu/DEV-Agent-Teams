@@ -965,6 +965,15 @@ if (!docsRes.ok || !docs.documents?.some((doc) => doc.taskId === task.id && doc.
     documents: (docs.documents || []).map((doc) => ({ id: doc.id, projectId: doc.projectId, taskId: doc.taskId })),
   })}`);
 }
+const legacyDocsRes = await fetch(`${base}/api/knowledge?${knowledgeUrl.searchParams.toString()}&limit=50`);
+const legacyDocs = await legacyDocsRes.json();
+if (!legacyDocsRes.ok || !legacyDocs.documents?.some((doc) => doc.taskId === task.id && doc.projectId === task.project_id)) {
+  throw new Error(`legacy knowledge proxy dropped task context: ${legacyDocsRes.status} ${JSON.stringify({
+    taskId: task.id,
+    projectId: task.project_id,
+    documents: (legacyDocs.documents || []).map((doc) => ({ id: doc.id, projectId: doc.projectId, taskId: doc.taskId })),
+  })}`);
+}
 const workflowUrl = new URL(task.workflow_url, base);
 if (workflowUrl.pathname !== '/pipeline' || workflowUrl.searchParams.get('instanceId') !== task.pipeline_instance_id) {
   throw new Error(`kanban workflow link is not instance-scoped: ${JSON.stringify({
@@ -982,7 +991,7 @@ if (!instanceRes.ok || instance.id !== task.pipeline_instance_id || !instance.co
     surfaces: Object.keys(instance.coordination?.taskIdsBySurface || {}),
   })}`);
 }
-console.log(`task=${task.id} project=${task.project_id} documents=${docs.documents.length}/${task.document_count} instance=${task.pipeline_instance_id} surface=${task.surface_id}`);
+console.log(`task=${task.id} project=${task.project_id} documents=${docs.documents.length}/${task.document_count} legacyDocs=${legacyDocs.documents.length} instance=${task.pipeline_instance_id} surface=${task.surface_id}`);
 NODE
 )"
     dashboard_kanban_code=$?

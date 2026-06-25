@@ -100,6 +100,9 @@ Kanban coordination tasks must also expose stable `knowledge_url` and `workflow_
 fields. The gate resolves those URLs through the Dashboard document and Pipeline proxies
 so task cards are verified as real navigation points across Kanban, Documents, and
 Workflows.
+For compatibility, the legacy Dashboard `/api/knowledge` proxy must preserve the same
+`projectId` and `taskId` context as `/api/v2/documents`; the gate checks both paths so
+older integrations do not silently drop document scope.
 
 To verify restart recovery, opt in with:
 
