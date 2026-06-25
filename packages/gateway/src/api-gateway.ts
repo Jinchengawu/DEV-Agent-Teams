@@ -291,12 +291,11 @@ async function main(): Promise<void> {
             dryRun: options.dryRun,
             surfaceTimeoutMs: options.surfaceTimeoutMs,
           });
+          const serialized = agentApp.pipelineOrchestrator.serializeInstance(instance);
           res.writeHead(202, { 'Content-Type': 'application/json' });
           res.end(JSON.stringify({
+            ...serialized,
             instanceId: instance.id,
-            status: instance.status,
-            surfaceResults: Object.fromEntries(instance.surfaceResults),
-            startedAt: instance.startedAt,
           }));
         } catch (error) {
           const errorMsg = error instanceof Error ? error.message : 'Unknown error';

@@ -191,6 +191,13 @@ const started = await startRes.json();
 if (!startRes.ok || !started.instanceId) {
   throw new Error(`start failed: ${startRes.status} ${JSON.stringify(started)}`);
 }
+const startTaskCount = Object.keys(started.coordination?.taskIdsBySurface || {}).length;
+if (!started.coordination?.projectId || startTaskCount !== 7) {
+  throw new Error(`start response missing coordination binding: ${JSON.stringify({
+    projectId: started.coordination?.projectId,
+    taskCount: startTaskCount,
+  })}`);
+}
 
 const cancelRes = await fetch(`${base}/pipeline-instances/${started.instanceId}/cancel`, {
   method: 'POST',
@@ -245,7 +252,7 @@ for (const [name, request] of controlChecks) {
   }
 }
 
-console.log(`instance=${started.instanceId} project=${cancelled.coordination?.projectId || 'none'} tasks=${taskCount} blocked=${blockedCount} experience=${experienceDocId} unsupportedControls=3`);
+console.log(`instance=${started.instanceId} project=${started.coordination.projectId} startTasks=${startTaskCount} tasks=${taskCount} blocked=${blockedCount} experience=${experienceDocId} unsupportedControls=3`);
 NODE
 )"
     control_code=$?

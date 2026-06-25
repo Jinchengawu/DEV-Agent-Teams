@@ -203,12 +203,10 @@ export default function PipelinePage() {
 
       if (data.instanceId) {
         const instance: PipelineInstance = {
-          id: data.instanceId,
+          ...data,
+          id: data.id || data.instanceId,
           pipelineId,
-          status: data.status,
           surfaceResults: data.surfaceResults || {},
-          startedAt: data.startedAt,
-          completedAt: data.completedAt,
         };
         setCurrentInstance(instance);
         setInstanceHistory(prev => [instance, ...prev.filter(i => i.id !== instance.id)].slice(0, 50));
