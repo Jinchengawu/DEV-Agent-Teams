@@ -102,8 +102,11 @@ export async function createAgentApp(config: AgentAppConfig = {}): Promise<Agent
     extraCustomTools,
   });
 
-  // 创建知识中心和文档管理器
+  // 创建 Pipeline 编排器（注入知识中心）
   const knowledgeCenter = getGlobalKnowledgeCenter({ dbPath: path.join(dataDir, 'knowledge.db') });
+  const pipelineOrchestrator = createPipelineOrchestrator(orchestrator, workflowStateManager, knowledgeCenter);
+  
+  // 创建文档管理器
   const documentManager = getGlobalDocumentManager({ dbPath: path.join(dataDir, 'documents.db') });
   console.log(`[AgentApp] KnowledgeCenter 已初始化: ${dataDir}/knowledge.db`);
   console.log(`[AgentApp] DocumentManager V2 已初始化: ${dataDir}/documents.db`);
