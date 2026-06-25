@@ -3,12 +3,19 @@ import { usePathname, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { NAV_ITEMS } from '@/lib/constants';
 import { useAgentHealth } from '@/hooks/useAgentHealth';
+import { useAuth } from '@/lib/auth-context';
 
 export function NavBar() {
   const pathname = usePathname();
   const router = useRouter();
   const { stats } = useAgentHealth();
   const systemOnline = stats.onlineCount > 0;
+  const { user, loading, logout } = useAuth();
+
+  const handleLogout = () => {
+    logout();
+    router.push('/login');
+  };
 
   return (
     <>
@@ -65,9 +72,51 @@ export function NavBar() {
                   />
                 </svg>
               </button>
-              <div className="w-8 h-8 bg-gradient-to-br from-blue-400 to-blue-600 rounded-full flex items-center justify-center text-white font-medium text-sm">
-                Z
-              </div>
+
+              {/* User section */}
+              {loading ? (
+                <div className="w-8 h-8 bg-gray-200 rounded-full animate-pulse" />
+              ) : user ? (
+                <div className="flex items-center space-x-3">
+                  <div className="relative group">
+                    <button className="w-8 h-8 bg-gradient-to-br from-blue-400 to-blue-600 rounded-full flex items-center justify-center text-white font-medium text-sm cursor-pointer hover:ring-2 hover:ring-blue-300 transition-all">
+                      {user.name?.[0] || user.username[0].toUpperCase()}
+                    </button>
+                    {/* Dropdown */}
+                    <div className="absolute right-0 mt-2 w-48 bg-white rounded-xl shadow-lg border border-slate-200 py-1 opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-50">
+                      <div className="px-4 py-2 border-b border-slate-100">
+                        <p className="text-sm font-medium text-gray-900">
+                          {user.name || user.username}
+                        </p>
+                        {user.email && (
+                          <p className="text-xs text-gray-500 truncate">{user.email}</p>
+                        )}
+                      </div>
+                      <button
+                        onClick={handleLogout}
+                        className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 transition-colors"
+                      >
+                        🚪 登出
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <div className="flex items-center space-x-2">
+                  <Link
+                    href="/login"
+                    className="px-3 py-1.5 text-sm font-medium text-blue-600 hover:text-blue-700 transition-colors"
+                  >
+                    登录
+                  </Link>
+                  <Link
+                    href="/register"
+                    className="px-3 py-1.5 text-sm font-medium bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors"
+                  >
+                    注册
+                  </Link>
+                </div>
+              )}
             </div>
           </div>
         </div>

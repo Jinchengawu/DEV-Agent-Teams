@@ -8,5 +8,8 @@
     "packages/gateway",
     "packages/dashboard",
     "packages/agents/*"
-  ]
+  ],
+  "dependencies": {
+    "bcrypt": "^5.1.1"
+  }
 }
