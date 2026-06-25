@@ -14,7 +14,7 @@
 
 import { eventBus } from '../event/EventBus.js';
 import type { TeamOrchestrator } from '../team/TeamOrchestrator.js';
-import type { WorkflowStateManager } from '../session/WorkflowStateManager.js';
+import type { WorkflowState, WorkflowStateManager } from '../session/WorkflowStateManager.js';
 import { Surface, createSurface } from './Surface.js';
 import type {
   PipelineDefinition,
@@ -55,6 +55,18 @@ interface PipelineCoordinationBinding {
   taskIdsBySurface: Map<string, string>;
   docIdsBySurface: Map<string, string>;
 }
+
+type PersistedPipelineContext = {
+  kind?: 'pipeline';
+  pipelineId?: string;
+  pipelineName?: string;
+  surfaceIds?: string[];
+  coordination?: PipelineInstance['coordination'];
+  execution?: {
+    dryRun?: boolean;
+    surfaceTimeoutMs?: number;
+  };
+};
 
 /**
  * Pipeline 编排器
@@ -175,7 +187,16 @@ export class PipelineOrchestrator {
 
     this.instances.set(instance.id, instance);
     this.loopStates.set(instance.id, new Map());
-    this.stateManager?.createState(`Pipeline: ${pipeline.name}`, pipeline.surfaces.length, instance.id);
+    this.stateManager?.createState(`Pipeline: ${pipeline.name}`, pipeline.surfaces.length, instance.id, {
+      kind: 'pipeline',
+      pipelineId,
+      pipelineName: pipeline.name,
+      surfaceIds: pipeline.surfaces.map((surface) => surface.id),
+      execution: {
+        dryRun: options.dryRun ?? pipeline.context?.execution?.dryRun,
+        surfaceTimeoutMs: options.surfaceTimeoutMs ?? pipeline.context?.execution?.surfaceTimeoutMs,
+      },
+    });
     this.createCoordinationBinding(pipeline, instance);
 
     const controller = new AbortController();
@@ -376,14 +397,21 @@ export class PipelineOrchestrator {
    * 获取 Pipeline 实例状态
    */
   getStatus(instanceId: string): PipelineInstance | null {
-    return this.instances.get(instanceId) || null;
+    return this.instances.get(instanceId) || this.restorePipelineInstance(instanceId);
   }
 
   /**
    * 列出所有实例（包括已完成和失败的）
    */
   listInstances(): PipelineInstance[] {
-    return [...this.instances.values()];
+    const instances = new Map<string, PipelineInstance>();
+    for (const instance of this.restorePipelineInstances()) {
+      instances.set(instance.id, instance);
+    }
+    for (const instance of this.instances.values()) {
+      instances.set(instance.id, instance);
+    }
+    return [...instances.values()].sort((a, b) => b.startedAt - a.startedAt);
   }
 
   /**
@@ -397,7 +425,7 @@ export class PipelineOrchestrator {
     return {
       ...instance,
       surfaceResults,
-      coordination: this.serializeCoordinationBinding(instance.id),
+      coordination: this.serializeCoordinationBinding(instance.id) ?? instance.coordination,
     };
   }
 
@@ -429,13 +457,17 @@ export class PipelineOrchestrator {
    * 取消 Pipeline
    */
   async cancel(instanceId: string, reason: string = 'Pipeline cancelled'): Promise<void> {
-    const instance = this.instances.get(instanceId);
+    const liveInstance = this.instances.get(instanceId);
+    const instance = liveInstance || this.restorePipelineInstance(instanceId);
     if (!instance) throw new Error(`实例 ${instanceId} 未找到`);
 
     this.controllers.get(instanceId)?.abort(new Error(reason));
     instance.status = 'cancelled';
     instance.error = reason;
     instance.completedAt = Date.now();
+    if (!liveInstance) {
+      this.instances.set(instanceId, instance);
+    }
     this.stateManager?.cancel(instanceId, reason);
 
     eventBus.emit({
@@ -729,6 +761,7 @@ ${JSON.stringify(artifacts, null, 2)}
         const instance = this.instances.get(instanceId);
         if (instance) {
           instance.coordination = this.serializeCoordinationBinding(instanceId);
+          this.persistInstanceContext(instance);
         }
       }
 
@@ -818,6 +851,7 @@ ${JSON.stringify(artifacts, null, 2)}
         docIdsBySurface: new Map(),
       });
       instance.coordination = this.serializeCoordinationBinding(instance.id);
+      this.persistInstanceContext(instance);
       console.log(`[PipelineOrchestrator] 协作脉络已创建: project=${project.id}, tasks=${taskIdsBySurface.size}`);
     } catch (error) {
       console.warn(`[PipelineOrchestrator] 协作脉络创建失败: ${error instanceof Error ? error.message : String(error)}`);
@@ -843,6 +877,67 @@ ${JSON.stringify(artifacts, null, 2)}
       projectId: binding.projectId,
       taskIdsBySurface: Object.fromEntries(binding.taskIdsBySurface),
       documentIdsBySurface: Object.fromEntries(binding.docIdsBySurface),
+    };
+  }
+
+  private persistInstanceContext(instance: PipelineInstance): void {
+    if (!this.stateManager) return;
+
+    this.stateManager.updateContext(instance.id, {
+      coordination: this.serializeCoordinationBinding(instance.id) ?? instance.coordination,
+    });
+  }
+
+  private restorePipelineInstances(): PipelineInstance[] {
+    if (!this.stateManager) return [];
+
+    return this.stateManager
+      .listWorkflows(500, 0)
+      .map((state) => this.workflowStateToPipelineInstance(state))
+      .filter((instance): instance is PipelineInstance => Boolean(instance));
+  }
+
+  private restorePipelineInstance(instanceId: string): PipelineInstance | null {
+    if (!this.stateManager) return null;
+    const state = this.stateManager.load(instanceId);
+    return state ? this.workflowStateToPipelineInstance(state) : null;
+  }
+
+  private workflowStateToPipelineInstance(state: WorkflowState): PipelineInstance | null {
+    const context = state.context as PersistedPipelineContext;
+    if (context.kind !== 'pipeline' || !context.pipelineId) return null;
+
+    const surfaceResults = new Map<string, SurfaceResult>();
+    const surfaceIds = context.surfaceIds || [];
+
+    for (const step of state.steps) {
+      const surfaceId = surfaceIds[step.index] || step.goal || `step-${step.index}`;
+      surfaceResults.set(surfaceId, {
+        surfaceId,
+        status: step.status,
+        artifacts: step.output ? { output: step.output } : undefined,
+        logs: [],
+        startedAt: step.startedAt,
+        completedAt: step.completedAt,
+        error: step.error,
+      });
+    }
+
+    const startedAt = state.createdAt;
+    const terminal = state.status === 'completed' || state.status === 'failed' || state.status === 'cancelled';
+    const currentSurface = surfaceIds[state.currentStep];
+
+    return {
+      id: state.id,
+      pipelineId: context.pipelineId,
+      status: state.status,
+      surfaceResults,
+      currentSurface,
+      startedAt,
+      completedAt: terminal ? state.updatedAt : undefined,
+      error: state.error,
+      workflowStateId: state.id,
+      coordination: context.coordination,
     };
   }
 

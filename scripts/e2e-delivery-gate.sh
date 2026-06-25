@@ -30,6 +30,8 @@ write_report_header() {
 - Root: $ROOT
 - Gateway: $GATEWAY_URL
 - Dashboard: $DASHBOARD_URL
+- Pipeline control smoke: ${RUN_PIPELINE_CONTROL_SMOKE:-0}
+- Pipeline recovery smoke: ${RUN_PIPELINE_RECOVERY_SMOKE:-0}
 - Live pipeline: ${RUN_LIVE_PIPELINE:-0}
 
 | Check | Status | Details |
@@ -206,6 +208,93 @@ NODE
     fi
   else
     record "pipeline control smoke" WARN "skipped; set RUN_PIPELINE_CONTROL_SMOKE=1 to verify start/cancel/coordination binding"
+  fi
+
+  if [ "${RUN_PIPELINE_RECOVERY_SMOKE:-0}" = "1" ]; then
+    set +e
+    recovery_output="$(GATEWAY_URL="$GATEWAY_URL" ROOT="$ROOT" node <<'NODE' 2>&1
+const base = process.env.GATEWAY_URL;
+const payload = {
+  pipelineId: 'dev-team-minimum-loop',
+  initialInput: {
+    userRequest: 'E2E recovery smoke: start, cancel, restart Gateway, then recover from workflow state. Dry-run only; do not write files.',
+    requestedBy: 'e2e-delivery-gate-recovery',
+  },
+  options: { dryRun: true, surfaceTimeoutMs: 1000 },
+};
+const startRes = await fetch(`${base}/v1/pipeline/start`, {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify(payload),
+});
+const started = await startRes.json();
+if (!startRes.ok || !started.instanceId) {
+  throw new Error(`start failed: ${startRes.status} ${JSON.stringify(started)}`);
+}
+
+const cancelRes = await fetch(`${base}/pipeline-instances/${started.instanceId}/cancel`, {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({ reason: 'E2E recovery smoke cancellation' }),
+});
+const cancelled = await cancelRes.json();
+const projectId = cancelled.coordination?.projectId;
+if (cancelRes.status !== 200 || cancelled.status !== 'cancelled' || !projectId) {
+  throw new Error(`cancel failed: ${cancelRes.status} ${JSON.stringify({
+    status: cancelled.status,
+    projectId,
+  })}`);
+}
+
+console.log(JSON.stringify({
+  instanceId: started.instanceId,
+  projectId,
+}));
+NODE
+)"
+    recovery_code=$?
+    if [ "$recovery_code" -eq 0 ]; then
+      recovery_json="$(echo "$recovery_output" | tail -n 1)"
+      instance_id="$(printf '%s' "$recovery_json" | python3 -c 'import json,sys; print(json.load(sys.stdin)["instanceId"])' 2>/dev/null)"
+      project_id="$(printf '%s' "$recovery_json" | python3 -c 'import json,sys; print(json.load(sys.stdin)["projectId"])' 2>/dev/null)"
+
+      screen -S dev-agent-gateway -X quit >/dev/null 2>&1 || true
+      gateway_pid="$(lsof -tiTCP:8400 -sTCP:LISTEN 2>/dev/null || true)"
+      if [ -n "$gateway_pid" ]; then kill $gateway_pid >/dev/null 2>&1 || true; fi
+      sleep 2
+      screen -dmS dev-agent-gateway bash -lc "cd '$ROOT/packages/gateway' && env PATH=/Users/zhuizhui/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/bin:\$PATH GATEWAY_PORT=8400 ./node_modules/.bin/tsx src/api-gateway.ts 2>&1 | tee -a ../../.codex-run/logs/gateway-screen.log"
+      sleep 5
+
+      verify_output="$(GATEWAY_URL="$GATEWAY_URL" INSTANCE_ID="$instance_id" PROJECT_ID="$project_id" node <<'NODE' 2>&1
+const base = process.env.GATEWAY_URL;
+const instanceId = process.env.INSTANCE_ID;
+const expectedProjectId = process.env.PROJECT_ID;
+const res = await fetch(`${base}/pipeline-instances/${instanceId}`);
+const instance = await res.json();
+const taskCount = Object.keys(instance.coordination?.taskIdsBySurface || {}).length;
+if (res.status !== 200 || instance.id !== instanceId || instance.status !== 'cancelled' || instance.coordination?.projectId !== expectedProjectId || taskCount < 1) {
+  throw new Error(`recovery failed: ${res.status} ${JSON.stringify({
+    id: instance.id,
+    status: instance.status,
+    projectId: instance.coordination?.projectId,
+    taskCount,
+  })}`);
+}
+console.log(`instance=${instanceId} project=${expectedProjectId} tasks=${taskCount}`);
+NODE
+)"
+      recovery_code=$?
+      if [ "$recovery_code" -eq 0 ]; then
+        record "pipeline recovery smoke" PASS "$(echo "$verify_output" | tail -n 1 | sed 's/|/\\|/g')"
+      else
+        record "pipeline recovery smoke" FAIL "exit $recovery_code: $(echo "$verify_output" | tail -n 3 | tr '\n' ' ' | sed 's/|/\\|/g')"
+      fi
+    else
+      record "pipeline recovery smoke" FAIL "exit $recovery_code: $(echo "$recovery_output" | tail -n 3 | tr '\n' ' ' | sed 's/|/\\|/g')"
+    fi
+    set -e
+  else
+    record "pipeline recovery smoke" WARN "skipped; set RUN_PIPELINE_RECOVERY_SMOKE=1 to verify restart recovery"
   fi
 else
   record "gateway health" WARN "Gateway is not running; skipped live HTTP checks"

@@ -109,7 +109,7 @@ export class WorkflowStateManager {
   /**
    * 创建并保存新的工作流状态
    */
-  createState(goal: string, totalSteps: number, id?: string): WorkflowState {
+  createState(goal: string, totalSteps: number, id?: string, context: WorkflowContext = {}): WorkflowState {
     const workflowId = id || `wf-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
     const state: WorkflowState = {
       id: workflowId,
@@ -118,7 +118,7 @@ export class WorkflowStateManager {
       currentStep: 0,
       totalSteps,
       steps: [],
-      context: {},
+      context,
       tokenUsage: { input_tokens: 0, output_tokens: 0 },
       createdAt: Date.now(),
       updatedAt: Date.now(),
@@ -138,6 +138,22 @@ export class WorkflowStateManager {
       },
     });
 
+    return state;
+  }
+
+  /**
+   * 合并更新工作流上下文，用于持久化 Pipeline 元数据、协作绑定等恢复信息。
+   */
+  updateContext(workflowId: string, context: WorkflowContext): WorkflowState | null {
+    const state = this.load(workflowId);
+    if (!state) return null;
+
+    state.context = {
+      ...state.context,
+      ...context,
+    };
+    state.updatedAt = Date.now();
+    this.save(state);
     return state;
   }
 

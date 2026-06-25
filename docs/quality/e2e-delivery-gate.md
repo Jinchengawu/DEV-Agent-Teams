@@ -49,6 +49,17 @@ that the returned instance includes coordination bindings such as `projectId` an
 task IDs. It is opt-in because it creates a real Pipeline instance plus project/task
 records in the local document database.
 
+To verify restart recovery, opt in with:
+
+```bash
+RUN_PIPELINE_RECOVERY_SMOKE=1 bash scripts/e2e-delivery-gate.sh
+```
+
+This creates and cancels a dry-run Pipeline instance, restarts the local Gateway, and
+then verifies the same instance can be recovered from persisted workflow state with its
+coordination bindings intact. It is opt-in because it restarts the local Gateway and
+creates local project/task records.
+
 ### Level 3: Live Pipeline Gate
 
 When Hermes Agent instances and model credentials are available, run:
