@@ -57,11 +57,14 @@ function serializeWorkflow(workflow: any): Record<string, unknown> {
 }
 
 function pipelineToTemplate(pipeline: any): Record<string, unknown> {
+  const definition = serializePipelineDefinition(pipeline);
   return {
-    id: pipeline.id,
-    name: pipeline.name,
-    description: pipeline.context?.description || '',
-    steps: (pipeline.surfaces || []).map((surface: any, index: number) => ({
+    id: definition.id,
+    name: definition.name,
+    description: definition.context?.description || '',
+    source: definition.source,
+    deletable: definition.deletable,
+    steps: (definition.surfaces || []).map((surface: any, index: number) => ({
       agentId: surface.agent,
       order: index,
       description: surface.name,

@@ -174,6 +174,11 @@ const listed = await listRes.json();
 if (!listed.pipelines?.some((pipeline) => pipeline.id === id && pipeline.source === 'runtime-yaml' && pipeline.deletable === true)) {
   throw new Error(`inline loaded pipeline not listed: ${id}`);
 }
+const templateRes = await fetch(`${base}/v1/templates`);
+const templateData = await templateRes.json();
+if (!templateData.templates?.some((template) => template.id === id && template.source === 'runtime-yaml' && template.deletable === true)) {
+  throw new Error(`inline loaded pipeline not exposed as workflow template: ${id}`);
+}
 console.log(`id=${id}`);
 NODE
 )"
@@ -516,6 +521,11 @@ if (res.status !== 201 || data.pipeline?.id !== id) {
 }
 if (data.pipeline?.source !== 'runtime-yaml' || data.pipeline?.deletable !== true) {
   throw new Error(`dashboard yaml proxy missing runtime metadata: ${JSON.stringify(data.pipeline)}`);
+}
+const templateRes = await fetch(`${base}/api/workflows/templates`, { cache: 'no-store' });
+const templateData = await templateRes.json();
+if (!templateData.templates?.some((template) => template.id === id && template.source === 'runtime-yaml' && template.deletable === true)) {
+  throw new Error(`dashboard yaml proxy not exposed as workflow template: ${JSON.stringify(templateData)}`);
 }
 const deleteRes = await fetch(`${base}/api/pipelines/${id}`, { method: 'DELETE' });
 const deleted = await deleteRes.json();

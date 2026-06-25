@@ -33,7 +33,8 @@ When Gateway is already running, the same script also checks:
 - `stock-analysis-system` is loaded from the YAML Pipeline example
 - an inline YAML Pipeline can be registered through `POST /pipelines/load-yaml`
   restored after a Gateway restart, and deleted through `DELETE /pipelines/:id`
-- runtime YAML Pipelines are listed with `source: "runtime-yaml"` and `deletable: true`
+- runtime YAML Pipelines are listed and exposed as workflow templates with
+  `source: "runtime-yaml"` and `deletable: true`
 
 When Dashboard is already running, the same script also checks:
 
@@ -44,6 +45,7 @@ When Dashboard is already running, the same script also checks:
 - the Pipeline control proxy returns honest unsupported errors when control smoke is enabled
 - `POST /api/pipelines/load-yaml` proxies runtime Pipeline registration to the Gateway
   and `DELETE /api/pipelines/:id` proxies runtime Pipeline deletion
+- Dashboard workflow templates include runtime YAML metadata for custom Pipelines
 
 To verify the Pipeline control plane against a running Gateway, opt in with:
 
