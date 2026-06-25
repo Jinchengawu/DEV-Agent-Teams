@@ -936,10 +936,42 @@ const task = data.tasks.find((item) =>
   item.project_id &&
   Number(item.document_count || 0) > 0 &&
   item.pipeline_instance_id &&
-  item.surface_id
+  item.surface_id &&
+  item.knowledge_url &&
+  item.workflow_url
 );
 if (!task) {
   throw new Error(`coordination task missing document or workflow links: ${JSON.stringify(data.tasks.slice(0, 5))}`);
+}
+const knowledgeUrl = new URL(task.knowledge_url, base);
+if (
+  knowledgeUrl.pathname !== '/knowledge' ||
+  knowledgeUrl.searchParams.get('projectId') !== task.project_id ||
+  knowledgeUrl.searchParams.get('taskId') !== task.id
+) {
+  throw new Error(`kanban knowledge link is not task-scoped: ${JSON.stringify({
+    taskId: task.id,
+    projectId: task.project_id,
+    knowledgeUrl: task.knowledge_url,
+  })}`);
+}
+const docsRes = await fetch(`${base}/api/v2/documents?${knowledgeUrl.searchParams.toString()}&limit=50`);
+const docs = await docsRes.json();
+if (!docsRes.ok || !docs.documents?.some((doc) => doc.taskId === task.id && doc.projectId === task.project_id)) {
+  throw new Error(`kanban knowledge link did not resolve documents: ${docsRes.status} ${JSON.stringify({
+    taskId: task.id,
+    projectId: task.project_id,
+    knowledgeUrl: task.knowledge_url,
+    documents: (docs.documents || []).map((doc) => ({ id: doc.id, projectId: doc.projectId, taskId: doc.taskId })),
+  })}`);
+}
+const workflowUrl = new URL(task.workflow_url, base);
+if (workflowUrl.pathname !== '/pipeline' || workflowUrl.searchParams.get('instanceId') !== task.pipeline_instance_id) {
+  throw new Error(`kanban workflow link is not instance-scoped: ${JSON.stringify({
+    taskId: task.id,
+    pipelineInstanceId: task.pipeline_instance_id,
+    workflowUrl: task.workflow_url,
+  })}`);
 }
 const instanceRes = await fetch(`${base}/api/pipeline-instances/${encodeURIComponent(task.pipeline_instance_id)}`);
 const instance = await instanceRes.json();
@@ -950,7 +982,7 @@ if (!instanceRes.ok || instance.id !== task.pipeline_instance_id || !instance.co
     surfaces: Object.keys(instance.coordination?.taskIdsBySurface || {}),
   })}`);
 }
-console.log(`task=${task.id} project=${task.project_id} documents=${task.document_count} instance=${task.pipeline_instance_id} surface=${task.surface_id}`);
+console.log(`task=${task.id} project=${task.project_id} documents=${docs.documents.length}/${task.document_count} instance=${task.pipeline_instance_id} surface=${task.surface_id}`);
 NODE
 )"
     dashboard_kanban_code=$?

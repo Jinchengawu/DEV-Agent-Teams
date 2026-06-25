@@ -96,6 +96,10 @@ Kanban board filtering is covered for coordination tasks so large task sets stay
 during long MVP sessions. The same check also asserts that recent coordination tasks keep
 their Pipeline instance and Surface links, and that the overall Kanban projection preserves
 workflow links for at least 95% of recoverable coordination tasks.
+Kanban coordination tasks must also expose stable `knowledge_url` and `workflow_url`
+fields. The gate resolves those URLs through the Dashboard document and Pipeline proxies
+so task cards are verified as real navigation points across Kanban, Documents, and
+Workflows.
 
 To verify restart recovery, opt in with:
 

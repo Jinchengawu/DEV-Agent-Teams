@@ -20,6 +20,8 @@ interface Task {
   pipeline_instance_id?: string
   pipeline_id?: string
   surface_id?: string
+  knowledge_url?: string
+  workflow_url?: string
 }
 
 interface Milestone {
@@ -290,18 +292,18 @@ export default function KanbanPage() {
                           <span>·</span>
                           <span>{task.document_count ?? 0} 篇文档</span>
                         </div>
-                        {task.project_id && (
+                        {(task.knowledge_url || task.project_id) && (
                           <a
-                            href={`/knowledge?projectId=${encodeURIComponent(task.project_id)}&taskId=${encodeURIComponent(task.id)}`}
+                            href={task.knowledge_url || `/knowledge?projectId=${encodeURIComponent(task.project_id || '')}&taskId=${encodeURIComponent(task.id)}`}
                             className="mt-1 inline-flex font-mono hover:underline"
                             data-testid={`kanban-task-docs-${task.id}`}
                           >
                             文档: {task.project_id}
                           </a>
                         )}
-                        {task.pipeline_instance_id && (
+                        {(task.workflow_url || task.pipeline_instance_id) && (
                           <a
-                            href={`/pipeline?instanceId=${encodeURIComponent(task.pipeline_instance_id)}`}
+                            href={task.workflow_url || `/pipeline?instanceId=${encodeURIComponent(task.pipeline_instance_id || '')}`}
                             className="mt-1 inline-flex font-mono hover:underline"
                             data-testid={`kanban-task-pipeline-${task.id}`}
                           >

@@ -22,6 +22,8 @@ type KanbanTask = {
   pipeline_instance_id?: string;
   pipeline_id?: string;
   surface_id?: string;
+  knowledge_url?: string;
+  workflow_url?: string;
 };
 
 async function fetchDocumentCount(taskId: string): Promise<number> {
@@ -86,6 +88,8 @@ async function mapCoordinationTask(task: any, link?: PipelineTaskLink): Promise<
     pipeline_instance_id: link?.pipelineInstanceId,
     pipeline_id: link?.pipelineId,
     surface_id: link?.surfaceId,
+    knowledge_url: task.projectId ? `/knowledge?projectId=${encodeURIComponent(task.projectId)}&taskId=${encodeURIComponent(task.id)}` : undefined,
+    workflow_url: link?.pipelineInstanceId ? `/pipeline?instanceId=${encodeURIComponent(link.pipelineInstanceId)}` : undefined,
   };
 }
 
