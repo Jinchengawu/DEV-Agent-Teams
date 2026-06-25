@@ -383,7 +383,17 @@ const pipelines = await pipelinesRes.json();
 if (!pipelines.pipelines?.some((pipeline) => pipeline.id === 'e2e-inline-yaml-persistent')) {
   throw new Error('persistent inline YAML pipeline was not restored after Gateway restart');
 }
-console.log(`instance=${instanceId} project=${summary.instance?.coordination?.projectId || 'none'} tasks=${taskCount} blocked=${blockedCount} experience=${experienceDocId} yamlRestored=1`);
+const deleteRes = await fetch(`${base}/pipelines/e2e-inline-yaml-persistent`, { method: 'DELETE' });
+const deleted = await deleteRes.json();
+if (deleteRes.status !== 200 || deleted.deleted !== true) {
+  throw new Error(`persistent inline YAML pipeline was not deleted: ${deleteRes.status} ${JSON.stringify(deleted)}`);
+}
+const afterDeleteRes = await fetch(`${base}/pipelines`);
+const afterDelete = await afterDeleteRes.json();
+if (afterDelete.pipelines?.some((pipeline) => pipeline.id === 'e2e-inline-yaml-persistent')) {
+  throw new Error('deleted inline YAML pipeline is still listed');
+}
+console.log(`instance=${instanceId} project=${summary.instance?.coordination?.projectId || 'none'} tasks=${taskCount} blocked=${blockedCount} experience=${experienceDocId} yamlRestored=1 yamlDeleted=1`);
 NODE
 )"
       recovery_code=$?
@@ -501,7 +511,12 @@ const data = await res.json();
 if (res.status !== 201 || data.pipeline?.id !== id) {
   throw new Error(`dashboard yaml proxy failed: ${res.status} ${JSON.stringify(data)}`);
 }
-console.log(`id=${id}`);
+const deleteRes = await fetch(`${base}/api/pipelines/${id}`, { method: 'DELETE' });
+const deleted = await deleteRes.json();
+if (deleteRes.status !== 200 || deleted.deleted !== true) {
+  throw new Error(`dashboard yaml delete proxy failed: ${deleteRes.status} ${JSON.stringify(deleted)}`);
+}
+console.log(`id=${id} deleted=${deleted.deleted}`);
 NODE
 )"
   dashboard_yaml_code=$?

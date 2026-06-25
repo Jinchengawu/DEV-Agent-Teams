@@ -32,7 +32,7 @@ When Gateway is already running, the same script also checks:
 - `dev-team-minimum-loop` is available through the Gateway
 - `stock-analysis-system` is loaded from the YAML Pipeline example
 - an inline YAML Pipeline can be registered through `POST /pipelines/load-yaml`
-  and restored after a Gateway restart
+  restored after a Gateway restart, and deleted through `DELETE /pipelines/:id`
 
 When Dashboard is already running, the same script also checks:
 
@@ -42,6 +42,7 @@ When Dashboard is already running, the same script also checks:
 - `GET /api/workflows/templates`
 - the Pipeline control proxy returns honest unsupported errors when control smoke is enabled
 - `POST /api/pipelines/load-yaml` proxies runtime Pipeline registration to the Gateway
+  and `DELETE /api/pipelines/:id` proxies runtime Pipeline deletion
 
 To verify the Pipeline control plane against a running Gateway, opt in with:
 

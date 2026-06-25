@@ -255,6 +255,8 @@ export interface PipelineEvent {
 export interface IPipelineOrchestrator {
   /** 加载 Pipeline 定义 */
   loadPipeline(def: PipelineDefinition): void;
+  /** 卸载 Pipeline 定义 */
+  unloadPipeline(pipelineId: string): boolean;
   /** 从 YAML 加载 */
   loadFromYaml(yamlPath: string): Promise<PipelineDefinition>;
   /** 从 YAML 文本加载 */

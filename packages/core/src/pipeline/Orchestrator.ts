@@ -126,6 +126,17 @@ export class PipelineOrchestrator {
   }
 
   /**
+   * 卸载 Pipeline 定义。
+   */
+  unloadPipeline(pipelineId: string): boolean {
+    const deleted = this.pipelines.delete(pipelineId);
+    if (deleted) {
+      console.log(`[PipelineOrchestrator] Pipeline "${pipelineId}" 已卸载`);
+    }
+    return deleted;
+  }
+
+  /**
    * 从 YAML 文件加载 Pipeline 定义。
    */
   async loadFromYaml(yamlPath: string): Promise<PipelineDefinition> {

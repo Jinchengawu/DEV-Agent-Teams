@@ -11,7 +11,7 @@
  */
 
 import { createServer } from 'node:http';
-import { mkdirSync, existsSync, createWriteStream, readdirSync, writeFileSync } from 'node:fs';
+import { mkdirSync, existsSync, createWriteStream, readdirSync, writeFileSync, unlinkSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { homedir } from 'node:os';
@@ -90,6 +90,10 @@ function getRuntimePipelinesDir(): string {
 
 function pipelineFileName(id: string): string {
   return `${id.replace(/[^a-zA-Z0-9_.-]/g, '_')}.yaml`;
+}
+
+function runtimePipelinePath(id: string): string {
+  return join(getRuntimePipelinesDir(), pipelineFileName(id));
 }
 
 async function loadRuntimePipelines(agentApp: Awaited<ReturnType<typeof createAgentApp>>): Promise<void> {
@@ -359,7 +363,7 @@ async function main(): Promise<void> {
           const loaded = agentApp.pipelineOrchestrator.loadFromYamlContent(yamlContent, source);
           const runtimeDir = getRuntimePipelinesDir();
           mkdirSync(runtimeDir, { recursive: true });
-          writeFileSync(join(runtimeDir, pipelineFileName(loaded.id)), yamlContent, 'utf8');
+          writeFileSync(runtimePipelinePath(loaded.id), yamlContent, 'utf8');
           const pipelines = agentApp.pipelineOrchestrator.listPipelines();
           res.writeHead(201, { 'Content-Type': 'application/json' });
           res.end(JSON.stringify({ pipeline: loaded, pipelines: pipelines.map((pipeline) => pipeline.id) }));
@@ -367,6 +371,35 @@ async function main(): Promise<void> {
           const errorMsg = error instanceof Error ? error.message : 'Unknown error';
           res.writeHead(400, { 'Content-Type': 'application/json' });
           res.end(JSON.stringify({ error: errorMsg }));
+        }
+        return;
+      }
+
+      // 删除运行时注册的 YAML Pipeline。内置 Pipeline 没有运行时文件，禁止删除。
+      if (path.match(/^\/pipelines\/[^/]+$/) && req.method === 'DELETE') {
+        const pipelineId = decodeURIComponent(path.split('/')[2] || '');
+        if (!pipelineId) {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: 'pipelineId is required' }));
+          return;
+        }
+
+        const filePath = runtimePipelinePath(pipelineId);
+        if (!existsSync(filePath)) {
+          res.writeHead(409, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: 'Only runtime YAML pipelines can be deleted', deleted: false }));
+          return;
+        }
+
+        try {
+          unlinkSync(filePath);
+          const deleted = agentApp.pipelineOrchestrator.unloadPipeline(pipelineId);
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ id: pipelineId, deleted, pipelines: agentApp.pipelineOrchestrator.listPipelines().map((pipeline) => pipeline.id) }));
+        } catch (error) {
+          const errorMsg = error instanceof Error ? error.message : 'Unknown error';
+          res.writeHead(500, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: errorMsg, deleted: false }));
         }
         return;
       }
