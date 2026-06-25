@@ -368,6 +368,18 @@ if (!started.coordination?.projectId || startTaskCount !== 7) {
     taskCount: startTaskCount,
   })}`);
 }
+if (
+  started.pipeline_url !== `/pipeline?instanceId=${encodeURIComponent(started.instanceId)}` ||
+  started.knowledge_url !== `/knowledge?projectId=${encodeURIComponent(started.coordination.projectId)}` ||
+  started.kanban_url !== '/kanban?source=coordination'
+) {
+  throw new Error(`start response missing navigation links: ${JSON.stringify({
+    instanceId: started.instanceId,
+    pipelineUrl: started.pipeline_url,
+    knowledgeUrl: started.knowledge_url,
+    kanbanUrl: started.kanban_url,
+  })}`);
+}
 
 await new Promise((resolve) => setTimeout(resolve, 300));
 const runningRes = await fetch(`${base}/pipeline-instances/${started.instanceId}`);
@@ -393,6 +405,18 @@ if (cancelRes.status !== 200 || cancelled.status !== 'cancelled' || taskCount < 
     status: cancelled.status,
     taskCount,
     projectId: cancelled.coordination?.projectId,
+  })}`);
+}
+if (
+  cancelled.pipeline_url !== `/pipeline?instanceId=${encodeURIComponent(started.instanceId)}` ||
+  cancelled.knowledge_url !== `/knowledge?projectId=${encodeURIComponent(started.coordination.projectId)}` ||
+  cancelled.kanban_url !== '/kanban?source=coordination'
+) {
+  throw new Error(`cancel response missing navigation links: ${JSON.stringify({
+    instanceId: cancelled.id,
+    pipelineUrl: cancelled.pipeline_url,
+    knowledgeUrl: cancelled.knowledge_url,
+    kanbanUrl: cancelled.kanban_url,
   })}`);
 }
 
@@ -490,6 +514,18 @@ if (
     error: data.error,
     surfaceStatuses: Object.fromEntries(Object.entries(surfaceResults).map(([key, result]) => [key, result?.status])),
     errorText,
+  })}`);
+}
+if (
+  data.pipeline_url !== `/pipeline?instanceId=${encodeURIComponent(data.instanceId)}` ||
+  !data.knowledge_url ||
+  data.kanban_url !== '/kanban?source=coordination'
+) {
+  throw new Error(`execute response missing navigation links: ${JSON.stringify({
+    instanceId: data.instanceId,
+    pipelineUrl: data.pipeline_url,
+    knowledgeUrl: data.knowledge_url,
+    kanbanUrl: data.kanban_url,
   })}`);
 }
 

@@ -392,13 +392,11 @@ async function main(): Promise<void> {
             surfaceTimeoutMs: options.surfaceTimeoutMs,
             signal: createRequestAbortSignal(res),
           });
+          const serialized = withPipelineNavigation(agentApp.pipelineOrchestrator.serializeInstance(instance));
           res.writeHead(200, { 'Content-Type': 'application/json' });
           res.end(JSON.stringify({
+            ...serialized,
             instanceId: instance.id,
-            status: instance.status,
-            surfaceResults: Object.fromEntries(instance.surfaceResults),
-            startedAt: instance.startedAt,
-            completedAt: instance.completedAt,
           }));
         } catch (error) {
           const errorMsg = error instanceof Error ? error.message : 'Unknown error';
@@ -424,7 +422,7 @@ async function main(): Promise<void> {
             dryRun: options.dryRun,
             surfaceTimeoutMs: options.surfaceTimeoutMs,
           });
-          const serialized = agentApp.pipelineOrchestrator.serializeInstance(instance);
+          const serialized = withPipelineNavigation(agentApp.pipelineOrchestrator.serializeInstance(instance));
           res.writeHead(202, { 'Content-Type': 'application/json' });
           res.end(JSON.stringify({
             ...serialized,
@@ -533,7 +531,7 @@ async function main(): Promise<void> {
           await agentApp.pipelineOrchestrator.cancel(instanceId, reason);
           const instance = agentApp.pipelineOrchestrator.getStatus(instanceId);
           res.writeHead(200, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify(instance ? agentApp.pipelineOrchestrator.serializeInstance(instance) : { ok: true }));
+          res.end(JSON.stringify(instance ? withPipelineNavigation(agentApp.pipelineOrchestrator.serializeInstance(instance)) : { ok: true }));
         } catch (error) {
           const errorMsg = error instanceof Error ? error.message : 'Unknown error';
           const statusCode = errorMsg.includes('未找到') ? 404 : 409;
@@ -553,7 +551,7 @@ async function main(): Promise<void> {
           await agentApp.pipelineOrchestrator.pause(instanceId);
           const instance = agentApp.pipelineOrchestrator.getStatus(instanceId);
           res.writeHead(200, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify(instance ? agentApp.pipelineOrchestrator.serializeInstance(instance) : { ok: true }));
+          res.end(JSON.stringify(instance ? withPipelineNavigation(agentApp.pipelineOrchestrator.serializeInstance(instance)) : { ok: true }));
         } catch (error) {
           const errorMsg = error instanceof Error ? error.message : 'Unknown error';
           res.writeHead(errorMsg.includes('未找到') ? 404 : 409, { 'Content-Type': 'application/json' });
@@ -568,7 +566,7 @@ async function main(): Promise<void> {
           await agentApp.pipelineOrchestrator.resume(instanceId);
           const instance = agentApp.pipelineOrchestrator.getStatus(instanceId);
           res.writeHead(200, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify(instance ? agentApp.pipelineOrchestrator.serializeInstance(instance) : { ok: true }));
+          res.end(JSON.stringify(instance ? withPipelineNavigation(agentApp.pipelineOrchestrator.serializeInstance(instance)) : { ok: true }));
         } catch (error) {
           const errorMsg = error instanceof Error ? error.message : 'Unknown error';
           res.writeHead(errorMsg.includes('未找到') ? 404 : 409, { 'Content-Type': 'application/json' });
@@ -590,7 +588,7 @@ async function main(): Promise<void> {
           await agentApp.pipelineOrchestrator.rollback(instanceId, surfaceId);
           const instance = agentApp.pipelineOrchestrator.getStatus(instanceId);
           res.writeHead(200, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify(instance ? agentApp.pipelineOrchestrator.serializeInstance(instance) : { ok: true }));
+          res.end(JSON.stringify(instance ? withPipelineNavigation(agentApp.pipelineOrchestrator.serializeInstance(instance)) : { ok: true }));
         } catch (error) {
           const errorMsg = error instanceof Error ? error.message : 'Unknown error';
           const statusCode = errorMsg.includes('未找到')

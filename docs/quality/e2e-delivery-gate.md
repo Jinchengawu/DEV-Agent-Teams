@@ -76,7 +76,9 @@ It also fetches the coordination summary and asserts that all unfinished Surface
 marked `blocked`, so the Kanban projection does not show stale queued work. Finally, it
 verifies that the run captured an `_experience` document and linked it to the retrospective
 task. It is opt-in because it creates a real Pipeline instance plus project/task records in
-the local document database. The same smoke also checks that unsupported control actions
+the local document database. Start, execute, and cancel responses must preserve the same
+Pipeline, Knowledge, and Kanban navigation fields as instance history. The same smoke also
+checks that unsupported control actions
 (`pause`, `resume`, and `rollback`) fail honestly with `supported: false` instead of
 pretending to mutate Pipeline state.
 
