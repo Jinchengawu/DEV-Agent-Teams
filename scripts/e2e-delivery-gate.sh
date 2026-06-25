@@ -141,6 +141,47 @@ raise SystemExit(0 if any(p.get("id") == "stock-analysis-system" for p in pipeli
     record "gateway pipeline registry" FAIL "GET /pipelines failed"
   fi
 
+  set +e
+  yaml_loader_output="$(GATEWAY_URL="$GATEWAY_URL" node <<'NODE' 2>&1
+const base = process.env.GATEWAY_URL;
+const id = `e2e-inline-yaml-${Date.now()}`;
+const yaml = `
+id: ${id}
+name: E2E Inline YAML Pipeline
+version: "0.0.1"
+surfaces:
+  - id: discovery
+    name: Discovery
+    agent: dev-pm
+    workflow:
+      goal: Validate inline YAML loading.
+edges: []
+`;
+const loadRes = await fetch(`${base}/pipelines/load-yaml`, {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({ yaml, source: 'e2e-delivery-gate:inline' }),
+});
+const loaded = await loadRes.json();
+if (loadRes.status !== 201 || loaded.pipeline?.id !== id) {
+  throw new Error(`inline load failed: ${loadRes.status} ${JSON.stringify(loaded)}`);
+}
+const listRes = await fetch(`${base}/pipelines`);
+const listed = await listRes.json();
+if (!listed.pipelines?.some((pipeline) => pipeline.id === id)) {
+  throw new Error(`inline loaded pipeline not listed: ${id}`);
+}
+console.log(`id=${id}`);
+NODE
+)"
+  yaml_loader_code=$?
+  set -e
+  if [ "$yaml_loader_code" -eq 0 ]; then
+    record "gateway inline yaml loader" PASS "$(echo "$yaml_loader_output" | tail -n 1 | sed 's/|/\\|/g')"
+  else
+    record "gateway inline yaml loader" FAIL "exit $yaml_loader_code: $(echo "$yaml_loader_output" | tail -n 3 | tr '\n' ' ' | sed 's/|/\\|/g')"
+  fi
+
   if curl -fsS "$GATEWAY_URL/v1/workflows" >/tmp/dev-agent-workflows.json 2>/dev/null; then
     if python3 -c 'import json, sys
 with open(sys.argv[1], "r", encoding="utf-8") as f:

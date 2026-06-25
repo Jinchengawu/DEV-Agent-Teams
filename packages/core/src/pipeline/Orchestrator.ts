@@ -128,11 +128,19 @@ export class PipelineOrchestrator {
   /**
    * 从 YAML 文件加载 Pipeline 定义。
    */
-  async loadFromYaml(yamlPath: string): Promise<void> {
+  async loadFromYaml(yamlPath: string): Promise<PipelineDefinition> {
     const yamlContent = await readFile(yamlPath, 'utf8');
+    return this.loadFromYamlContent(yamlContent, yamlPath);
+  }
+
+  /**
+   * 从 YAML 文本加载 Pipeline 定义。
+   */
+  loadFromYamlContent(yamlContent: string, source: string = 'inline-yaml'): PipelineDefinition {
     const parsed = parse(yamlContent);
-    const pipeline = this.assertPipelineDefinition(parsed, yamlPath);
+    const pipeline = this.assertPipelineDefinition(parsed, source);
     this.loadPipeline(pipeline);
+    return pipeline;
   }
 
   /**

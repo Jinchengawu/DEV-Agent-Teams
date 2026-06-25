@@ -313,6 +313,31 @@ async function main(): Promise<void> {
         return;
       }
 
+      // 运行时加载 YAML Pipeline 定义。用于注册自定义团队工作流，不写入仓库文件。
+      if (path === '/pipelines/load-yaml' && req.method === 'POST') {
+        const yamlContent = typeof parsedBody?.yaml === 'string' ? parsedBody.yaml : '';
+        const source = typeof parsedBody?.source === 'string' && parsedBody.source.trim()
+          ? parsedBody.source.trim()
+          : 'api:/pipelines/load-yaml';
+        if (!yamlContent.trim()) {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: 'yaml is required' }));
+          return;
+        }
+
+        try {
+          const loaded = agentApp.pipelineOrchestrator.loadFromYamlContent(yamlContent, source);
+          const pipelines = agentApp.pipelineOrchestrator.listPipelines();
+          res.writeHead(201, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ pipeline: loaded, pipelines: pipelines.map((pipeline) => pipeline.id) }));
+        } catch (error) {
+          const errorMsg = error instanceof Error ? error.message : 'Unknown error';
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: errorMsg }));
+        }
+        return;
+      }
+
       // 列出所有 Pipeline 实例
       if (path === '/pipeline-instances' && req.method === 'GET') {
         const instances = agentApp.pipelineOrchestrator.listInstances();

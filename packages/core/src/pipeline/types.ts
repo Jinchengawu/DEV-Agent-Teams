@@ -256,7 +256,9 @@ export interface IPipelineOrchestrator {
   /** 加载 Pipeline 定义 */
   loadPipeline(def: PipelineDefinition): void;
   /** 从 YAML 加载 */
-  loadFromYaml(yamlPath: string): Promise<void>;
+  loadFromYaml(yamlPath: string): Promise<PipelineDefinition>;
+  /** 从 YAML 文本加载 */
+  loadFromYamlContent(yamlContent: string, source?: string): PipelineDefinition;
   /** 执行 Pipeline */
   execute(pipelineId: string, initialInput?: Record<string, any>, options?: PipelineExecuteOptions): Promise<PipelineInstance>;
   /** 后台启动 Pipeline */
