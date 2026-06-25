@@ -73,6 +73,12 @@ the local document database. The same smoke also checks that unsupported control
 (`pause`, `resume`, and `rollback`) fail honestly with `supported: false` instead of
 pretending to mutate Pipeline state.
 
+The same opt-in gate also runs a forced timeout smoke with `surfaceTimeoutMs: 1`. It verifies
+that a timed-out dry-run Pipeline fails instead of hanging, exposes the failed Surface, marks
+all coordination tasks `blocked`, and still captures the `_experience` document. The dry-run
+Git status comparison wraps both the cancel and timeout flows, so repository side effects are
+reported as a delivery failure.
+
 To verify restart recovery, opt in with:
 
 ```bash

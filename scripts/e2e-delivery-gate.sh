@@ -390,10 +390,81 @@ NODE
     else
       record "pipeline control smoke" FAIL "exit $control_code: $(echo "$control_output" | tail -n 3 | tr '\n' ' ' | sed 's/|/\\|/g')"
     fi
+
+    set +e
+    timeout_output="$(GATEWAY_URL="$GATEWAY_URL" node <<'NODE' 2>&1
+const base = process.env.GATEWAY_URL;
+const payload = {
+  pipelineId: 'dev-team-minimum-loop',
+  initialInput: {
+    userRequest: 'E2E timeout smoke: force a very short surface timeout. Dry-run only; do not write files.',
+    requestedBy: 'e2e-delivery-gate-timeout',
+  },
+  options: { dryRun: true, surfaceTimeoutMs: 1 },
+};
+const res = await fetch(`${base}/v1/pipeline/execute`, {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify(payload),
+});
+const data = await res.json();
+const surfaceResults = data.surfaceResults || {};
+const failedSurfaces = Object.values(surfaceResults).filter((result) => result?.status === 'failed');
+const errorText = [
+  data.error,
+  ...failedSurfaces.map((result) => result?.error || ''),
+].join(' ');
+if (
+  res.status !== 200 ||
+  data.status !== 'failed' ||
+  failedSurfaces.length < 1 ||
+  !/timed out|timeout|aborted|cancelled/i.test(errorText)
+) {
+  throw new Error(`timeout did not fail the pipeline correctly: ${res.status} ${JSON.stringify({
+    status: data.status,
+    error: data.error,
+    surfaceStatuses: Object.fromEntries(Object.entries(surfaceResults).map(([key, result]) => [key, result?.status])),
+    errorText,
+  })}`);
+}
+
+const coordinationRes = await fetch(`${base}/pipeline-instances/${data.instanceId}/coordination`);
+const coordination = await coordinationRes.json();
+const statuses = coordination.bindings?.map((binding) => binding.task?.status) || [];
+const blockedCount = statuses.filter((status) => status === 'blocked').length;
+const experienceDocId = coordination.instance?.coordination?.documentIdsBySurface?._experience;
+const retroBinding = coordination.bindings?.find((binding) => binding.surfaceId === 'retrospective');
+const retroDocIds = (retroBinding?.documents || []).map((doc) => doc.id);
+if (
+  !coordinationRes.ok ||
+  blockedCount !== statuses.length ||
+  !experienceDocId ||
+  !retroDocIds.includes(experienceDocId)
+) {
+  throw new Error(`timeout coordination was not closed correctly: ${coordinationRes.status} ${JSON.stringify({
+    statuses,
+    blockedCount,
+    experienceDocId,
+    retroDocIds,
+  })}`);
+}
+
+console.log(`instance=${data.instanceId} failedSurfaces=${failedSurfaces.map((result) => result.surfaceId).join(',')} blocked=${blockedCount}/${statuses.length} experience=${experienceDocId}`);
+NODE
+)"
+    timeout_code=$?
+    set -e
+    if [ "$timeout_code" -eq 0 ]; then
+      record "pipeline timeout smoke" PASS "$(echo "$timeout_output" | tail -n 1 | sed 's/|/\\|/g')"
+    else
+      record "pipeline timeout smoke" FAIL "exit $timeout_code: $(echo "$timeout_output" | tail -n 3 | tr '\n' ' ' | sed 's/|/\\|/g')"
+    fi
+
     repo_status_after_control="$(repo_status_snapshot)"
     record_repo_status_result "$repo_status_before_control" "$repo_status_after_control"
   else
     record "pipeline control smoke" WARN "skipped; set RUN_PIPELINE_CONTROL_SMOKE=1 to verify start/cancel/coordination binding"
+    record "pipeline timeout smoke" WARN "skipped; set RUN_PIPELINE_CONTROL_SMOKE=1 to verify timeout failure handling"
     record "dry-run repository side effects" WARN "skipped; set RUN_PIPELINE_CONTROL_SMOKE=1 to compare git status around dry-run execution"
   fi
 
