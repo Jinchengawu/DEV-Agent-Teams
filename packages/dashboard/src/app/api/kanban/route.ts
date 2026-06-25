@@ -19,6 +19,9 @@ type KanbanTask = {
   source?: 'local' | 'coordination';
   project_id?: string;
   document_count?: number;
+  pipeline_instance_id?: string;
+  pipeline_id?: string;
+  surface_id?: string;
 };
 
 async function fetchDocumentCount(taskId: string): Promise<number> {
@@ -34,7 +37,36 @@ async function fetchDocumentCount(taskId: string): Promise<number> {
   }
 }
 
-async function mapCoordinationTask(task: any): Promise<KanbanTask> {
+type PipelineTaskLink = {
+  pipelineInstanceId: string;
+  pipelineId: string;
+  surfaceId: string;
+};
+
+async function fetchPipelineTaskLinks(): Promise<Map<string, PipelineTaskLink>> {
+  const links = new Map<string, PipelineTaskLink>();
+  try {
+    const res = await fetch(`${GATEWAY_URL}/pipeline-instances`, { cache: 'no-store' });
+    if (!res.ok) return links;
+    const data = await res.json();
+    for (const instance of data.instances || []) {
+      const taskIdsBySurface = instance.coordination?.taskIdsBySurface || {};
+      for (const [surfaceId, taskId] of Object.entries(taskIdsBySurface)) {
+        if (!taskId || links.has(String(taskId))) continue;
+        links.set(String(taskId), {
+          pipelineInstanceId: instance.id,
+          pipelineId: instance.pipelineId,
+          surfaceId,
+        });
+      }
+    }
+  } catch {
+    // Keep Kanban usable if Pipeline history is temporarily unavailable.
+  }
+  return links;
+}
+
+async function mapCoordinationTask(task: any, link?: PipelineTaskLink): Promise<KanbanTask> {
   const documentCount = await fetchDocumentCount(task.id);
   return {
     id: task.id,
@@ -51,15 +83,21 @@ async function mapCoordinationTask(task: any): Promise<KanbanTask> {
     source: 'coordination',
     project_id: task.projectId,
     document_count: documentCount,
+    pipeline_instance_id: link?.pipelineInstanceId,
+    pipeline_id: link?.pipelineId,
+    surface_id: link?.surfaceId,
   };
 }
 
 async function fetchCoordinationTasks(): Promise<KanbanTask[]> {
   try {
-    const res = await fetch(`${GATEWAY_URL}/api/v2/tasks`, { cache: 'no-store' });
+    const [res, pipelineTaskLinks] = await Promise.all([
+      fetch(`${GATEWAY_URL}/api/v2/tasks`, { cache: 'no-store' }),
+      fetchPipelineTaskLinks(),
+    ]);
     if (!res.ok) return [];
     const data = await res.json();
-    return Promise.all((data.tasks || []).map(mapCoordinationTask));
+    return Promise.all((data.tasks || []).map((task: any) => mapCoordinationTask(task, pipelineTaskLinks.get(task.id))));
   } catch {
     return [];
   }

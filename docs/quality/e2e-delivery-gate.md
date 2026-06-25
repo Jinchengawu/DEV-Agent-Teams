@@ -57,6 +57,7 @@ When Dashboard is already running, the same script also checks:
 - Dashboard Pipeline page exposes a YAML importer for runtime custom workflows
 - Knowledge links can preserve project/task context for workflow documents
 - Kanban coordination tasks expose project links and related document counts
+- Kanban coordination tasks link back to their Pipeline instance and Surface context
 - Dashboard health exposes live Pipeline readiness from real Hermes Agent health
 
 To verify the Pipeline control plane against a running Gateway, opt in with:

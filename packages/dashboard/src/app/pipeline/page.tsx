@@ -187,6 +187,10 @@ export default function PipelinePage() {
   useEffect(() => {
     fetchPipelines();
     restoreHistory();
+    const requestedInstanceId = new URLSearchParams(window.location.search).get('instanceId');
+    if (requestedInstanceId) {
+      loadInstanceById(requestedInstanceId);
+    }
   }, []);
 
   useEffect(() => {
@@ -333,6 +337,22 @@ export default function PipelinePage() {
       setCoordinationSummary(data);
     } catch {
       setCoordinationSummary(null);
+    }
+  };
+
+  const loadInstanceById = async (instanceId: string) => {
+    try {
+      const res = await fetch(`/api/pipeline-instances/${encodeURIComponent(instanceId)}`);
+      if (!res.ok) return;
+      const data = await res.json();
+      setCurrentInstance(data);
+      setInstanceHistory((prev) => [data, ...prev.filter((i) => i.id !== data.id)].slice(0, 50));
+      saveInstanceId(data.id);
+      if (data.status === 'running') {
+        startPolling(data.id);
+      }
+    } catch (e) {
+      console.error('加载 Pipeline 实例失败:', e);
     }
   };
 

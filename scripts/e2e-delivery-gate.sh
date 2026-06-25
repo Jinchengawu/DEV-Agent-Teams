@@ -712,11 +712,26 @@ const data = await res.json();
 if (!res.ok || !Array.isArray(data.tasks)) {
   throw new Error(`dashboard kanban failed: ${res.status} ${JSON.stringify(data)}`);
 }
-const task = data.tasks.find((item) => item.source === 'coordination' && item.project_id && Number(item.document_count || 0) > 0);
+const task = data.tasks.find((item) =>
+  item.source === 'coordination' &&
+  item.project_id &&
+  Number(item.document_count || 0) > 0 &&
+  item.pipeline_instance_id &&
+  item.surface_id
+);
 if (!task) {
-  throw new Error(`coordination task missing related documents: ${JSON.stringify(data.tasks.slice(0, 5))}`);
+  throw new Error(`coordination task missing document or workflow links: ${JSON.stringify(data.tasks.slice(0, 5))}`);
 }
-console.log(`task=${task.id} project=${task.project_id} documents=${task.document_count}`);
+const instanceRes = await fetch(`${base}/api/pipeline-instances/${encodeURIComponent(task.pipeline_instance_id)}`);
+const instance = await instanceRes.json();
+if (!instanceRes.ok || instance.id !== task.pipeline_instance_id || !instance.coordination?.taskIdsBySurface?.[task.surface_id]) {
+  throw new Error(`kanban workflow link did not resolve: ${instanceRes.status} ${JSON.stringify({
+    task,
+    instanceId: instance.id,
+    surfaces: Object.keys(instance.coordination?.taskIdsBySurface || {}),
+  })}`);
+}
+console.log(`task=${task.id} project=${task.project_id} documents=${task.document_count} instance=${task.pipeline_instance_id} surface=${task.surface_id}`);
 NODE
 )"
     dashboard_kanban_code=$?

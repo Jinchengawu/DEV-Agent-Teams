@@ -17,6 +17,9 @@ interface Task {
   source?: 'local' | 'coordination'
   project_id?: string
   document_count?: number
+  pipeline_instance_id?: string
+  pipeline_id?: string
+  surface_id?: string
 }
 
 interface Milestone {
@@ -239,6 +242,15 @@ export default function KanbanPage() {
                             data-testid={`kanban-task-docs-${task.id}`}
                           >
                             文档: {task.project_id}
+                          </a>
+                        )}
+                        {task.pipeline_instance_id && (
+                          <a
+                            href={`/pipeline?instanceId=${encodeURIComponent(task.pipeline_instance_id)}`}
+                            className="mt-1 inline-flex font-mono hover:underline"
+                            data-testid={`kanban-task-pipeline-${task.id}`}
+                          >
+                            工作流: {task.surface_id || task.pipeline_id || task.pipeline_instance_id}
                           </a>
                         )}
                       </div>
