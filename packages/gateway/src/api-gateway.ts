@@ -38,6 +38,37 @@ function extractOutput(agentResult: { output: string; toolCalls: { toolName: str
   return parts.join('\n') || (agentResult.success ? '✅ 任务完成' : '❌ 任务失败');
 }
 
+function serializeWorkflow(workflow: any): Record<string, unknown> {
+  return {
+    id: workflow.id,
+    session_id: workflow.context?.sessionId || workflow.context?.session_id || workflow.id,
+    template: workflow.context?.pipelineId || workflow.goal,
+    goal: workflow.goal,
+    status: workflow.status,
+    current_step: workflow.currentStep,
+    total_steps: workflow.totalSteps,
+    steps: workflow.steps || [],
+    token_usage: workflow.tokenUsage || { input_tokens: 0, output_tokens: 0 },
+    error: workflow.error,
+    created_at: new Date(workflow.createdAt).toISOString(),
+    updated_at: new Date(workflow.updatedAt).toISOString(),
+  };
+}
+
+function pipelineToTemplate(pipeline: any): Record<string, unknown> {
+  return {
+    id: pipeline.id,
+    name: pipeline.name,
+    description: pipeline.context?.description || '',
+    steps: (pipeline.surfaces || []).map((surface: any, index: number) => ({
+      agentId: surface.agent,
+      order: index,
+      description: surface.name,
+      surfaceId: surface.id,
+    })),
+  };
+}
+
 // ============================================================================
 // Main
 // ============================================================================
@@ -169,6 +200,39 @@ async function main(): Promise<void> {
           status: 200,
           latencyMs: Date.now() - startTime,
         }, config.auditFile);
+        return;
+      }
+
+      // 工作流列表（Dashboard 工作流页）
+      if (path === '/v1/workflows' && req.method === 'GET') {
+        const limit = parseInt(url.searchParams.get('limit') || '50', 10);
+        const offset = parseInt(url.searchParams.get('offset') || '0', 10);
+        const workflows = agentApp.orchestrator.listWorkflows(limit, offset).map(serializeWorkflow);
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ workflows }));
+        return;
+      }
+
+      // 单个工作流状态
+      if (path.startsWith('/v1/workflows/') && req.method === 'GET') {
+        const workflowId = decodeURIComponent(path.split('/')[3] || '');
+        const workflows = agentApp.orchestrator.listWorkflows(500, 0).map(serializeWorkflow);
+        const workflow = workflows.find((item) => item.id === workflowId);
+        if (!workflow) {
+          res.writeHead(404, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: 'Workflow not found' }));
+          return;
+        }
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ workflow }));
+        return;
+      }
+
+      // 工作流模板（由 Pipeline 定义投影）
+      if (path === '/v1/templates' && req.method === 'GET') {
+        const templates = agentApp.pipelineOrchestrator.listPipelines().map(pipelineToTemplate);
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ templates }));
         return;
       }
 

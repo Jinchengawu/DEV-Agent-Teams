@@ -1,6 +1,6 @@
-# CLAUDE.md
+# AGENTS.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+This file provides guidance to Codex (Codex.ai/code) when working with code in this repository.
 
 ## Project Overview
 
@@ -81,17 +81,3 @@ cd packages/dashboard && pnpm lint      # Lint dashboard
 - **E2E delivery gate**: Every development result must run closed-loop verification. At minimum run `bash scripts/e2e-delivery-gate.sh`; when Hermes Agents are available run it with `RUN_LIVE_PIPELINE=1`.
 - **MiMo API**: Uses OpenAI-compatible endpoint via `createAdapter('openai', apiKey, baseURL)`
 - TypeScript strict mode, ES2022 target, ESNext modules with bundler resolution
-
-## Agent skills
-
-### Issue tracker
-
-Issues are tracked in GitHub Issues for `Jinchengawu/DEV-Agent-Teams`. See `docs/agents/issue-tracker.md`.
-
-### Triage labels
-
-Use the default five-label triage vocabulary. See `docs/agents/triage-labels.md`.
-
-### Domain docs
-
-Single-context domain docs: read `CONTEXT.md` and relevant ADRs in `docs/adr/`. See `docs/agents/domain.md`.

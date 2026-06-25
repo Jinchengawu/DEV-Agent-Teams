@@ -91,6 +91,9 @@ export type {
   ConflictConfig,
 } from './pipeline';
 
+// ── 内置生命周期模板 ──
+export { DEV_TEAM_MINIMUM_LOOP_PIPELINE } from './lifecycle/dev-team-minimum-loop.js';
+
 // ── 知识中心（新增 — P1）──
 export {
   KnowledgeCenter,
@@ -133,6 +136,19 @@ export { createAuthRoutes } from './auth/routes';
 export { createAuthMiddleware } from './auth/middleware';
 export type { User, AuthTokens, RegisterInput, LoginInput } from './auth/AuthService';
 export { AppError } from './auth/AuthService';
+
+// ── 股票分析子系统（新增）──
+export { StockRepository } from './stock/StockRepository.js';
+export type { StockCacheEntry } from './stock/StockRepository.js';
+export { createStockRoutes } from './stock/routes.js';
+export { ValuationService } from './valuation/ValuationService.js';
+export type { DCFAssumptions, DCFResult, DCFModel } from './valuation/ValuationService.js';
+export { createValuationRoutes } from './valuation/routes.js';
+export { WatchlistService } from './watchlist/WatchlistService.js';
+export { createWatchlistRoutes } from './watchlist/routes.js';
+export { ScreenerService } from './screener/ScreenerService.js';
+export type { FilterRule, FilterCondition, ScreenerQuery } from './screener/ScreenerService.js';
+export { createScreenerRoutes } from './screener/routes.js';
 
 // ── HTTP API 层 ──
 export { createAgentApp } from './agent-factory';

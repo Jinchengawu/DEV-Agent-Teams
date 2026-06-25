@@ -65,7 +65,7 @@ export default function WorkflowsPage() {
   useEffect(() => { fetchWorkflows() }, [])
 
   useEffect(() => {
-    fetch('http://127.0.0.1:8400/v1/templates')
+    fetch('/api/workflows/templates')
       .then((r) => r.json())
       .then((data) => setTemplates(data.templates || []))
       .catch(() => {})

@@ -74,10 +74,10 @@ export class WorkflowStateManager {
   /**
    * 创建并保存新的工作流状态
    */
-  createState(goal: string, totalSteps: number): WorkflowState {
-    const id = `wf-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+  createState(goal: string, totalSteps: number, id?: string): WorkflowState {
+    const workflowId = id || `wf-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
     const state: WorkflowState = {
-      id,
+      id: workflowId,
       goal,
       status: 'running',
       currentStep: 0,
@@ -97,7 +97,7 @@ export class WorkflowStateManager {
       source: 'workflow',
       timestamp: Date.now(),
       payload: {
-        workflowId: id,
+        workflowId,
         taskId: goal.substring(0, 50),
         totalSteps,
       },

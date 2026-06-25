@@ -23,8 +23,17 @@ import { setKanbanDatabase, createKanbanTools } from './tools/kanban-tools.js';
 import { createDocumentTools } from './tools/document-tools.js';
 import { createDocumentToolsV2 } from './tools/document-tools-v2.js';
 import { createPipelineOrchestrator } from './pipeline/Orchestrator.js';
+import { DEV_TEAM_MINIMUM_LOOP_PIPELINE } from './lifecycle/dev-team-minimum-loop.js';
 import { getGlobalKnowledgeCenter } from './knowledge/KnowledgeCenter.js';
 import { getGlobalDocumentManager } from './knowledge/DocumentManager.js';
+import { StockRepository } from './stock/StockRepository.js';
+import { createStockRoutes } from './stock/routes.js';
+import { ValuationService } from './valuation/ValuationService.js';
+import { createValuationRoutes } from './valuation/routes.js';
+import { WatchlistService } from './watchlist/WatchlistService.js';
+import { createWatchlistRoutes } from './watchlist/routes.js';
+import { ScreenerService } from './screener/ScreenerService.js';
+import { createScreenerRoutes } from './screener/routes.js';
 
 // ============================================================================
 // Types
@@ -46,6 +55,10 @@ export interface AgentApp {
   knowledgeCenter: import('./knowledge/KnowledgeCenter.js').KnowledgeCenter;
   documentManager: import('./knowledge/DocumentManager.js').DocumentManager;
   authService: AuthService;
+  stockRepo: StockRepository;
+  valuationService: ValuationService;
+  watchlistService: WatchlistService;
+  screenerService: ScreenerService;
   close: () => Promise<void>;
 }
 
@@ -102,14 +115,15 @@ export async function createAgentApp(config: AgentAppConfig = {}): Promise<Agent
     extraCustomTools,
   });
 
-  // 创建 Pipeline 编排器（注入知识中心）
+  // 创建知识中心与文档管理器
   const knowledgeCenter = getGlobalKnowledgeCenter({ dbPath: path.join(dataDir, 'knowledge.db') });
-  const pipelineOrchestrator = createPipelineOrchestrator(orchestrator, workflowStateManager, knowledgeCenter);
-  
-  // 创建文档管理器
   const documentManager = getGlobalDocumentManager({ dbPath: path.join(dataDir, 'documents.db') });
   console.log(`[AgentApp] KnowledgeCenter 已初始化: ${dataDir}/knowledge.db`);
   console.log(`[AgentApp] DocumentManager V2 已初始化: ${dataDir}/documents.db`);
+
+  // 创建 Pipeline 编排器（注入知识中心与 V2 文档管理器）
+  const pipelineOrchestrator = createPipelineOrchestrator(orchestrator, workflowStateManager, knowledgeCenter, documentManager);
+  pipelineOrchestrator.loadPipeline(DEV_TEAM_MINIMUM_LOOP_PIPELINE);
 
   const app = express();
   app.use(express.json({ limit: '1mb' }));
@@ -120,6 +134,18 @@ export async function createAgentApp(config: AgentAppConfig = {}): Promise<Agent
   const authRoutes = createAuthRoutes(authService);
   app.use('/auth', authRoutes);
   console.log('[AgentApp] AuthService 已初始化');
+
+  // ── 股票分析子系统 ──
+  const stockRepo = new StockRepository(sessionManager.getDb());
+  const valuationService = new ValuationService(stockRepo);
+  const watchlistService = new WatchlistService(stockRepo);
+  const screenerService = new ScreenerService(stockRepo);
+
+  app.use('/api/v1/stocks', createStockRoutes(stockRepo, valuationService));
+  app.use('/api/v1/valuation', createValuationRoutes(valuationService));
+  app.use('/api/v1/watchlists', createWatchlistRoutes(watchlistService));
+  app.use('/api/v1/screener', createScreenerRoutes(screenerService));
+  console.log('[AgentApp] 股票分析子系统已初始化 (stocks, valuation, watchlists, screener)');
 
   // Per-session concurrency lock
   const sessionLocks = new Map<string, Promise<void>>();
@@ -309,5 +335,5 @@ export async function createAgentApp(config: AgentAppConfig = {}): Promise<Agent
     sessionManager.close();
   };
 
-  return { app, sessionManager, orchestrator, tokenBudgetManager, pipelineOrchestrator, knowledgeCenter, documentManager, authService, close };
+  return { app, sessionManager, orchestrator, tokenBudgetManager, pipelineOrchestrator, knowledgeCenter, documentManager, authService, stockRepo, valuationService, watchlistService, screenerService, close };
 }

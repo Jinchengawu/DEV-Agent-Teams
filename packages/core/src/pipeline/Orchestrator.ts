@@ -25,6 +25,7 @@ import type {
   SurfaceResult,
 } from './types.js';
 import type { KnowledgeCenter } from '../knowledge/KnowledgeCenter.js';
+import type { DocumentManager } from '../knowledge/DocumentManager.js';
 
 // ============================================================================
 // 循环编排状态
@@ -57,16 +58,19 @@ export class PipelineOrchestrator {
   private teamOrchestrator: TeamOrchestrator;
   private stateManager?: WorkflowStateManager;
   private knowledgeCenter?: KnowledgeCenter;
+  private documentManager?: DocumentManager;
   private loopStates: Map<string, Map<string, LoopState>> = new Map(); // instanceId -> edgeKey -> LoopState
 
   constructor(
     teamOrchestrator: TeamOrchestrator,
     stateManager?: WorkflowStateManager,
     knowledgeCenter?: KnowledgeCenter,
+    documentManager?: DocumentManager,
   ) {
     this.teamOrchestrator = teamOrchestrator;
     this.stateManager = stateManager;
     this.knowledgeCenter = knowledgeCenter;
+    this.documentManager = documentManager;
   }
 
   /**
@@ -74,6 +78,13 @@ export class PipelineOrchestrator {
    */
   setKnowledgeCenter(kc: KnowledgeCenter): void {
     this.knowledgeCenter = kc;
+  }
+
+  /**
+   * 设置 V2 文档管理器（运行时注入）
+   */
+  setDocumentManager(dm: DocumentManager): void {
+    this.documentManager = dm;
   }
 
   /**
@@ -107,27 +118,29 @@ export class PipelineOrchestrator {
       throw new Error(`Pipeline "${pipelineId}" 未找到`);
     }
 
-    const instanceId = `pipeline-${Date.now()}`;
+    const now = Date.now();
     const instance: PipelineInstance = {
-      id: instanceId,
+      id: `pipeline-${now}`,
       pipelineId,
       status: 'running',
       surfaceResults: new Map(),
-      startedAt: Date.now(),
+      startedAt: now,
+      workflowStateId: `pipeline-${now}`,
     };
 
-    this.instances.set(instanceId, instance);
-    this.loopStates.set(instanceId, new Map());
+    this.instances.set(instance.id, instance);
+    this.loopStates.set(instance.id, new Map());
+    this.stateManager?.createState(`Pipeline: ${pipeline.name}`, pipeline.surfaces.length, instance.id);
 
-    console.log(`[PipelineOrchestrator] Pipeline "${pipeline.name}" 开始执行 (instance: ${instanceId})`);
+    console.log(`[PipelineOrchestrator] Pipeline "${pipeline.name}" 开始执行 (instance: ${instance.id})`);
 
     // 发布 Pipeline 开始事件
     eventBus.emit({
       type: 'workflow.started',
       source: 'workflow',
-      timestamp: Date.now(),
+      timestamp: now,
       payload: {
-        workflowId: instanceId,
+        workflowId: instance.id,
         taskId: pipeline.name,
         pipelineId,
       },
@@ -157,8 +170,13 @@ export class PipelineOrchestrator {
         });
 
         if (hasFailure) {
+          const failedSurface = batch.find((sid) => instance.surfaceResults.get(sid)?.status === 'failed');
+          const failedResult = failedSurface ? instance.surfaceResults.get(failedSurface) : undefined;
           console.error(`[PipelineOrchestrator] 批次执行失败，Pipeline 终止`);
           instance.status = 'failed';
+          instance.error = failedSurface
+            ? `${failedSurface}: ${failedResult?.error || 'surface failed'}`
+            : 'batch execution failed';
           break;
         }
 
@@ -176,7 +194,7 @@ export class PipelineOrchestrator {
           // 检查 gate 是否通过
           if (downstreamResult && !this.checkGatePassed(downstreamResult, edge)) {
             const edgeKey = `${edge.from}->${downstreamId}`;
-            const loopState = this.getOrCreateLoopState(instanceId, edgeKey);
+            const loopState = this.getOrCreateLoopState(instance.id, edgeKey);
             const maxLoops = edge.maxLoops ?? 3;
 
             if (loopState.count >= maxLoops) {
@@ -239,12 +257,13 @@ export class PipelineOrchestrator {
           source: 'workflow',
           timestamp: Date.now(),
           payload: {
-            workflowId: instanceId,
+            workflowId: instance.id,
             taskId: pipeline.name,
             pipelineId,
             output: 'Pipeline 执行完成',
           },
         });
+        this.stateManager?.complete(instance.id, 'Pipeline 执行完成');
       }
     } catch (error) {
       const errorMsg = error instanceof Error ? error.message : 'Unknown error';
@@ -258,16 +277,21 @@ export class PipelineOrchestrator {
         source: 'workflow',
         timestamp: Date.now(),
         payload: {
-          workflowId: instanceId,
+          workflowId: instance.id,
           taskId: pipeline.name,
           pipelineId,
           error: errorMsg,
         },
       });
+      this.stateManager?.fail(instance.id, errorMsg);
+    }
+
+    if (instance.status === 'failed') {
+      this.stateManager?.fail(instance.id, instance.error || 'Pipeline 执行失败');
     }
 
     // 清理循环状态
-    this.loopStates.delete(instanceId);
+    this.loopStates.delete(instance.id);
 
     return instance;
   }
@@ -311,7 +335,7 @@ export class PipelineOrchestrator {
    * 列出运行中的实例
    */
   listRunningInstances(): PipelineInstance[] {
-    return [...this.instances.values()].filter((i) => i.status === 'running');
+    return this.listInstances().filter((i) => i.status === 'running');
   }
 
   /**
@@ -536,10 +560,10 @@ ${JSON.stringify(artifacts, null, 2)}
   private sinkToKnowledgeCenter(
     surfaceId: string,
     surfaceName: string,
+    agentId: string,
     result: SurfaceResult,
     instanceId: string,
   ): void {
-    if (!this.knowledgeCenter) return;
     if (!result.artifacts) return;
 
     try {
@@ -550,21 +574,45 @@ ${JSON.stringify(artifacts, null, 2)}
       const content = this.extractArtifactsContent(result.artifacts);
       if (!content) return;
 
-      this.knowledgeCenter.addDocument({
-        title: `${surfaceName} (${surfaceId}) - ${instanceId}`,
-        content,
-        type: docType,
-        source: surfaceId,
-        tags: ['pipeline-artifact', instanceId, surfaceId],
-        metadata: {
-          instanceId,
-          surfaceId,
-          surfaceName,
-          status: result.status,
-          tokenUsage: result.tokenUsage,
-          timestamp: Date.now(),
-        },
-      });
+      if (this.knowledgeCenter) {
+        this.knowledgeCenter.addDocument({
+          title: `${surfaceName} (${surfaceId}) - ${instanceId}`,
+          content,
+          type: docType,
+          source: surfaceId,
+          tags: ['pipeline-artifact', instanceId, surfaceId],
+          metadata: {
+            instanceId,
+            surfaceId,
+            surfaceName,
+            status: result.status,
+            tokenUsage: result.tokenUsage,
+            timestamp: Date.now(),
+          },
+        });
+      }
+
+      if (this.documentManager) {
+        this.documentManager.createDocument({
+          title: `${surfaceName} (${surfaceId}) - ${instanceId}`,
+          content,
+          type: this.inferDocumentType(surfaceId),
+          authorId: agentId,
+          authorName: surfaceName,
+          tags: ['pipeline-artifact', instanceId, surfaceId],
+          relatedDocIds: [],
+          relatedTaskIds: [],
+          relatedAgentIds: [agentId],
+          metadata: {
+            instanceId,
+            surfaceId,
+            surfaceName,
+            status: result.status,
+            tokenUsage: result.tokenUsage,
+            timestamp: Date.now(),
+          },
+        });
+      }
 
       console.log(`[PipelineOrchestrator] 产物已沉淀到知识中心: ${surfaceId}`);
     } catch (error) {
@@ -581,6 +629,19 @@ ${JSON.stringify(artifacts, null, 2)}
     if (surfaceId.includes('meeting') || surfaceId.includes('review')) return 'meeting';
     if (surfaceId.includes('test') || surfaceId.includes('e2e') || surfaceId.includes('qc')) return 'report';
     if (surfaceId.includes('task') || surfaceId.includes('cr')) return 'task';
+    return 'general';
+  }
+
+  /**
+   * 推断 V2 文档类型
+   */
+  private inferDocumentType(surfaceId: string): 'prd' | 'tech_spec' | 'meeting' | 'report' | 'task' | 'general' | 'review' | 'code_review' {
+    if (surfaceId.includes('discovery') || surfaceId.includes('prd') || surfaceId.includes('pd')) return 'prd';
+    if (surfaceId.includes('planning') || surfaceId.includes('task')) return 'task';
+    if (surfaceId.includes('meeting')) return 'meeting';
+    if (surfaceId.includes('testing') || surfaceId.includes('test') || surfaceId.includes('e2e') || surfaceId.includes('qc')) return 'report';
+    if (surfaceId.includes('review') || surfaceId.includes('cr')) return 'review';
+    if (surfaceId.includes('frontend') || surfaceId.includes('backend') || surfaceId.includes('fe') || surfaceId.includes('be')) return 'tech_spec';
     return 'general';
   }
 
@@ -761,8 +822,19 @@ ${JSON.stringify(artifacts, null, 2)}
     const result = await surface.execute();
     instance.surfaceResults.set(surfaceId, result);
 
+    const stepIndex = Math.max(0, pipeline.surfaces.findIndex((s) => s.id === surfaceId));
+    this.stateManager?.updateStep(instance.id, stepIndex, {
+      agentId: surfaceDef.agent,
+      goal: surfaceDef.workflow?.goal || surfaceDef.name,
+      output: result.artifacts?.output || result.error || '',
+      status: result.status === 'completed' ? 'completed' : result.status === 'failed' ? 'failed' : 'running',
+      startedAt: result.startedAt,
+      completedAt: result.completedAt,
+      error: result.error,
+    });
+
     // 产物自动沉淀到知识中心
-    this.sinkToKnowledgeCenter(surfaceId, surfaceDef.name, result, instance.id);
+    this.sinkToKnowledgeCenter(surfaceId, surfaceDef.name, surfaceDef.agent, result, instance.id);
 
     return result;
   }
@@ -775,6 +847,7 @@ export function createPipelineOrchestrator(
   teamOrchestrator: TeamOrchestrator,
   stateManager?: WorkflowStateManager,
   knowledgeCenter?: KnowledgeCenter,
+  documentManager?: DocumentManager,
 ): PipelineOrchestrator {
-  return new PipelineOrchestrator(teamOrchestrator, stateManager, knowledgeCenter);
+  return new PipelineOrchestrator(teamOrchestrator, stateManager, knowledgeCenter, documentManager);
 }

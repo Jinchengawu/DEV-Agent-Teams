@@ -191,6 +191,8 @@ export interface PipelineInstance {
   completedAt?: number;
   /** 错误信息 */
   error?: string;
+  /** 持久化工作流 ID（通常等于实例 ID） */
+  workflowStateId?: string;
 }
 
 // ============================================================================

@@ -152,6 +152,9 @@ export class Surface {
 
       // 3. 调用 Agent 执行
       const agentResult = await this.orchestrator.runAgent(this.agent, goal, this.sessionId);
+      if (!agentResult.success) {
+        throw new Error(`Agent ${this.agent} 执行失败: ${agentResult.output || 'unknown error'}`);
+      }
 
       // 4. 提取输出产物
       result.artifacts = {

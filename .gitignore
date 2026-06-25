@@ -17,6 +17,7 @@ out/
 # Test coverage
 coverage/
 .nyc_output/
+scripts/test-reports/
 
 # Environment variables
 .env

@@ -124,23 +124,35 @@ export default function PipelinePage() {
   const executePipeline = async (pipelineId: string) => {
     setExecuting(pipelineId);
     try {
-      const res = await fetch('/api/chat', {
+      const res = await fetch('/api/pipelines/execute', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          messages: [{ role: 'user', content: `执行 ${pipelineId} Pipeline` }],
-          mode: 'pipeline',
+          pipelineId,
+          initialInput: {
+            userRequest: `Dashboard requested execution of ${pipelineId}. Produce concise coordination artifacts and preserve results as documents.`,
+            requestedBy: 'dashboard',
+          },
         }),
       });
       const data = await res.json();
       if (data.error) throw new Error(data.error);
 
-      // 解析 instanceId
-      const instanceIdMatch = data.message?.content?.match(/实例ID[:\s]+(\S+)/);
-      if (instanceIdMatch) {
-        const instanceId = instanceIdMatch[1];
-        saveInstanceId(instanceId);
-        startPolling(instanceId);
+      if (data.instanceId) {
+        const instance: PipelineInstance = {
+          id: data.instanceId,
+          pipelineId,
+          status: data.status,
+          surfaceResults: data.surfaceResults || {},
+          startedAt: data.startedAt,
+          completedAt: data.completedAt,
+        };
+        setCurrentInstance(instance);
+        setInstanceHistory(prev => [instance, ...prev.filter(i => i.id !== instance.id)].slice(0, 50));
+        saveInstanceId(data.instanceId);
+        if (data.status === 'running') {
+          startPolling(data.instanceId);
+        }
       }
 
       showToast('Pipeline started', 'success');

@@ -127,7 +127,10 @@ async function routeIntent(userText: string, sessionId: string | undefined, agen
 
     if (matched) {
       try {
-        const instance = await agentApp.pipelineOrchestrator.execute(matched.id);
+        const instance = await agentApp.pipelineOrchestrator.execute(matched.id, {
+          userRequest: userText,
+          requestedPipeline: pipelineName,
+        });
         const surfaceResults = Array.from(instance.surfaceResults.entries())
           .map(([id, result]) => {
             const status = result.status === 'completed' ? '✅' : result.status === 'failed' ? '❌' : '🔄';
