@@ -119,6 +119,7 @@ export class PipelineOrchestrator {
    */
   loadPipeline(def: PipelineDefinition): void {
     this.pipelines.set(def.id, def);
+    this.markInterruptedPipelineRuns(def.id);
     console.log(`[PipelineOrchestrator] Pipeline "${def.name}" (${def.id}) 已加载`);
   }
 
@@ -956,6 +957,30 @@ ${JSON.stringify(artifacts, null, 2)}
     if (!this.stateManager) return null;
     const state = this.stateManager.load(instanceId);
     return state ? this.workflowStateToPipelineInstance(state) : null;
+  }
+
+  private markInterruptedPipelineRuns(pipelineId: string): void {
+    if (!this.stateManager) return;
+
+    const interrupted = this.stateManager
+      .listWorkflows(500, 0)
+      .filter((state) => {
+        const context = state.context as PersistedPipelineContext;
+        return (
+          context.kind === 'pipeline' &&
+          context.pipelineId === pipelineId &&
+          state.status === 'running' &&
+          !this.instances.has(state.id)
+        );
+      });
+
+    for (const state of interrupted) {
+      this.stateManager.fail(state.id, 'Pipeline interrupted by Gateway restart before completion');
+    }
+
+    if (interrupted.length > 0) {
+      console.warn(`[PipelineOrchestrator] 已标记 ${interrupted.length} 个中断的 Pipeline 实例: ${pipelineId}`);
+    }
   }
 
   private workflowStateToPipelineInstance(state: WorkflowState): PipelineInstance | null {
