@@ -12,6 +12,7 @@
  * - 冲突解决（project-admin 仲裁）
  */
 
+import { execFileSync } from 'node:child_process';
 import { eventBus } from '../event/EventBus.js';
 import type { TeamOrchestrator } from '../team/TeamOrchestrator.js';
 import type { WorkflowState, WorkflowStateManager } from '../session/WorkflowStateManager.js';
@@ -67,6 +68,11 @@ type PersistedPipelineContext = {
     surfaceTimeoutMs?: number;
   };
 };
+
+interface DryRunGuard {
+  root: string;
+  baseline: string[];
+}
 
 /**
  * Pipeline 编排器
@@ -234,6 +240,8 @@ export class PipelineOrchestrator {
     options: PipelineExecuteOptions = {},
   ): Promise<void> {
     const signal = options.signal;
+    const dryRun = options.dryRun ?? pipeline.context?.execution?.dryRun;
+    const dryRunGuard = dryRun ? this.createDryRunGuard() : undefined;
 
     try {
       // 构建 DAG 和执行顺序
@@ -253,6 +261,7 @@ export class PipelineOrchestrator {
 
         await Promise.all(batchPromises);
         this.throwIfCancelled(signal);
+        this.assertDryRunNoRepositorySideEffects(dryRunGuard);
 
         // 检查是否有失败
         const hasFailure = batch.some((sid) => {
@@ -345,6 +354,7 @@ export class PipelineOrchestrator {
       }
 
       if (instance.status !== 'failed' && instance.status !== 'cancelled') {
+        this.assertDryRunNoRepositorySideEffects(dryRunGuard);
         instance.status = 'completed';
         instance.completedAt = Date.now();
 
@@ -878,6 +888,51 @@ ${JSON.stringify(artifacts, null, 2)}
       taskIdsBySurface: Object.fromEntries(binding.taskIdsBySurface),
       documentIdsBySurface: Object.fromEntries(binding.docIdsBySurface),
     };
+  }
+
+  private createDryRunGuard(): DryRunGuard | undefined {
+    try {
+      const root = execFileSync('git', ['rev-parse', '--show-toplevel'], {
+        cwd: process.cwd(),
+        encoding: 'utf8',
+      }).trim();
+
+      return {
+        root,
+        baseline: this.readGitPorcelain(root),
+      };
+    } catch (error) {
+      console.warn(`[PipelineOrchestrator] dry-run 仓库副作用检测不可用: ${error instanceof Error ? error.message : String(error)}`);
+      return undefined;
+    }
+  }
+
+  private readGitPorcelain(root: string): string[] {
+    const output = execFileSync('git', ['status', '--porcelain=v1', '--untracked-files=all'], {
+      cwd: root,
+      encoding: 'utf8',
+    });
+
+    return output
+      .split('\n')
+      .map((line) => line.trimEnd())
+      .filter(Boolean)
+      .sort();
+  }
+
+  private assertDryRunNoRepositorySideEffects(guard?: DryRunGuard): void {
+    if (!guard) return;
+
+    const current = this.readGitPorcelain(guard.root);
+    const before = new Set(guard.baseline);
+    const after = new Set(current);
+    const addedOrChanged = current.filter((line) => !before.has(line));
+    const removed = guard.baseline.filter((line) => !after.has(line));
+    const diff = [...addedOrChanged, ...removed.map((line) => `removed baseline state: ${line}`)];
+
+    if (diff.length > 0) {
+      throw new Error(`Dry-run repository side effect detected. Changed git status entries: ${diff.slice(0, 20).join('; ')}`);
+    }
   }
 
   private persistInstanceContext(instance: PipelineInstance): void {
