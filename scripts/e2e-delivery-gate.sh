@@ -631,6 +631,36 @@ raise SystemExit(0 if isinstance(data.get("workflows"), list) else 1)' /tmp/dev-
     record "dashboard workflow proxy" FAIL "GET /api/workflows failed"
   fi
 
+  if curl -fsS "$DASHBOARD_URL/api/pipeline-instances" >/tmp/dev-agent-dashboard-pipeline-instances.json 2>/dev/null; then
+    if python3 -c 'import json, sys
+with open(sys.argv[1], "r", encoding="utf-8") as f:
+    data = json.load(f)
+instances = data.get("instances", [])
+ok = (
+    isinstance(instances, list)
+    and any(
+        isinstance(instance.get("surfaceResults"), dict)
+        and instance.get("coordination", {}).get("projectId")
+        for instance in instances
+    )
+)
+raise SystemExit(0 if ok else 1)' /tmp/dev-agent-dashboard-pipeline-instances.json
+    then
+      dashboard_instance_summary="$(python3 -c 'import json, sys
+with open(sys.argv[1], "r", encoding="utf-8") as f:
+    data = json.load(f)
+instances = data.get("instances", [])
+bound = [i for i in instances if isinstance(i.get("surfaceResults"), dict) and i.get("coordination", {}).get("projectId")]
+latest = bound[0] if bound else {}
+print("instances={} bound={} latest={} status={}".format(len(instances), len(bound), latest.get("id", "none"), latest.get("status", "unknown")))' /tmp/dev-agent-dashboard-pipeline-instances.json)"
+      record "dashboard pipeline instances proxy" PASS "$dashboard_instance_summary"
+    else
+      record "dashboard pipeline instances proxy" FAIL "GET /api/pipeline-instances returned no bound Pipeline instances"
+    fi
+  else
+    record "dashboard pipeline instances proxy" FAIL "GET /api/pipeline-instances failed"
+  fi
+
   if curl -fsS "$DASHBOARD_URL/api/workflows/templates" >/tmp/dev-agent-dashboard-templates.json 2>/dev/null; then
     if python3 -c 'import json, sys
 with open(sys.argv[1], "r", encoding="utf-8") as f:

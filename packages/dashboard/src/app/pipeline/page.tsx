@@ -203,30 +203,33 @@ export default function PipelinePage() {
     return () => clearInterval(timer);
   }, [currentInstance?.status, currentInstance?.id]);
 
-  // 从 localStorage 恢复历史
+  // 从 Gateway 持久化实例恢复历史；localStorage 只作为本浏览器偏好排序线索。
   const restoreHistory = async () => {
     try {
       const stored = localStorage.getItem(STORAGE_KEY);
-      if (stored) {
-        const instanceIds: string[] = JSON.parse(stored);
-        // 去重并过滤空值
-        const uniqueIds = Array.from(new Set(instanceIds)).filter(Boolean);
-        if (uniqueIds.length > 0) {
-          // 批量获取实例状态
-          const res = await fetch('/api/pipeline-instances');
-          if (res.ok) {
-            const data = await res.json();
-            const instances = data.instances || [];
-            // 只保留存储的实例ID对应的实例
-            const storedInstances = instances.filter((i: PipelineInstance) => uniqueIds.includes(i.id));
-            setInstanceHistory(storedInstances);
-            // 如果有正在运行的实例，继续轮询
-            const runningInstance = storedInstances.find((i: PipelineInstance) => i.status === 'running');
-            if (runningInstance) {
-              startPolling(runningInstance.id);
-            }
-          }
-        }
+      const storedIds: string[] = stored ? JSON.parse(stored) : [];
+      const uniqueIds = Array.from(new Set(storedIds)).filter(Boolean);
+
+      const res = await fetch('/api/pipeline-instances');
+      if (!res.ok) return;
+
+      const data = await res.json();
+      const instances: PipelineInstance[] = Array.isArray(data.instances) ? data.instances : [];
+      const byId = new Map(instances.map((instance) => [instance.id, instance]));
+      const preferred = uniqueIds
+        .map((id) => byId.get(id))
+        .filter((instance): instance is PipelineInstance => Boolean(instance));
+      const recent = instances.filter((instance) => !uniqueIds.includes(instance.id));
+      const merged = [...preferred, ...recent]
+        .sort((a, b) => b.startedAt - a.startedAt)
+        .slice(0, 50);
+
+      setInstanceHistory(merged);
+
+      const runningInstance = merged.find((i: PipelineInstance) => i.status === 'running');
+      if (runningInstance) {
+        setCurrentInstance((current) => current || runningInstance);
+        startPolling(runningInstance.id);
       }
     } catch (e) {
       console.error('恢复历史失败:', e);

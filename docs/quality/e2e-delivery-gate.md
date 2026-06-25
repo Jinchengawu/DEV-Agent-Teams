@@ -47,11 +47,13 @@ When Dashboard is already running, the same script also checks:
 - `GET /api/health`
 - `GET /api/v2/documents`
 - `GET /api/workflows`
+- `GET /api/pipeline-instances`
 - `GET /api/workflows/templates`
 - the Pipeline control proxy returns honest unsupported errors when control smoke is enabled
 - `POST /api/pipelines/load-yaml` proxies runtime Pipeline registration to the Gateway
   and `DELETE /api/pipelines/:id` proxies runtime Pipeline deletion
 - Dashboard workflow templates include runtime YAML metadata for custom Pipelines
+- Dashboard Pipeline history can recover persisted instances with coordination bindings
 - Dashboard Pipeline page exposes a YAML importer for runtime custom workflows
 - Knowledge links can preserve project/task context for workflow documents
 - Kanban coordination tasks expose project links and related document counts
