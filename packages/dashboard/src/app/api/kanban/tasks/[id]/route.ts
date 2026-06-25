@@ -69,7 +69,8 @@ export async function PUT(request: Request, { params }: { params: { id: string }
       body.task_type, body.milestone_id, body.parent_id, body.progress,
       body.tags ? JSON.stringify(body.tags) : null, body.due_at, completedAt, params.id
     );
-    return NextResponse.json({ id: params.id, ...body });
+    const task = db.prepare('SELECT * FROM tasks WHERE id = ?').get(params.id);
+    return NextResponse.json(task);
   } finally {
     db.close();
   }
@@ -82,7 +83,10 @@ export async function DELETE(_: Request, { params }: { params: { id: string } })
 
   const db = new Database(DB_PATH);
   try {
-    db.prepare('DELETE FROM tasks WHERE id = ?').run(params.id);
+    const result = db.prepare('DELETE FROM tasks WHERE id = ?').run(params.id);
+    if (result.changes === 0) {
+      return NextResponse.json({ error: 'not found' }, { status: 404 });
+    }
     return NextResponse.json({ deleted: params.id });
   } finally {
     db.close();

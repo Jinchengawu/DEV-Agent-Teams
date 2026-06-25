@@ -90,6 +90,8 @@ The gate also checks Gateway and Dashboard Pipeline instance filters (`status`, 
 and `limit`) so long-running MVP sessions can keep history views bounded and reviewable.
 Workflow list filters are covered in the same way, including Gateway and Dashboard proxy
 checks for `status` and `limit`.
+Dashboard Kanban local task operations are also exercised as a closed loop:
+create a task, update its status/progress, delete it, and confirm it no longer resolves.
 
 To verify restart recovery, opt in with:
 

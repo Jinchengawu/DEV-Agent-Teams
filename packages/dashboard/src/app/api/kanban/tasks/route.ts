@@ -28,6 +28,11 @@ export async function GET(request: Request) {
 
 export async function POST(request: Request) {
   const body = await request.json();
+  const title = typeof body.title === 'string' ? body.title.trim() : '';
+  if (!title) {
+    return NextResponse.json({ error: 'title is required' }, { status: 400 });
+  }
+
   const id = randomUUID();
 
   const db = new Database(DB_PATH);
@@ -37,7 +42,7 @@ export async function POST(request: Request) {
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       id,
-      body.title || '',
+      title,
       body.description || '',
       body.status || 'todo',
       body.assignee || '',
@@ -48,7 +53,8 @@ export async function POST(request: Request) {
       body.due_at || null,
       body.tags ? JSON.stringify(body.tags) : null
     );
-    return NextResponse.json({ id, ...body }, { status: 201 });
+    const task = db.prepare('SELECT * FROM tasks WHERE id = ?').get(id);
+    return NextResponse.json(task, { status: 201 });
   } finally {
     db.close();
   }

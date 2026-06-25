@@ -965,6 +965,58 @@ NODE
   fi
 
   set +e
+  dashboard_kanban_task_output="$(DASHBOARD_URL="$DASHBOARD_URL" node <<'NODE' 2>&1
+const base = process.env.DASHBOARD_URL;
+const createRes = await fetch(`${base}/api/kanban/tasks`, {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({
+    title: 'E2E dashboard kanban local task',
+    description: 'Created and removed by e2e-delivery-gate',
+    assignee: 'dev-frontend',
+    priority: 'medium',
+    task_type: 'test',
+  }),
+});
+const created = await createRes.json();
+if (createRes.status !== 201 || !created.id || created.title !== 'E2E dashboard kanban local task' || created.status !== 'todo') {
+  throw new Error(`create local kanban task failed: ${createRes.status} ${JSON.stringify(created)}`);
+}
+
+const updateRes = await fetch(`${base}/api/kanban/tasks/${encodeURIComponent(created.id)}`, {
+  method: 'PUT',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({ status: 'done', progress: 100 }),
+});
+const updated = await updateRes.json();
+if (updateRes.status !== 200 || updated.id !== created.id || updated.status !== 'done' || Number(updated.progress) !== 100) {
+  throw new Error(`update local kanban task failed: ${updateRes.status} ${JSON.stringify(updated)}`);
+}
+
+const deleteRes = await fetch(`${base}/api/kanban/tasks/${encodeURIComponent(created.id)}`, { method: 'DELETE' });
+const deleted = await deleteRes.json();
+if (deleteRes.status !== 200 || deleted.deleted !== created.id) {
+  throw new Error(`delete local kanban task failed: ${deleteRes.status} ${JSON.stringify(deleted)}`);
+}
+
+const missingRes = await fetch(`${base}/api/kanban/tasks/${encodeURIComponent(created.id)}`);
+if (missingRes.status !== 404) {
+  const missing = await missingRes.text();
+  throw new Error(`deleted local kanban task still resolves: ${missingRes.status} ${missing}`);
+}
+
+console.log(`task=${created.id} lifecycle=create-update-delete`);
+NODE
+)"
+  dashboard_kanban_task_code=$?
+  set -e
+  if [ "$dashboard_kanban_task_code" -eq 0 ]; then
+    record "dashboard kanban local task lifecycle" PASS "$(echo "$dashboard_kanban_task_output" | tail -n 1 | sed 's/|/\\|/g')"
+  else
+    record "dashboard kanban local task lifecycle" FAIL "exit $dashboard_kanban_task_code: $(echo "$dashboard_kanban_task_output" | tail -n 3 | tr '\n' ' ' | sed 's/|/\\|/g')"
+  fi
+
+  set +e
   dashboard_yaml_output="$(DASHBOARD_URL="$DASHBOARD_URL" node <<'NODE' 2>&1
 const base = process.env.DASHBOARD_URL;
 const id = 'e2e-dashboard-yaml-proxy';
