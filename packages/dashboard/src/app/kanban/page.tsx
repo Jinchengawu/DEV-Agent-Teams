@@ -93,6 +93,7 @@ export default function KanbanPage() {
   const [newTask, setNewTask] = useState({ title: '', description: '', assignee: 'dev-frontend', priority: 'medium' })
   const [sourceFilter, setSourceFilter] = useState('all')
   const [assigneeFilter, setAssigneeFilter] = useState('all')
+  const [urlFiltersLoaded, setUrlFiltersLoaded] = useState(false)
 
   const fetchKanban = useCallback(() => {
     const params = new URLSearchParams()
@@ -106,7 +107,32 @@ export default function KanbanPage() {
       .finally(() => setLoading(false))
   }, [sourceFilter, assigneeFilter])
 
-  useEffect(() => { fetchKanban() }, [fetchKanban])
+  const syncUrlFilters = useCallback(() => {
+    const params = new URLSearchParams(window.location.search)
+    if (sourceFilter !== 'all') params.set('source', sourceFilter)
+    else params.delete('source')
+    if (assigneeFilter !== 'all') params.set('assignee', assigneeFilter)
+    else params.delete('assignee')
+
+    const query = params.toString()
+    const nextUrl = query ? `${window.location.pathname}?${query}` : window.location.pathname
+    window.history.replaceState(null, '', nextUrl)
+  }, [sourceFilter, assigneeFilter])
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search)
+    const source = params.get('source')
+    const assignee = params.get('assignee')
+    if (source && SOURCE_FILTERS.some(option => option.value === source)) setSourceFilter(source)
+    if (assignee && AGENT_FILTERS.some(option => option.value === assignee)) setAssigneeFilter(assignee)
+    setUrlFiltersLoaded(true)
+  }, [])
+
+  useEffect(() => {
+    if (!urlFiltersLoaded) return
+    syncUrlFilters()
+    fetchKanban()
+  }, [urlFiltersLoaded, syncUrlFilters, fetchKanban])
 
   const handleCreateTask = async () => {
     if (!newTask.title.trim()) return
