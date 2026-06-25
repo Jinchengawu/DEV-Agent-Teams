@@ -83,6 +83,9 @@ all coordination tasks `blocked`, and still captures the `_experience` document.
 attempts to cancel the failed instance and expects a `409`, proving terminal Pipeline history
 cannot be rewritten by a late control request. The dry-run Git status comparison wraps both
 the cancel and timeout flows, so repository side effects are reported as a delivery failure.
+When Dashboard is available, the same control gate verifies that the Dashboard Pipeline API
+forwards the selected `surfaceTimeoutMs` option by starting a 1ms dry-run and observing the
+expected failed Surface.
 
 To verify restart recovery, opt in with:
 

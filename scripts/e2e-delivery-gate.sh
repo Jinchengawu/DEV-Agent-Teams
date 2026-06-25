@@ -756,6 +756,64 @@ NODE
 
   if [ "${RUN_PIPELINE_CONTROL_SMOKE:-0}" = "1" ]; then
     set +e
+    dashboard_timeout_output="$(DASHBOARD_URL="$DASHBOARD_URL" node <<'NODE' 2>&1
+const base = process.env.DASHBOARD_URL;
+const startRes = await fetch(`${base}/api/pipelines/execute`, {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({
+    pipelineId: 'dev-team-minimum-loop',
+    initialInput: {
+      userRequest: 'E2E dashboard timeout forwarding smoke. Dry-run only; do not write files.',
+      requestedBy: 'e2e-dashboard-timeout-forwarding',
+    },
+    options: { dryRun: true, surfaceTimeoutMs: 1 },
+  }),
+});
+const started = await startRes.json();
+if (!startRes.ok || !started.instanceId) {
+  throw new Error(`dashboard execute did not start: ${startRes.status} ${JSON.stringify(started)}`);
+}
+
+let instance = null;
+for (let i = 0; i < 20; i += 1) {
+  await new Promise((resolve) => setTimeout(resolve, 250));
+  const statusRes = await fetch(`${base}/api/pipeline-instances/${encodeURIComponent(started.instanceId)}`);
+  instance = await statusRes.json();
+  if (!statusRes.ok) {
+    throw new Error(`dashboard instance status failed: ${statusRes.status} ${JSON.stringify(instance)}`);
+  }
+  if (instance.status !== 'running') break;
+}
+
+const failedSurfaces = Object.values(instance?.surfaceResults || {}).filter((result) => result?.status === 'failed');
+const errorText = [instance?.error, ...failedSurfaces.map((result) => result?.error || '')].join(' ');
+if (instance?.status !== 'failed' || failedSurfaces.length < 1 || !/timed out|timeout|aborted/i.test(errorText)) {
+  throw new Error(`dashboard timeout option was not forwarded: ${JSON.stringify({
+    instanceId: started.instanceId,
+    status: instance?.status,
+    error: instance?.error,
+    failedSurfaces: failedSurfaces.map((result) => result.surfaceId),
+    errorText,
+  })}`);
+}
+
+console.log(`instance=${started.instanceId} failedSurfaces=${failedSurfaces.map((result) => result.surfaceId).join(',')}`);
+NODE
+)"
+    dashboard_timeout_code=$?
+    set -e
+    if [ "$dashboard_timeout_code" -eq 0 ]; then
+      record "dashboard pipeline timeout option" PASS "$(echo "$dashboard_timeout_output" | tail -n 1 | sed 's/|/\\|/g')"
+    else
+      record "dashboard pipeline timeout option" FAIL "exit $dashboard_timeout_code: $(echo "$dashboard_timeout_output" | tail -n 3 | tr '\n' ' ' | sed 's/|/\\|/g')"
+    fi
+  else
+    record "dashboard pipeline timeout option" WARN "skipped; set RUN_PIPELINE_CONTROL_SMOKE=1 to verify Dashboard timeout forwarding"
+  fi
+
+  if [ "${RUN_PIPELINE_CONTROL_SMOKE:-0}" = "1" ]; then
+    set +e
     dashboard_kanban_output="$(DASHBOARD_URL="$DASHBOARD_URL" node <<'NODE' 2>&1
 const base = process.env.DASHBOARD_URL;
 const res = await fetch(`${base}/api/kanban`, { cache: 'no-store' });

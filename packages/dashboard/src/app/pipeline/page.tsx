@@ -87,6 +87,12 @@ interface CoordinationSummary {
 
 const STORAGE_KEY = 'pipeline-execution-history';
 const TERMINAL_STATUSES = new Set(['completed', 'failed', 'cancelled']);
+const SURFACE_TIMEOUT_OPTIONS = [
+  { label: '60 秒', value: 60_000 },
+  { label: '90 秒', value: 90_000 },
+  { label: '300 秒', value: 300_000 },
+  { label: '600 秒', value: 600_000 },
+];
 const YAML_DRAFT = `id: custom-dev-loop
 name: Custom Dev Loop
 version: "0.1.0"
@@ -178,6 +184,7 @@ export default function PipelinePage() {
   const [yamlSource, setYamlSource] = useState('dashboard:pipeline-page');
   const [importingYaml, setImportingYaml] = useState(false);
   const [executionMode, setExecutionMode] = useState<'dry-run' | 'live'>('dry-run');
+  const [surfaceTimeoutMs, setSurfaceTimeoutMs] = useState(90_000);
   const [now, setNow] = useState(Date.now());
 
   const livePipelineReady = agentStats.livePipelineReady;
@@ -379,7 +386,7 @@ export default function PipelinePage() {
           },
           options: {
             dryRun: isDryRun,
-            surfaceTimeoutMs: isDryRun ? 90_000 : 300_000,
+            surfaceTimeoutMs,
           },
         }),
       });
@@ -771,7 +778,10 @@ export default function PipelinePage() {
             <div className="grid gap-3 md:grid-cols-2">
               <button
                 type="button"
-                onClick={() => setExecutionMode('dry-run')}
+                onClick={() => {
+                  setExecutionMode('dry-run');
+                  setSurfaceTimeoutMs(90_000);
+                }}
                 className={`rounded-md border p-3 text-left text-sm transition ${
                   executionMode === 'dry-run'
                     ? 'border-blue-500 bg-blue-50 text-blue-900'
@@ -784,7 +794,11 @@ export default function PipelinePage() {
               </button>
               <button
                 type="button"
-                onClick={() => livePipelineReady && setExecutionMode('live')}
+                onClick={() => {
+                  if (!livePipelineReady) return;
+                  setExecutionMode('live');
+                  setSurfaceTimeoutMs(300_000);
+                }}
                 disabled={!livePipelineReady}
                 className={`rounded-md border p-3 text-left text-sm transition disabled:cursor-not-allowed disabled:opacity-60 ${
                   executionMode === 'live'
@@ -796,6 +810,25 @@ export default function PipelinePage() {
                 <div className="font-medium">真实执行</div>
                 <div className="mt-1 text-xs text-gray-500">需要全部 Hermes Agent 在线，按工作流调用真实 Agent 能力</div>
               </button>
+            </div>
+            <div className="mt-3 flex flex-col gap-2 rounded-md border border-gray-200 bg-white p-3 md:flex-row md:items-center md:justify-between">
+              <div>
+                <div className="text-sm font-medium text-gray-900">Surface 超时</div>
+                <div className="text-xs text-gray-500">超过该时长会失败并关闭看板任务</div>
+              </div>
+              <select
+                value={surfaceTimeoutMs}
+                onChange={(event) => setSurfaceTimeoutMs(Number(event.target.value))}
+                className="h-9 rounded-md border border-gray-300 bg-white px-3 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100"
+                aria-label="Surface timeout"
+                data-testid="pipeline-surface-timeout"
+              >
+                {SURFACE_TIMEOUT_OPTIONS.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
             </div>
           </CardContent>
         </Card>
