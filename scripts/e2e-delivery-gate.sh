@@ -854,6 +854,39 @@ print("{} {}".format(data.get("report"), data.get("summary")))' /tmp/dev-agent-d
     record "dashboard delivery gate markdown" FAIL "$(tail -n 3 /tmp/dev-agent-dashboard-delivery-gate-md.err | tr '\n' ' ' | sed 's/|/\\|/g')"
   fi
 
+  if curl -fsS "$DASHBOARD_URL/api/delivery-gate/history?limit=5" >/tmp/dev-agent-dashboard-delivery-gate-history.json 2>/tmp/dev-agent-dashboard-delivery-gate-history.err; then
+    if python3 -c 'import json, sys
+with open(sys.argv[1], "r", encoding="utf-8") as f:
+    data = json.load(f)
+reports = data.get("reports")
+reports = reports if isinstance(reports, list) else []
+latest = reports[0] if reports else {}
+ok = (
+    data.get("ok") is True
+    and isinstance(data.get("count"), int)
+    and data.get("count", 0) == len(reports)
+    and data.get("latestOk") == latest.get("ok")
+    and isinstance(latest.get("report"), str)
+    and latest.get("report", "").startswith("e2e-delivery-gate-")
+    and isinstance(latest.get("summary"), str)
+    and isinstance(latest.get("total"), int)
+    and latest.get("total", 0) > 0
+)
+raise SystemExit(0 if ok else 1)' /tmp/dev-agent-dashboard-delivery-gate-history.json
+    then
+      delivery_gate_history_summary="$(python3 -c 'import json, sys
+with open(sys.argv[1], "r", encoding="utf-8") as f:
+    data = json.load(f)
+latest = data.get("reports", [{}])[0]
+print("count={} latest={} {}".format(data.get("count"), latest.get("report"), latest.get("summary")))' /tmp/dev-agent-dashboard-delivery-gate-history.json)"
+      record "dashboard delivery gate history" PASS "$delivery_gate_history_summary"
+    else
+      record "dashboard delivery gate history" FAIL "payload did not report completed gate history"
+    fi
+  else
+    record "dashboard delivery gate history" FAIL "$(tail -n 3 /tmp/dev-agent-dashboard-delivery-gate-history.err | tr '\n' ' ' | sed 's/|/\\|/g')"
+  fi
+
   if curl -fsS "$DASHBOARD_URL/api/v2/documents" >/tmp/dev-agent-dashboard-docs.json 2>/dev/null; then
     if python3 -c 'import json, sys
 with open(sys.argv[1], "r", encoding="utf-8") as f:

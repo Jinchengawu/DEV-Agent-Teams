@@ -40,6 +40,12 @@ interface DeliveryGateResponse {
   summary?: string
 }
 
+interface DeliveryGateHistoryResponse {
+  ok: boolean
+  count?: number
+  latestOk?: boolean
+}
+
 const readinessFetcher = (url: string): Promise<ReadinessResponse> =>
   fetch(url, { cache: 'no-store' }).then(async (response) => {
     const data = await response.json()
@@ -49,7 +55,7 @@ const readinessFetcher = (url: string): Promise<ReadinessResponse> =>
     return data
   })
 
-const deliveryGateFetcher = (url: string): Promise<DeliveryGateResponse> =>
+const jsonFetcher = <T,>(url: string): Promise<T> =>
   fetch(url, { cache: 'no-store' }).then(async (response) => {
     const data = await response.json()
     if (!response.ok) {
@@ -72,7 +78,14 @@ export default function Dashboard() {
   const {
     data: deliveryGate,
     mutate: refreshDeliveryGate,
-  } = useSWR<DeliveryGateResponse>('/api/delivery-gate/latest', deliveryGateFetcher, {
+  } = useSWR<DeliveryGateResponse>('/api/delivery-gate/latest', jsonFetcher, {
+    refreshInterval: 30000,
+    revalidateOnFocus: false,
+  })
+  const {
+    data: deliveryGateHistory,
+    mutate: refreshDeliveryGateHistory,
+  } = useSWR<DeliveryGateHistoryResponse>('/api/delivery-gate/history?limit=5', jsonFetcher, {
     refreshInterval: 30000,
     revalidateOnFocus: false,
   })
@@ -172,14 +185,29 @@ export default function Dashboard() {
                     : '--'}
                 </p>
                 {deliveryGate?.report && (
-                  <Link
-                    href="/api/delivery-gate/latest?format=markdown"
-                    target="_blank"
-                    className="mt-1 inline-block text-[11px] font-medium text-blue-700 hover:text-blue-900"
-                    data-testid="dashboard-delivery-gate-report-link"
-                  >
-                    Report
-                  </Link>
+                  <div className="mt-1 flex flex-wrap gap-x-2 gap-y-1 text-[11px] font-medium">
+                    <Link
+                      href="/api/delivery-gate/latest?format=markdown"
+                      target="_blank"
+                      className="text-blue-700 hover:text-blue-900"
+                      data-testid="dashboard-delivery-gate-report-link"
+                    >
+                      Report
+                    </Link>
+                    <Link
+                      href="/api/delivery-gate/history?limit=5"
+                      target="_blank"
+                      className="text-blue-700 hover:text-blue-900"
+                      data-testid="dashboard-delivery-gate-history-link"
+                    >
+                      History
+                    </Link>
+                    {deliveryGateHistory?.count ? (
+                      <span className="text-gray-500" data-testid="dashboard-delivery-gate-history-count">
+                        Recent {deliveryGateHistory.count}
+                      </span>
+                    ) : null}
+                  </div>
                 )}
               </div>
               <div className="rounded-md bg-white/80 px-3 py-2">
@@ -196,6 +224,7 @@ export default function Dashboard() {
                 mutate()
                 refreshReadiness()
                 refreshDeliveryGate()
+                refreshDeliveryGateHistory()
               }}
               data-testid="dashboard-readiness-refresh"
             >
