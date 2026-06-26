@@ -12,6 +12,7 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 LOG_DIR="$ROOT/.codex-run/logs"
 CODEX_NODE_BIN="${CODEX_NODE_BIN:-$HOME/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/bin}"
+PNPM_BIN="${PNPM_BIN:-/usr/local/bin/pnpm}"
 
 cd "$ROOT"
 mkdir -p "$LOG_DIR"
@@ -31,18 +32,23 @@ fi
 MODEL_PROVIDER="${MODEL_PROVIDER:-deepseek}"
 MODEL_NAME="${MODEL_NAME:-deepseek-v4-pro}"
 MODEL_BASE_URL="${MODEL_BASE_URL:-https://api.deepseek.com/v1}"
+MODEL_SPEND_GUARD="${MODEL_SPEND_GUARD:-1}"
 API_KEY="${API_KEY:-}"
 GATEWAY_PORT="${GATEWAY_PORT:-8400}"
 DASHBOARD_PORT="${DASHBOARD_PORT:-3000}"
+export MODEL_SPEND_GUARD
 
 if ! command -v node >/dev/null 2>&1; then
   echo "Node.js is required" >&2
   exit 1
 fi
 
-if ! command -v pnpm >/dev/null 2>&1; then
+if [ ! -x "$PNPM_BIN" ] && ! command -v pnpm >/dev/null 2>&1; then
   echo "pnpm is required" >&2
   exit 1
+fi
+if [ ! -x "$PNPM_BIN" ]; then
+  PNPM_BIN="$(command -v pnpm)"
 fi
 
 if ! command -v hermes >/dev/null 2>&1; then
@@ -52,7 +58,7 @@ fi
 
 node_runtime_summary() {
   echo "Node: $(node --version) ($(command -v node))"
-  echo "pnpm: $(pnpm --version) ($(command -v pnpm))"
+  echo "pnpm: $("$PNPM_BIN" --version) ($PNPM_BIN)"
 }
 
 verify_native_module() {
@@ -218,6 +224,11 @@ start_node_service() {
 
 echo "Starting DEV-Agent-Teams services"
 echo "Model: $MODEL_PROVIDER / $MODEL_NAME"
+if [ "$MODEL_SPEND_GUARD" = "1" ] && [ "${ALLOW_LIVE_MODEL:-0}" != "1" ]; then
+  echo "Model spend guard: ON (live model calls blocked; use Codex backfill)"
+else
+  echo "Model spend guard: OFF"
+fi
 node_runtime_summary
 
 verify_native_module "$ROOT/packages/core" "better-sqlite3" "Core session/document store"
@@ -234,7 +245,7 @@ start_node_service \
   "dev-agent-gateway" \
   "$GATEWAY_PORT" \
   "$ROOT/packages/gateway" \
-  "GATEWAY_PORT=$GATEWAY_PORT pnpm dev" \
+  "GATEWAY_PORT=$GATEWAY_PORT MODEL_SPEND_GUARD=$MODEL_SPEND_GUARD ALLOW_LIVE_MODEL=${ALLOW_LIVE_MODEL:-0} '$PNPM_BIN' dev" \
   "Gateway" \
   "$LOG_DIR/gateway-screen.log"
 
@@ -242,7 +253,7 @@ start_node_service \
   "dev-agent-dashboard" \
   "$DASHBOARD_PORT" \
   "$ROOT/packages/dashboard" \
-  "PORT=$DASHBOARD_PORT pnpm dev" \
+  "PORT=$DASHBOARD_PORT '$PNPM_BIN' dev" \
   "Dashboard" \
   "$LOG_DIR/dashboard-screen.log"
 

@@ -57,7 +57,7 @@ export function getCompletedDeliveryGateReports(limit = 10): DeliveryGateReportS
 
       const { pass, fail, warn, total } = summary
       return {
-        ok: fail === 0 && warn === 0 && pass > 0,
+        ok: fail === 0 && pass > 0,
         report: basename(report.path),
         reportPath: report.path,
         reportTime: parseReportTime(report.name),

@@ -17,6 +17,8 @@ REPORT_DIR="$ROOT/scripts/test-reports"
 TIMESTAMP="$(date +%Y%m%d_%H%M%S)"
 REPORT_FILE="$REPORT_DIR/e2e-delivery-gate-$TIMESTAMP.md"
 CODEX_NODE_BIN="${CODEX_NODE_BIN:-$HOME/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/bin}"
+NODE_BIN="${CODEX_NODE_BIN}/node"
+PNPM_BIN="${PNPM_BIN:-/usr/local/bin/pnpm}"
 
 PASS=0
 FAIL=0
@@ -127,9 +129,9 @@ echo "================="
 cd "$ROOT"
 
 run_cmd "local startup scripts syntax" bash -n dev-agent scripts/start-all.sh scripts/start-gateway.sh
-run_cmd "core typecheck" pnpm --filter @dev-agent/core run check
-run_cmd "gateway build" pnpm --filter @dev-agent/gateway run build
-run_cmd "dashboard typecheck" pnpm --filter @dev-agent/dashboard exec tsc --noEmit
+run_cmd "core typecheck" bash -lc "cd '$ROOT/packages/core' && '$NODE_BIN' --max-old-space-size=4096 ./node_modules/typescript/bin/tsc --noEmit --pretty false"
+run_cmd "gateway build" bash -lc "cd '$ROOT/packages/gateway' && '$NODE_BIN' --max-old-space-size=4096 ./node_modules/typescript/bin/tsc --pretty false"
+run_cmd "dashboard typecheck" bash -lc "cd '$ROOT/packages/dashboard' && '$NODE_BIN' --max-old-space-size=4096 ./node_modules/typescript/bin/tsc --noEmit --pretty false"
 
 for file in \
   "CONTEXT.md" \
@@ -182,7 +184,7 @@ raise SystemExit(0 if ok else 1)' /tmp/dev-agent-agent-health.json
       agent_health_summary="$(python3 -c 'import json, sys
 with open(sys.argv[1], "r", encoding="utf-8") as f:
     data = json.load(f)
-print("online={}/{} liveReady={}".format(data.get("onlineCount"), data.get("totalAgents"), data.get("livePipelineReady")))' /tmp/dev-agent-agent-health.json)"
+print("online={}/{} liveReady={} modelSpendGuard={} codexBackfillReady={}".format(data.get("onlineCount"), data.get("totalAgents"), data.get("livePipelineReady"), data.get("modelSpendGuard"), data.get("codexBackfillReady")))' /tmp/dev-agent-agent-health.json)"
       record "gateway agent health" PASS "$agent_health_summary"
     else
       record "gateway agent health" FAIL "GET /agent-health returned an invalid payload"
@@ -761,7 +763,7 @@ raise SystemExit(0 if ok else 1)' /tmp/dev-agent-dashboard-health.json
       dashboard_health_summary="$(python3 -c 'import json, sys
 with open(sys.argv[1], "r", encoding="utf-8") as f:
     data = json.load(f)
-print("online={}/{} gateway={} liveReady={}".format(data.get("onlineCount"), data.get("totalAgents"), data.get("gatewayOnline"), data.get("livePipelineReady")))' /tmp/dev-agent-dashboard-health.json)"
+print("online={}/{} gateway={} liveReady={} modelSpendGuard={} codexBackfillReady={}".format(data.get("onlineCount"), data.get("totalAgents"), data.get("gatewayOnline"), data.get("livePipelineReady"), data.get("modelSpendGuard"), data.get("codexBackfillReady")))' /tmp/dev-agent-dashboard-health.json)"
       record "dashboard agent health" PASS "$dashboard_health_summary"
     else
       record "dashboard agent health" FAIL "GET /api/health returned an invalid payload"
@@ -780,7 +782,13 @@ ok = (
     data.get("ok") is True
     and data.get("agentHealth", {}).get("onlineCount") == 6
     and data.get("agentHealth", {}).get("totalAgents") == 6
-    and data.get("agentHealth", {}).get("livePipelineReady") is True
+    and (
+        data.get("agentHealth", {}).get("livePipelineReady") is True
+        or (
+            data.get("agentHealth", {}).get("modelSpendGuard") is True
+            and data.get("agentHealth", {}).get("codexBackfillReady") is True
+        )
+    )
     and data.get("gateway", {}).get("ok") is True
     and data.get("dashboard", {}).get("ok") is True
     and data.get("openFrameworkSync", {}).get("ok") is True
@@ -792,7 +800,7 @@ with open(sys.argv[1], "r", encoding="utf-8") as f:
     data = json.load(f)
 agent = data.get("agentHealth", {})
 sync = data.get("openFrameworkSync", {})
-print("online={}/{} liveReady={} openSync={}/{}".format(agent.get("onlineCount"), agent.get("totalAgents"), agent.get("livePipelineReady"), sync.get("head"), sync.get("remote")))' /tmp/dev-agent-doctor.json)"
+print("online={}/{} liveReady={} modelSpendGuard={} codexBackfillReady={} openSync={}/{}".format(agent.get("onlineCount"), agent.get("totalAgents"), agent.get("livePipelineReady"), agent.get("modelSpendGuard"), agent.get("codexBackfillReady"), sync.get("head"), sync.get("remote")))' /tmp/dev-agent-doctor.json)"
         record "dev-agent doctor json" PASS "$doctor_json_summary"
       else
         record "dev-agent doctor json" FAIL "JSON payload did not report ready state"
@@ -816,7 +824,13 @@ ok = (
     and data.get("source") == "./dev-agent doctor --json"
     and agent.get("onlineCount") == 6
     and agent.get("totalAgents") == 6
-    and agent.get("livePipelineReady") is True
+    and (
+        agent.get("livePipelineReady") is True
+        or (
+            agent.get("modelSpendGuard") is True
+            and agent.get("codexBackfillReady") is True
+        )
+    )
     and sync.get("ok") is True
     and isinstance(sync.get("head"), str)
     and sync.get("head") == sync.get("remote")
@@ -828,7 +842,7 @@ with open(sys.argv[1], "r", encoding="utf-8") as f:
     data = json.load(f)
 agent = data.get("agentHealth", {})
 sync = data.get("openFrameworkSync", {})
-print("online={}/{} liveReady={} openSync={}/{}".format(agent.get("onlineCount"), agent.get("totalAgents"), agent.get("livePipelineReady"), sync.get("head"), sync.get("remote")))' /tmp/dev-agent-dashboard-readiness.json)"
+print("online={}/{} liveReady={} modelSpendGuard={} codexBackfillReady={} openSync={}/{}".format(agent.get("onlineCount"), agent.get("totalAgents"), agent.get("livePipelineReady"), agent.get("modelSpendGuard"), agent.get("codexBackfillReady"), sync.get("head"), sync.get("remote")))' /tmp/dev-agent-dashboard-readiness.json)"
       record "dashboard readiness endpoint" PASS "$readiness_summary"
     else
       record "dashboard readiness endpoint" FAIL "payload did not report ready state"

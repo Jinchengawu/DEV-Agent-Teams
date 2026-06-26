@@ -11,6 +11,7 @@ import { HermesAgentClient } from '../hermes/HermesAgentClient.js';
 import { IntentRouter } from '../intent/IntentRouter.js';
 import { eventBus } from '../event/EventBus.js';
 import { getGlobalMessageBus } from '../event/MessageBus.js';
+import { createGuardedAgentResult, isModelSpendGuardEnabled } from '../runtime/model-spend-guard.js';
 import type { IOrchestrator } from '../orchestrator/IOrchestrator.js';
 import type {
   TeamAgentConfig,
@@ -104,6 +105,11 @@ export class TeamOrchestrator implements IOrchestrator {
     if (!config) throw new Error(`Agent "${agentId}" not found`);
 
     console.log(`[TeamOrchestrator] runAgent: ${agentId} → "${goal.substring(0, 60)}..."`);
+
+    if (isModelSpendGuardEnabled()) {
+      console.warn(`[TeamOrchestrator] MODEL_SPEND_GUARD blocked live model call for ${agentId}`);
+      return createGuardedAgentResult(agentId);
+    }
 
     const budgetSessionId = sessionId || agentId;
     this.checkBudget(budgetSessionId, 5000);

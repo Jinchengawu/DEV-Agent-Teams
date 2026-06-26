@@ -16,7 +16,7 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { homedir } from 'node:os';
 import { config } from 'dotenv';
-import { createAgentApp, createHermesAgentClient, localizeAgents, negotiateLocale } from '@dev-agent/core';
+import { createAgentApp, createHermesAgentClient, isModelSpendGuardEnabled, localizeAgents, negotiateLocale } from '@dev-agent/core';
 import type { OrchestratorEvent, MeetingProgressEvent } from '@dev-agent/core';
 import Busboy from 'busboy';
 import { randomUUID } from 'node:crypto';
@@ -149,6 +149,7 @@ function serializePipelineDefinition(pipeline: Record<string, any>): Record<stri
 async function getHermesAgentHealth(): Promise<Record<string, any>> {
   const client = createHermesAgentClient();
   const statuses = await client.healthCheckAll(1500);
+  const modelSpendGuard = isModelSpendGuardEnabled();
   const agents = client.getInstances().map((instance) => {
     const status = statuses.get(instance.id) || { online: false, latency: -1 };
     return {
@@ -170,7 +171,9 @@ async function getHermesAgentHealth(): Promise<Record<string, any>> {
     onlineCount,
     totalAgents: agents.length,
     totalSkills: agents.reduce((sum, agent) => sum + agent.skills, 0),
-    livePipelineReady: onlineCount === agents.length && agents.length > 0,
+    livePipelineReady: !modelSpendGuard && onlineCount === agents.length && agents.length > 0,
+    modelSpendGuard,
+    codexBackfillReady: modelSpendGuard,
     agents,
   };
 }

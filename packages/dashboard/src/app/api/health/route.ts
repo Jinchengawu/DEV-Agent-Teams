@@ -15,7 +15,14 @@ interface HealthResult {
   error?: string;
 }
 
-async function checkGateway(request: Request): Promise<{ online: boolean; agents: HealthResult[]; livePipelineReady: boolean; locale?: string }> {
+async function checkGateway(request: Request): Promise<{
+  online: boolean;
+  agents: HealthResult[];
+  livePipelineReady: boolean;
+  modelSpendGuard: boolean;
+  codexBackfillReady: boolean;
+  locale?: string;
+}> {
   try {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 5000);
@@ -53,11 +60,20 @@ async function checkGateway(request: Request): Promise<{ online: boolean; agents
       },
       error: a.error,
     }));
-    return { online: true, agents, livePipelineReady: Boolean(data.livePipelineReady), locale: data.locale };
+    return {
+      online: true,
+      agents,
+      livePipelineReady: Boolean(data.livePipelineReady),
+      modelSpendGuard: Boolean(data.modelSpendGuard),
+      codexBackfillReady: Boolean(data.codexBackfillReady),
+      locale: data.locale,
+    };
   } catch (e) {
     return {
       online: false,
       livePipelineReady: false,
+      modelSpendGuard: false,
+      codexBackfillReady: false,
       agents: ['dev-frontend', 'dev-backend', 'dev-testing', 'dev-devops', 'dev-pm', 'project-admin'].map(id => ({
         id,
         online: false,
@@ -68,7 +84,7 @@ async function checkGateway(request: Request): Promise<{ online: boolean; agents
 }
 
 export async function GET(request: Request) {
-  const { online, agents, livePipelineReady, locale } = await checkGateway(request);
+  const { online, agents, livePipelineReady, modelSpendGuard, codexBackfillReady, locale } = await checkGateway(request);
   const onlineCount = agents.filter((agent) => agent.online).length;
 
   return NextResponse.json({
@@ -76,6 +92,8 @@ export async function GET(request: Request) {
     locale: locale || 'zh',
     gatewayOnline: online,
     livePipelineReady,
+    modelSpendGuard,
+    codexBackfillReady,
     onlineCount,
     totalAgents: agents.length,
     totalSkills: agents.reduce((sum, agent) => sum + (agent.data?.skills || 0), 0),

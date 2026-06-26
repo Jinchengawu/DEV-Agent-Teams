@@ -40,6 +40,14 @@ export type {
 // ── 意图路由（新增）──
 export { IntentRouter } from './intent/IntentRouter';
 
+// ── 模型消耗保护（Codex 回填模式）──
+export {
+  createGuardedAgentResult,
+  createGuardedRoutingDecision,
+  isModelSpendGuardEnabled,
+  modelSpendGuardMessage,
+} from './runtime/model-spend-guard.js';
+
 // ── 事件总线（新增 — Phase 1: 打通孤岛）──
 export { EventBus, eventBus } from './event/EventBus';
 export type { AnyEvent } from './event/EventBus';

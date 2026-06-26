@@ -125,16 +125,18 @@ show_team_health_summary() {
     echo ""
     echo "Team Coordination:"
     if curl -fsS "http://127.0.0.1:8400/agent-health" > "$tmp_file" 2>/dev/null; then
-        local online total skills live_ready
+        local online total skills live_ready spend_guard backfill_ready
         online="$(print_json_field "$tmp_file" "onlineCount")"
         total="$(print_json_field "$tmp_file" "totalAgents")"
         skills="$(print_json_field "$tmp_file" "totalSkills")"
         live_ready="$(print_json_field "$tmp_file" "livePipelineReady")"
+        spend_guard="$(print_json_field "$tmp_file" "modelSpendGuard")"
+        backfill_ready="$(print_json_field "$tmp_file" "codexBackfillReady")"
 
-        if [ "$online" = "$total" ] && [ -n "$total" ] && [ "$live_ready" = "True" ]; then
-            echo -e "  ${GREEN}✅ Gateway Agent Health: online=${online}/${total}, skills=${skills}, livePipelineReady=${live_ready}${NC}"
+        if [ "$online" = "$total" ] && [ -n "$total" ] && { [ "$live_ready" = "True" ] || { [ "$spend_guard" = "True" ] && [ "$backfill_ready" = "True" ]; }; }; then
+            echo -e "  ${GREEN}✅ Gateway Agent Health: online=${online}/${total}, skills=${skills}, livePipelineReady=${live_ready}, modelSpendGuard=${spend_guard}, codexBackfillReady=${backfill_ready}${NC}"
         else
-            echo -e "  ${YELLOW}⚠ Gateway Agent Health: online=${online:-0}/${total:-0}, skills=${skills:-0}, livePipelineReady=${live_ready:-unknown}${NC}"
+            echo -e "  ${YELLOW}⚠ Gateway Agent Health: online=${online:-0}/${total:-0}, skills=${skills:-0}, livePipelineReady=${live_ready:-unknown}, modelSpendGuard=${spend_guard:-unknown}, codexBackfillReady=${backfill_ready:-unknown}${NC}"
         fi
     else
         echo -e "  ${RED}❌ Gateway Agent Health 不可访问${NC}"
@@ -317,8 +319,11 @@ with open(sys.argv[1], "r", encoding="utf-8") as f:
     data = json.load(f)
 
 agents = data.get("agents", [])
+mode_ok = data.get("livePipelineReady") is True or (
+    data.get("modelSpendGuard") is True and data.get("codexBackfillReady") is True
+)
 ok = (
-    data.get("livePipelineReady") is True
+    mode_ok
     and data.get("onlineCount") == data.get("totalAgents") == 6
     and len(agents) == 6
     and all(agent.get("online") is True for agent in agents)
@@ -335,7 +340,7 @@ import sys
 with open(sys.argv[1], "r", encoding="utf-8") as f:
     data = json.load(f)
 
-print(f"online={data.get('onlineCount')}/{data.get('totalAgents')} liveReady={data.get('livePipelineReady')}")
+print(f"online={data.get('onlineCount')}/{data.get('totalAgents')} liveReady={data.get('livePipelineReady')} modelSpendGuard={data.get('modelSpendGuard')} codexBackfillReady={data.get('codexBackfillReady')}")
 PY
 )"
         doctor_pass "Agent 团队就绪: $summary"
@@ -510,9 +515,16 @@ agent_health = http_json("http://127.0.0.1:8400/agent-health")
 open_framework_sync = open_framework_sync_check(open_framework_root)
 
 agent_data = agent_health.get("data") if agent_health.get("ok") else {}
+agent_mode_ready = (
+    isinstance(agent_data, dict)
+    and (
+        agent_data.get("livePipelineReady") is True
+        or (agent_data.get("modelSpendGuard") is True and agent_data.get("codexBackfillReady") is True)
+    )
+)
 agent_ready = (
     isinstance(agent_data, dict)
-    and agent_data.get("livePipelineReady") is True
+    and agent_mode_ready
     and agent_data.get("onlineCount") == agent_data.get("totalAgents") == 6
     and isinstance(agent_data.get("agents"), list)
     and len(agent_data.get("agents")) == 6
@@ -549,6 +561,8 @@ payload = {
         "onlineCount": agent_data.get("onlineCount") if isinstance(agent_data, dict) else None,
         "totalAgents": agent_data.get("totalAgents") if isinstance(agent_data, dict) else None,
         "livePipelineReady": agent_data.get("livePipelineReady") if isinstance(agent_data, dict) else None,
+        "modelSpendGuard": agent_data.get("modelSpendGuard") if isinstance(agent_data, dict) else None,
+        "codexBackfillReady": agent_data.get("codexBackfillReady") if isinstance(agent_data, dict) else None,
     },
     "openFrameworkSync": open_framework_sync,
     "checkedAt": int(__import__("time").time() * 1000),
