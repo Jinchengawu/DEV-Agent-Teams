@@ -895,9 +895,16 @@ latest = data.get("latestInstance") or {}
 kanban = data.get("kanban") or {}
 documents = data.get("documents") or {}
 gate = data.get("deliveryGate") or {}
+checks = data.get("checks") or {}
+missing = data.get("missing")
 ok = (
     data.get("ok") is True
     and gate.get("ok") is True
+    and isinstance(checks, dict)
+    and len(checks) >= 7
+    and all(value is True for value in checks.values())
+    and missing == []
+    and data.get("checkSummary") == "{}/{}".format(len(checks), len(checks))
     and isinstance(latest.get("id"), str)
     and latest.get("id", "").startswith("pipeline-")
     and isinstance(latest.get("projectId"), str)
@@ -914,9 +921,10 @@ with open(sys.argv[1], "r", encoding="utf-8") as f:
 latest = data.get("latestInstance") or {}
 kanban = data.get("kanban") or {}
 documents = data.get("documents") or {}
-print("instance={} project={} tasks={}/{} docs={}/{}".format(
+print("instance={} project={} checks={} tasks={}/{} docs={}/{}".format(
     latest.get("id"),
     latest.get("projectId"),
+    data.get("checkSummary"),
     kanban.get("taskCount"),
     latest.get("surfaceTaskCount"),
     documents.get("boundProjectDocumentCount"),

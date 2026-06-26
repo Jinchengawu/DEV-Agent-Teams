@@ -36,6 +36,12 @@ function getTaskStatusCounts(tasks: any[]) {
   }, {});
 }
 
+function getMissingChecks(checks: Record<string, boolean>) {
+  return Object.entries(checks)
+    .filter(([, passed]) => !passed)
+    .map(([name]) => name);
+}
+
 export async function GET() {
   const [instancesData, workflowsData, tasksData, documentsData] = await Promise.all([
     fetchGatewayJson('/pipeline-instances?limit=1'),
@@ -61,19 +67,24 @@ export async function GET() {
     return Boolean(doc.taskId) || relatedTasks.length > 0 || doc.metadata?.instanceId === latestInstance?.id;
   });
   const taskStatusCounts = getTaskStatusCounts(projectTasks);
-  const loopOk = Boolean(
-    latestGate?.ok
-    && latestInstance?.id
-    && projectId
-    && surfaceTaskCount > 0
-    && projectTasks.length > 0
-    && surfaceDocumentCount > 0
-    && boundProjectDocuments.length > 0,
-  );
+  const checks = {
+    deliveryGateOk: Boolean(latestGate?.ok),
+    latestPipelinePresent: Boolean(latestInstance?.id),
+    projectBound: Boolean(projectId),
+    surfaceTasksBound: surfaceTaskCount > 0,
+    projectTasksPresent: projectTasks.length > 0,
+    surfaceDocumentsBound: surfaceDocumentCount > 0,
+    boundDocumentsPresent: boundProjectDocuments.length > 0,
+  };
+  const missing = getMissingChecks(checks);
+  const loopOk = missing.length === 0;
 
   return NextResponse.json({
     ok: loopOk,
     checkedAt: Date.now(),
+    checks,
+    missing,
+    checkSummary: `${Object.values(checks).filter(Boolean).length}/${Object.keys(checks).length}`,
     deliveryGate: latestGate
       ? {
           ok: latestGate.ok,

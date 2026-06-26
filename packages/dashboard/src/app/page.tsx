@@ -49,6 +49,8 @@ interface DeliveryGateHistoryResponse {
 interface TeamLoopStatusResponse {
   ok: boolean
   checkedAt?: number
+  checkSummary?: string
+  missing?: string[]
   latestInstance?: {
     id: string
     status: string
@@ -271,7 +273,16 @@ export default function Dashboard() {
       {/* Team Coordination Loop */}
       <Card data-testid="dashboard-team-loop-card">
         <CardHeader className="flex flex-row items-center justify-between">
-          <CardTitle>Team Coordination Loop</CardTitle>
+          <div>
+            <CardTitle>Team Coordination Loop</CardTitle>
+            <p className="mt-1 text-xs text-gray-500" data-testid="dashboard-team-loop-diagnostics">
+              {teamLoop?.checkSummary
+                ? teamLoop.ok
+                  ? `Checks ${teamLoop.checkSummary}`
+                  : `Missing ${teamLoop.missing?.[0] || 'coordination evidence'}`
+                : 'Checking loop evidence'}
+            </p>
+          </div>
           <Badge className={teamLoop?.ok ? 'bg-green-600' : 'bg-amber-600'} data-testid="dashboard-team-loop-badge">
             {teamLoop?.ok ? 'Linked' : 'Incomplete'}
           </Badge>
