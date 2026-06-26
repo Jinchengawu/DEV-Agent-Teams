@@ -191,6 +191,12 @@ print("online={}/{} liveReady={}".format(data.get("onlineCount"), data.get("tota
     record "gateway agent health" FAIL "GET /agent-health failed"
   fi
 
+  if curl -fsS "$DASHBOARD_URL/api/health" >/dev/null 2>&1; then
+    run_cmd "dev-agent start idempotent readiness" ./dev-agent start
+  else
+    record "dev-agent start idempotent readiness" WARN "skipped; Dashboard readiness endpoint is unavailable"
+  fi
+
   if curl -fsS "$GATEWAY_URL/pipelines" >/tmp/dev-agent-pipelines.json 2>/dev/null; then
     if python3 -c 'import json, sys
 with open(sys.argv[1], "r", encoding="utf-8") as f:

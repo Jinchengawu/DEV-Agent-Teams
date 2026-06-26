@@ -96,6 +96,23 @@ wait_for_port() {
   return 1
 }
 
+wait_for_http() {
+  local url="$1"
+  local label="$2"
+  local attempt
+
+  for attempt in $(seq 1 60); do
+    if curl -fsS "$url" >/dev/null 2>&1; then
+      echo "  OK $label is ready: $url"
+      return 0
+    fi
+    sleep 1
+  done
+
+  echo "  FAIL $label did not become ready: $url" >&2
+  return 1
+}
+
 run_detached() {
   local session="$1"
   local command="$2"
@@ -228,6 +245,12 @@ start_node_service \
   "PORT=$DASHBOARD_PORT pnpm dev" \
   "Dashboard" \
   "$LOG_DIR/dashboard-screen.log"
+
+echo ""
+echo "Verifying HTTP readiness"
+wait_for_http "http://127.0.0.1:$GATEWAY_PORT/health" "Gateway health"
+wait_for_http "http://127.0.0.1:$GATEWAY_PORT/agent-health" "Gateway agent health"
+wait_for_http "http://127.0.0.1:$DASHBOARD_PORT/api/health" "Dashboard health"
 
 echo ""
 echo "Services are ready:"
