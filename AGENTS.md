@@ -76,6 +76,7 @@ cd packages/dashboard && pnpm lint      # Lint dashboard
 ## Development Notes
 
 - **Team Coordination Layer**: DEV-Agent-Teams should deepen Meeting, Document, Kanban, Workflow, Artifact, Experience, Context, and Event modules.
+- **Framework sync requirement**: When DEV-Agent-Teams changes shared/core framework capabilities such as orchestration, pipeline control/recovery, documents, kanban, delivery gates, dashboard observability, provider compatibility, or local startup reliability, mirror the reusable change back into `/Users/zhuizhui/网盘同步/work/学习/AI/Open-Agent-Teams` before considering the work fully delivered.
 - **Avoid wheel rebuilding**: Do not reimplement single-Agent runtime loops when Hermes or another runtime adapter can own that behavior.
 - **Minimum lifecycle**: Keep the first product loop narrow: request -> meeting/PRD -> kanban planning -> implementation surfaces -> testing -> release -> retrospective.
 - **E2E delivery gate**: Every development result must run closed-loop verification. At minimum run `bash scripts/e2e-delivery-gate.sh`; when Hermes Agents are available run it with `RUN_LIVE_PIPELINE=1`.
