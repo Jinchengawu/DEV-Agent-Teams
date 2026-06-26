@@ -18,6 +18,9 @@ out/
 coverage/
 .nyc_output/
 scripts/test-reports/
+htmlcov/
+.coverage
+.pytest_cache/
 
 # Environment variables
 .env
@@ -47,6 +50,9 @@ secrets.json
 # AI / Editor local configs
 .cursor/mcp.json
 .claude/settings.local.json
+.codex-run/
+.hermes/
+.log/
 
 # Logs
 *.log
@@ -72,6 +78,25 @@ Thumbs.db
 
 # Backup directories
 */bk/*
+
+# Agent-generated workspaces and scratch projects
+.agent-workspace/
+**/.agent-workspace/
+Users/
+test-project/
+test-quant-trading/
+login-system/
+stock-analysis-frontend/
+packages/fundamentalsai-dashboard/
+packages/tiny-notes/
+packages/gateway/docs/
+docs/artifacts/
+
+# One-off repair / smoke scripts
+fix_openclaw*.py
+test-all-modules.ts
+run_dcf_tests.py
+smoke_test.py
 
 # Docker
 .docker/

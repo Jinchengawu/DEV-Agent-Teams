@@ -1219,62 +1219,6 @@ async function main(): Promise<void> {
         }
       }
 
-      // ── 认证系统 ──
-      if (path === '/auth/register' && req.method === 'POST') {
-        try {
-          const { username, password, email, name } = JSON.parse(body);
-          const result = agentApp.authService.register({ username, password, email, name });
-          res.writeHead(201, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({
-            user: result.user,
-            accessToken: result.tokens.accessToken,
-            expiresIn: result.tokens.expiresIn,
-          }));
-        } catch (err) {
-          const e = err as { statusCode?: number; message?: string };
-          res.writeHead(e.statusCode || 500, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({ error: e.message || '注册失败' }));
-        }
-        return;
-      }
-
-      if (path === '/auth/login' && req.method === 'POST') {
-        try {
-          const { username, password } = JSON.parse(body);
-          const result = agentApp.authService.login({ username, password });
-          res.writeHead(200, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({
-            user: result.user,
-            accessToken: result.tokens.accessToken,
-            expiresIn: result.tokens.expiresIn,
-          }));
-        } catch (err) {
-          const e = err as { statusCode?: number; message?: string };
-          res.writeHead(e.statusCode || 500, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({ error: e.message || '登录失败' }));
-        }
-        return;
-      }
-
-      if (path === '/auth/me' && req.method === 'GET') {
-        const authHeader = req.headers['authorization'];
-        if (!authHeader || !authHeader.startsWith('Bearer ')) {
-          res.writeHead(401, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({ error: '请先登录' }));
-          return;
-        }
-        try {
-          const user = agentApp.authService.verifyToken(authHeader.slice(7));
-          res.writeHead(200, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({ user }));
-        } catch (err) {
-          const e = err as { statusCode?: number; message?: string };
-          res.writeHead(e.statusCode || 401, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({ error: e.message || '令牌无效' }));
-        }
-        return;
-      }
-
       // 404
       res.writeHead(404, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ error: 'Not Found' }));
@@ -1300,9 +1244,6 @@ async function main(): Promise<void> {
     console.log(`✅ Gateway 就绪 → http://${config.host}:${config.port}`);
     console.log('');
     console.log('📡 端点:');
-    console.log('  POST /auth/register        — 用户注册');
-    console.log('  POST /auth/login           — 用户登录');
-    console.log('  GET  /auth/me              — 当前用户');
     console.log('  GET  /health               — 健康检查');
     console.log('  GET  /agents               — Agent 列表');
     console.log('  POST /v1/chat/completions  — 对话（OpenAI 兼容）');

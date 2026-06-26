@@ -16,8 +16,6 @@ import { SessionManager } from './session/SessionManager';
 import { WorkflowStateManager } from './session/WorkflowStateManager';
 import { TokenBudgetManager } from './telemetry/TokenBudgetManager';
 import { TeamOrchestrator, createDevTeamOrchestrator } from './team/TeamOrchestrator';
-import { AuthService } from './auth/AuthService';
-import { createAuthRoutes } from './auth/routes';
 import type { OrchestratorEvent } from './orchestrator/types.js';
 import { setKanbanDatabase, createKanbanTools } from './tools/kanban-tools.js';
 import { createDocumentTools } from './tools/document-tools.js';
@@ -26,14 +24,6 @@ import { createPipelineOrchestrator } from './pipeline/Orchestrator.js';
 import { DEV_TEAM_MINIMUM_LOOP_PIPELINE } from './lifecycle/dev-team-minimum-loop.js';
 import { getGlobalKnowledgeCenter } from './knowledge/KnowledgeCenter.js';
 import { getGlobalDocumentManager } from './knowledge/DocumentManager.js';
-import { StockRepository } from './stock/StockRepository.js';
-import { createStockRoutes } from './stock/routes.js';
-import { ValuationService } from './valuation/ValuationService.js';
-import { createValuationRoutes } from './valuation/routes.js';
-import { WatchlistService } from './watchlist/WatchlistService.js';
-import { createWatchlistRoutes } from './watchlist/routes.js';
-import { ScreenerService } from './screener/ScreenerService.js';
-import { createScreenerRoutes } from './screener/routes.js';
 
 // ============================================================================
 // Types
@@ -54,11 +44,6 @@ export interface AgentApp {
   pipelineOrchestrator: import('./pipeline/Orchestrator.js').PipelineOrchestrator;
   knowledgeCenter: import('./knowledge/KnowledgeCenter.js').KnowledgeCenter;
   documentManager: import('./knowledge/DocumentManager.js').DocumentManager;
-  authService: AuthService;
-  stockRepo: StockRepository;
-  valuationService: ValuationService;
-  watchlistService: WatchlistService;
-  screenerService: ScreenerService;
   close: () => Promise<void>;
 }
 
@@ -127,25 +112,6 @@ export async function createAgentApp(config: AgentAppConfig = {}): Promise<Agent
 
   const app = express();
   app.use(express.json({ limit: '1mb' }));
-
-  // ── 认证系统 ──
-  // AuthService 使用和 SessionManager 同一个 SQLite 数据库
-  const authService = new AuthService(sessionManager.getDb());
-  const authRoutes = createAuthRoutes(authService);
-  app.use('/auth', authRoutes);
-  console.log('[AgentApp] AuthService 已初始化');
-
-  // ── 股票分析子系统 ──
-  const stockRepo = new StockRepository(sessionManager.getDb());
-  const valuationService = new ValuationService(stockRepo);
-  const watchlistService = new WatchlistService(stockRepo);
-  const screenerService = new ScreenerService(stockRepo);
-
-  app.use('/api/v1/stocks', createStockRoutes(stockRepo, valuationService));
-  app.use('/api/v1/valuation', createValuationRoutes(valuationService));
-  app.use('/api/v1/watchlists', createWatchlistRoutes(watchlistService));
-  app.use('/api/v1/screener', createScreenerRoutes(screenerService));
-  console.log('[AgentApp] 股票分析子系统已初始化 (stocks, valuation, watchlists, screener)');
 
   // Per-session concurrency lock
   const sessionLocks = new Map<string, Promise<void>>();
@@ -335,5 +301,5 @@ export async function createAgentApp(config: AgentAppConfig = {}): Promise<Agent
     sessionManager.close();
   };
 
-  return { app, sessionManager, orchestrator, tokenBudgetManager, pipelineOrchestrator, knowledgeCenter, documentManager, authService, stockRepo, valuationService, watchlistService, screenerService, close };
+  return { app, sessionManager, orchestrator, tokenBudgetManager, pipelineOrchestrator, knowledgeCenter, documentManager, close };
 }

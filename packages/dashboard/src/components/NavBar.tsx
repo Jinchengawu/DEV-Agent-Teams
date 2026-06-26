@@ -1,24 +1,16 @@
 'use client';
-import { usePathname, useRouter } from 'next/navigation';
+import { usePathname } from 'next/navigation';
 import Link from 'next/link';
 import { NAV_ITEMS } from '@/lib/constants';
 import { useAgentHealth } from '@/hooks/useAgentHealth';
-import { useAuth } from '@/lib/auth-context';
 import { useI18n } from '@/lib/i18n';
 import { LanguageSwitcher } from '@/components/LanguageSwitcher';
 
 export function NavBar() {
   const pathname = usePathname();
-  const router = useRouter();
   const { stats } = useAgentHealth();
   const systemOnline = stats.onlineCount > 0;
-  const { user, loading, logout } = useAuth();
   const { t } = useI18n();
-
-  const handleLogout = () => {
-    logout();
-    router.push('/login');
-  };
 
   return (
     <>
@@ -78,51 +70,6 @@ export function NavBar() {
                 </svg>
               </button>
               <LanguageSwitcher />
-
-              {/* User section */}
-              {loading ? (
-                <div className="h-8 w-8 animate-pulse rounded-md bg-slate-200" />
-              ) : user ? (
-                <div className="flex items-center space-x-3">
-                  <div className="relative group">
-                    <button className="flex h-8 w-8 cursor-pointer items-center justify-center rounded-md border border-slate-300 bg-white text-sm font-bold text-[#111820] transition-all hover:ring-2 hover:ring-[#007f96]/20">
-                      {user.name?.[0] || user.username[0].toUpperCase()}
-                    </button>
-                    {/* Dropdown */}
-                    <div className="invisible absolute right-0 z-50 mt-2 w-48 rounded-md border border-slate-200 bg-white py-1 opacity-0 shadow-2xl shadow-slate-300/40 transition-all group-hover:visible group-hover:opacity-100">
-                      <div className="border-b border-slate-200 px-4 py-2">
-                        <p className="text-sm font-medium text-[#111820]">
-                          {user.name || user.username}
-                        </p>
-                        {user.email && (
-                          <p className="truncate text-xs text-slate-500">{user.email}</p>
-                        )}
-                      </div>
-                      <button
-                        onClick={handleLogout}
-                        className="w-full px-4 py-2 text-left text-sm text-slate-700 transition-colors hover:bg-slate-100"
-                      >
-                        登出
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              ) : (
-                <div className="flex items-center space-x-2">
-                  <Link
-                    href="/login"
-                    className="px-3 py-1.5 text-sm font-medium text-[#007f96] transition-colors hover:text-[#111820]"
-                  >
-                    {t('common.login')}
-                  </Link>
-                  <Link
-                    href="/register"
-                    className="rounded-md bg-[#111820] px-3 py-1.5 text-sm font-bold text-white transition-colors hover:bg-black"
-                  >
-                    {t('common.register')}
-                  </Link>
-                </div>
-              )}
             </div>
           </div>
         </div>
