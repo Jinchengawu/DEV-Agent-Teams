@@ -150,6 +150,38 @@ show_team_health_summary() {
         echo -e "  ${RED}❌ Dashboard API Health 不可访问${NC}"
     fi
 
+    if curl -fsS "http://127.0.0.1:3000/api/delivery-gate/latest" > "$tmp_file" 2>/dev/null; then
+        local gate_ok gate_report gate_summary
+        gate_ok="$(print_json_field "$tmp_file" "ok")"
+        gate_report="$(print_json_field "$tmp_file" "report")"
+        gate_summary="$(print_json_field "$tmp_file" "summary")"
+
+        if [ "$gate_ok" = "True" ]; then
+            echo -e "  ${GREEN}✅ Delivery Gate: ${gate_summary} (${gate_report})${NC}"
+        else
+            echo -e "  ${YELLOW}⚠ Delivery Gate: ${gate_summary:-unknown} (${gate_report:-no-report})${NC}"
+        fi
+    else
+        echo -e "  ${YELLOW}⚠ Delivery Gate 报告不可访问；请运行 scripts/e2e-delivery-gate.sh${NC}"
+    fi
+
+    if curl -fsS "http://127.0.0.1:3000/api/team-loop/status" > "$tmp_file" 2>/dev/null; then
+        local loop_ok checks instance_id project_id latest_doc
+        loop_ok="$(print_json_field "$tmp_file" "ok")"
+        checks="$(print_json_field "$tmp_file" "checkSummary")"
+        instance_id="$(print_json_field "$tmp_file" "latestInstance.id")"
+        project_id="$(print_json_field "$tmp_file" "latestInstance.projectId")"
+        latest_doc="$(print_json_field "$tmp_file" "documents.latestDocument.id")"
+
+        if [ "$loop_ok" = "True" ]; then
+            echo -e "  ${GREEN}✅ Team Loop Evidence: checks=${checks}, instance=${instance_id}, project=${project_id}, latestDoc=${latest_doc}${NC}"
+        else
+            echo -e "  ${YELLOW}⚠ Team Loop Evidence: checks=${checks:-unknown}, instance=${instance_id:-none}, project=${project_id:-none}${NC}"
+        fi
+    else
+        echo -e "  ${YELLOW}⚠ Team Loop 状态不可访问${NC}"
+    fi
+
     rm -f "$tmp_file"
 }
 
