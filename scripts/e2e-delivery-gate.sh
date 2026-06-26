@@ -811,6 +811,34 @@ print("online={}/{} liveReady={}".format(agent.get("onlineCount"), agent.get("to
     record "dashboard readiness endpoint" FAIL "$(tail -n 3 /tmp/dev-agent-dashboard-readiness.err | tr '\n' ' ' | sed 's/|/\\|/g')"
   fi
 
+  if curl -fsS "$DASHBOARD_URL/api/delivery-gate/latest" >/tmp/dev-agent-dashboard-delivery-gate.json 2>/tmp/dev-agent-dashboard-delivery-gate.err; then
+    if python3 -c 'import json, sys
+with open(sys.argv[1], "r", encoding="utf-8") as f:
+    data = json.load(f)
+ok = (
+    isinstance(data.get("ok"), bool)
+    and isinstance(data.get("pass"), int)
+    and isinstance(data.get("fail"), int)
+    and isinstance(data.get("warn"), int)
+    and data.get("pass", 0) + data.get("fail", 0) + data.get("warn", 0) > 0
+    and isinstance(data.get("summary"), str)
+    and isinstance(data.get("report"), str)
+    and data.get("report", "").startswith("e2e-delivery-gate-")
+)
+raise SystemExit(0 if ok else 1)' /tmp/dev-agent-dashboard-delivery-gate.json
+    then
+      delivery_gate_summary="$(python3 -c 'import json, sys
+with open(sys.argv[1], "r", encoding="utf-8") as f:
+    data = json.load(f)
+print("{} {}".format(data.get("report"), data.get("summary")))' /tmp/dev-agent-dashboard-delivery-gate.json)"
+      record "dashboard delivery gate endpoint" PASS "$delivery_gate_summary"
+    else
+      record "dashboard delivery gate endpoint" FAIL "payload did not report a completed latest gate"
+    fi
+  else
+    record "dashboard delivery gate endpoint" FAIL "$(tail -n 3 /tmp/dev-agent-dashboard-delivery-gate.err | tr '\n' ' ' | sed 's/|/\\|/g')"
+  fi
+
   if curl -fsS "$DASHBOARD_URL/api/v2/documents" >/tmp/dev-agent-dashboard-docs.json 2>/dev/null; then
     if python3 -c 'import json, sys
 with open(sys.argv[1], "r", encoding="utf-8") as f:

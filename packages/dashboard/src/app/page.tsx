@@ -28,7 +28,27 @@ interface ReadinessResponse {
   }
 }
 
+interface DeliveryGateResponse {
+  ok: boolean
+  report?: string
+  reportTime?: string | null
+  pass?: number
+  fail?: number
+  warn?: number
+  total?: number
+  summary?: string
+}
+
 const readinessFetcher = (url: string): Promise<ReadinessResponse> =>
+  fetch(url, { cache: 'no-store' }).then(async (response) => {
+    const data = await response.json()
+    if (!response.ok) {
+      return { ok: false, ...data }
+    }
+    return data
+  })
+
+const deliveryGateFetcher = (url: string): Promise<DeliveryGateResponse> =>
   fetch(url, { cache: 'no-store' }).then(async (response) => {
     const data = await response.json()
     if (!response.ok) {
@@ -45,6 +65,13 @@ export default function Dashboard() {
     isLoading: readinessLoading,
     mutate: refreshReadiness,
   } = useSWR<ReadinessResponse>('/api/readiness', readinessFetcher, {
+    refreshInterval: 30000,
+    revalidateOnFocus: false,
+  })
+  const {
+    data: deliveryGate,
+    mutate: refreshDeliveryGate,
+  } = useSWR<DeliveryGateResponse>('/api/delivery-gate/latest', deliveryGateFetcher, {
     refreshInterval: 30000,
     revalidateOnFocus: false,
   })
@@ -119,7 +146,7 @@ export default function Dashboard() {
                 </p>
               </div>
             </div>
-            <div className="grid grid-cols-2 gap-2 text-xs sm:grid-cols-4">
+            <div className="grid grid-cols-2 gap-2 text-xs sm:grid-cols-5">
               <div className="rounded-md bg-white/80 px-3 py-2">
                 <p className="text-gray-500">Gateway</p>
                 <p className="font-semibold text-gray-900">{readiness?.gateway?.ok ? 'Online' : '--'}</p>
@@ -131,6 +158,16 @@ export default function Dashboard() {
               <div className="rounded-md bg-white/80 px-3 py-2">
                 <p className="text-gray-500">Hermes</p>
                 <p className="font-semibold text-gray-900">{readiness?.runtime?.hermes?.ok ? 'OK' : '--'}</p>
+              </div>
+              <div className="rounded-md bg-white/80 px-3 py-2" data-testid="dashboard-delivery-gate-summary">
+                <p className="text-gray-500">E2E Gate</p>
+                <p className="font-semibold text-gray-900">
+                  {deliveryGate?.total
+                    ? deliveryGate.ok
+                      ? `${deliveryGate.pass}/${deliveryGate.total} PASS`
+                      : `${deliveryGate.fail ?? 0} FAIL`
+                    : '--'}
+                </p>
               </div>
               <div className="rounded-md bg-white/80 px-3 py-2">
                 <p className="text-gray-500">Checked</p>
@@ -145,6 +182,7 @@ export default function Dashboard() {
               onClick={() => {
                 mutate()
                 refreshReadiness()
+                refreshDeliveryGate()
               }}
               data-testid="dashboard-readiness-refresh"
             >
