@@ -75,6 +75,8 @@ export default function Dashboard() {
     refreshInterval: 30000,
     revalidateOnFocus: false,
   })
+  const deliveryGateLoaded = Boolean(deliveryGate?.total)
+  const mvpReady = readiness?.ok === true && deliveryGate?.ok === true
 
   const statCards = [
     {
@@ -128,14 +130,14 @@ export default function Dashboard() {
     <div className="space-y-6">
       {/* MVP Readiness */}
       <Card
-        className={readiness?.ok ? 'border-green-200 bg-green-50' : 'border-amber-200 bg-amber-50'}
+        className={mvpReady ? 'border-green-200 bg-green-50' : 'border-amber-200 bg-amber-50'}
         data-testid="dashboard-readiness-card"
       >
         <CardContent className="p-4">
           <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
             <div className="flex flex-wrap items-center gap-3">
-              <Badge className={readiness?.ok ? 'bg-green-600' : 'bg-amber-600'} data-testid="dashboard-readiness-badge">
-                {readinessLoading ? 'Checking' : readiness?.ok ? 'MVP Ready' : 'Needs Attention'}
+              <Badge className={mvpReady ? 'bg-green-600' : 'bg-amber-600'} data-testid="dashboard-readiness-badge">
+                {readinessLoading || !deliveryGateLoaded ? 'Checking' : mvpReady ? 'MVP Ready' : 'Needs Attention'}
               </Badge>
               <div>
                 <p className="text-sm font-semibold text-gray-900">Team Coordination Loop</p>
