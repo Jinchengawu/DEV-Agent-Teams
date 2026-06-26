@@ -10,6 +10,7 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+OPEN_FRAMEWORK_ROOT="${OPEN_FRAMEWORK_ROOT:-/Users/zhuizhui/网盘同步/work/学习/AI/Open-Agent-Teams}"
 GATEWAY_URL="${GATEWAY_URL:-http://localhost:8400}"
 DASHBOARD_URL="${DASHBOARD_URL:-http://localhost:3000}"
 REPORT_DIR="$ROOT/scripts/test-reports"
@@ -147,6 +148,18 @@ if rg -q "DEV_TEAM_MINIMUM_LOOP_PIPELINE" packages/core/src/agent-factory.ts pac
   record "minimum lifecycle wired" PASS "Core loads and exports dev-team-minimum-loop"
 else
   record "minimum lifecycle wired" FAIL "pipeline is not wired into Core"
+fi
+
+if [ -d "$OPEN_FRAMEWORK_ROOT/.git" ]; then
+  open_head="$(git -C "$OPEN_FRAMEWORK_ROOT" rev-parse --short HEAD 2>/dev/null || true)"
+  open_remote="$(git -C "$OPEN_FRAMEWORK_ROOT" rev-parse --short origin/main 2>/dev/null || true)"
+  if [ -n "$open_head" ] && [ "$open_head" = "$open_remote" ]; then
+    record "Open framework sync" PASS "HEAD=$open_head origin/main=$open_remote"
+  else
+    record "Open framework sync" FAIL "HEAD=${open_head:-unknown} origin/main=${open_remote:-unknown}"
+  fi
+else
+  record "Open framework sync" WARN "repo not found at $OPEN_FRAMEWORK_ROOT"
 fi
 
 if curl -fsS "$GATEWAY_URL/health" >/tmp/dev-agent-health.json 2>/dev/null; then

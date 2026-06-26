@@ -7,6 +7,7 @@ set -e
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 VERSION="0.1.0"
+OPEN_FRAMEWORK_ROOT="${OPEN_FRAMEWORK_ROOT:-/Users/zhuizhui/网盘同步/work/学习/AI/Open-Agent-Teams}"
 
 # 颜色定义
 RED='\033[0;31m'
@@ -180,6 +181,20 @@ show_team_health_summary() {
         fi
     else
         echo -e "  ${YELLOW}⚠ Team Loop 状态不可访问${NC}"
+    fi
+
+    if [ -d "$OPEN_FRAMEWORK_ROOT/.git" ]; then
+        local open_head open_remote
+        open_head="$(git -C "$OPEN_FRAMEWORK_ROOT" rev-parse --short HEAD 2>/dev/null || true)"
+        open_remote="$(git -C "$OPEN_FRAMEWORK_ROOT" rev-parse --short origin/main 2>/dev/null || true)"
+
+        if [ -n "$open_head" ] && [ "$open_head" = "$open_remote" ]; then
+            echo -e "  ${GREEN}✅ Open Framework Sync: HEAD=${open_head}, origin/main=${open_remote}${NC}"
+        else
+            echo -e "  ${YELLOW}⚠ Open Framework Sync: HEAD=${open_head:-unknown}, origin/main=${open_remote:-unknown}${NC}"
+        fi
+    else
+        echo -e "  ${YELLOW}⚠ Open Framework Sync: repo not found at ${OPEN_FRAMEWORK_ROOT}${NC}"
     fi
 
     rm -f "$tmp_file"
