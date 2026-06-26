@@ -1041,16 +1041,100 @@ raise SystemExit(0 if any(t.get("id") == "dev-team-minimum-loop" for t in templa
     set +e
     dashboard_control_output="$(DASHBOARD_URL="$DASHBOARD_URL" node <<'NODE' 2>&1
 const base = process.env.DASHBOARD_URL;
-const res = await fetch(`${base}/api/pipeline-instances/__missing__/pause`, {
+const payload = {
+  pipelineId: 'dev-team-minimum-loop',
+  initialInput: {
+    userRequest: 'E2E Dashboard control smoke: start through Dashboard API, observe, cancel, and verify coordination bindings. Dry-run only; do not write repository files.',
+    requestedBy: 'e2e-dashboard-control-smoke',
+  },
+  options: { dryRun: true, surfaceTimeoutMs: 1000 },
+};
+const startRes = await fetch(`${base}/api/pipelines/execute`, {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify(payload),
+});
+const started = await startRes.json();
+if (!startRes.ok || !started.instanceId || !started.coordination?.projectId) {
+  throw new Error(`dashboard start proxy failed: ${startRes.status} ${JSON.stringify(started)}`);
+}
+if (
+  started.pipeline_url !== `/pipeline?instanceId=${encodeURIComponent(started.instanceId)}` ||
+  started.knowledge_url !== `/knowledge?projectId=${encodeURIComponent(started.coordination.projectId)}` ||
+  started.kanban_url !== '/kanban?source=coordination'
+) {
+  throw new Error(`dashboard start response missing navigation links: ${JSON.stringify({
+    instanceId: started.instanceId,
+    pipelineUrl: started.pipeline_url,
+    knowledgeUrl: started.knowledge_url,
+    kanbanUrl: started.kanban_url,
+  })}`);
+}
+
+await new Promise((resolve) => setTimeout(resolve, 300));
+const runningRes = await fetch(`${base}/api/pipeline-instances/${encodeURIComponent(started.instanceId)}`, { cache: 'no-store' });
+const running = await runningRes.json();
+const runningSurfaces = Object.values(running.surfaceResults || {})
+  .filter((result) => result?.status === 'running')
+  .map((result) => result.surfaceId);
+if (!runningRes.ok || runningSurfaces.length < 1) {
+  throw new Error(`dashboard instance progress was not observable: ${runningRes.status} ${JSON.stringify({
+    statuses: Object.fromEntries(Object.entries(running.surfaceResults || {}).map(([key, result]) => [key, result?.status])),
+  })}`);
+}
+
+const cancelRes = await fetch(`${base}/api/pipeline-instances/${encodeURIComponent(started.instanceId)}/cancel`, {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({ reason: 'E2E Dashboard control smoke cancellation' }),
+});
+const cancelled = await cancelRes.json();
+const taskCount = Object.keys(cancelled.coordination?.taskIdsBySurface || {}).length;
+if (cancelRes.status !== 200 || cancelled.status !== 'cancelled' || taskCount < 1) {
+  throw new Error(`dashboard cancel proxy failed: ${cancelRes.status} ${JSON.stringify({
+    status: cancelled.status,
+    taskCount,
+    projectId: cancelled.coordination?.projectId,
+  })}`);
+}
+if (
+  cancelled.pipeline_url !== `/pipeline?instanceId=${encodeURIComponent(started.instanceId)}` ||
+  cancelled.knowledge_url !== `/knowledge?projectId=${encodeURIComponent(started.coordination.projectId)}` ||
+  cancelled.kanban_url !== '/kanban?source=coordination'
+) {
+  throw new Error(`dashboard cancel response missing navigation links: ${JSON.stringify({
+    instanceId: cancelled.id,
+    pipelineUrl: cancelled.pipeline_url,
+    knowledgeUrl: cancelled.knowledge_url,
+    kanbanUrl: cancelled.kanban_url,
+  })}`);
+}
+
+await new Promise((resolve) => setTimeout(resolve, 500));
+const coordinationRes = await fetch(`${base}/api/pipeline-instances/${encodeURIComponent(started.instanceId)}/coordination`, { cache: 'no-store' });
+const coordination = await coordinationRes.json();
+if (!coordinationRes.ok || !Array.isArray(coordination.bindings) || coordination.bindings.length !== taskCount) {
+  throw new Error(`dashboard coordination proxy failed after cancel: ${coordinationRes.status} ${JSON.stringify({
+    bindings: coordination.bindings?.length,
+    taskCount,
+  })}`);
+}
+const blockedCount = coordination.bindings.filter((binding) => binding.task?.status === 'blocked').length;
+if (blockedCount !== coordination.bindings.length) {
+  throw new Error(`dashboard cancel did not block all coordination tasks: ${JSON.stringify(coordination.bindings.map((binding) => binding.task?.status))}`);
+}
+
+const pauseRes = await fetch(`${base}/api/pipeline-instances/${encodeURIComponent(started.instanceId)}/pause`, {
   method: 'POST',
   headers: { 'Content-Type': 'application/json' },
   body: JSON.stringify({}),
 });
-const data = await res.json();
-if (res.ok || data.supported !== false || !data.error) {
-  throw new Error(`dashboard pause proxy should fail honestly: ${res.status} ${JSON.stringify(data)}`);
+const pause = await pauseRes.json();
+if (pauseRes.ok || pause.supported !== false || !pause.error) {
+  throw new Error(`dashboard pause proxy should fail honestly: ${pauseRes.status} ${JSON.stringify(pause)}`);
 }
-console.log(`status=${res.status} supported=${data.supported}`);
+
+console.log(`instance=${started.instanceId} project=${started.coordination.projectId} runningSurfaces=${runningSurfaces.join(',')} tasks=${taskCount} blocked=${blockedCount} pause=${pauseRes.status}`);
 NODE
 )"
     dashboard_control_code=$?
