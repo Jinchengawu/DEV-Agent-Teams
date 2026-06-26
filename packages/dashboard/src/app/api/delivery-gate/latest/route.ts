@@ -1,5 +1,6 @@
 import { readdirSync, readFileSync, statSync } from 'fs';
 import { basename, join, resolve } from 'path';
+import { NextRequest } from 'next/server';
 import { NextResponse } from 'next/server';
 
 export const dynamic = 'force-dynamic';
@@ -32,7 +33,7 @@ function parseReportTime(name: string) {
   return `${year}-${month}-${day}T${hour}:${minute}:${second}`;
 }
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
     const reports = readdirSync(REPORT_DIR)
       .filter((name) => REPORT_PATTERN.test(name))
@@ -55,6 +56,17 @@ export async function GET() {
     }
 
     const { pass, fail, warn, total } = latest.summary!;
+    const wantsMarkdown = request.nextUrl.searchParams.get('format') === 'markdown';
+
+    if (wantsMarkdown) {
+      const content = readFileSync(latest.report.path, 'utf8');
+      return new Response(content, {
+        headers: {
+          'Content-Type': 'text/markdown; charset=utf-8',
+          'X-Delivery-Gate-Report': basename(latest.report.path),
+        },
+      });
+    }
 
     return NextResponse.json({
       ok: fail === 0 && warn === 0 && pass > 0,

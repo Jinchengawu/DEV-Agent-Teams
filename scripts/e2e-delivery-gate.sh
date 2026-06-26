@@ -839,6 +839,21 @@ print("{} {}".format(data.get("report"), data.get("summary")))' /tmp/dev-agent-d
     record "dashboard delivery gate endpoint" FAIL "$(tail -n 3 /tmp/dev-agent-dashboard-delivery-gate.err | tr '\n' ' ' | sed 's/|/\\|/g')"
   fi
 
+  if curl -fsSI "$DASHBOARD_URL/api/delivery-gate/latest?format=markdown" >/tmp/dev-agent-dashboard-delivery-gate-headers.txt 2>/tmp/dev-agent-dashboard-delivery-gate-md.err \
+    && curl -fsS "$DASHBOARD_URL/api/delivery-gate/latest?format=markdown" >/tmp/dev-agent-dashboard-delivery-gate.md 2>>/tmp/dev-agent-dashboard-delivery-gate-md.err; then
+    if rg -q '^content-type: text/markdown' /tmp/dev-agent-dashboard-delivery-gate-headers.txt \
+      && rg -q '^x-delivery-gate-report: e2e-delivery-gate-' /tmp/dev-agent-dashboard-delivery-gate-headers.txt \
+      && rg -q '^## Summary$' /tmp/dev-agent-dashboard-delivery-gate.md \
+      && rg -q '^- PASS: [1-9][0-9]*$' /tmp/dev-agent-dashboard-delivery-gate.md; then
+      report_name="$(awk -F': ' 'tolower($1)=="x-delivery-gate-report" {print $2}' /tmp/dev-agent-dashboard-delivery-gate-headers.txt | tr -d '\r' | tail -n 1)"
+      record "dashboard delivery gate markdown" PASS "$report_name"
+    else
+      record "dashboard delivery gate markdown" FAIL "markdown response missing report headers or summary"
+    fi
+  else
+    record "dashboard delivery gate markdown" FAIL "$(tail -n 3 /tmp/dev-agent-dashboard-delivery-gate-md.err | tr '\n' ' ' | sed 's/|/\\|/g')"
+  fi
+
   if curl -fsS "$DASHBOARD_URL/api/v2/documents" >/tmp/dev-agent-dashboard-docs.json 2>/dev/null; then
     if python3 -c 'import json, sys
 with open(sys.argv[1], "r", encoding="utf-8") as f:

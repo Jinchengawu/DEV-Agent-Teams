@@ -1,5 +1,6 @@
 'use client'
 
+import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import useSWR from 'swr'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -170,6 +171,16 @@ export default function Dashboard() {
                       : `${deliveryGate.fail ?? 0} FAIL`
                     : '--'}
                 </p>
+                {deliveryGate?.report && (
+                  <Link
+                    href="/api/delivery-gate/latest?format=markdown"
+                    target="_blank"
+                    className="mt-1 inline-block text-[11px] font-medium text-blue-700 hover:text-blue-900"
+                    data-testid="dashboard-delivery-gate-report-link"
+                  >
+                    Report
+                  </Link>
+                )}
               </div>
               <div className="rounded-md bg-white/80 px-3 py-2">
                 <p className="text-gray-500">Checked</p>
