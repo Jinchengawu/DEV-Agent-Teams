@@ -92,6 +92,67 @@ stop_services() {
     echo -e "${GREEN}✅ 所有服务已停止${NC}"
 }
 
+print_json_field() {
+    local file="$1"
+    local field="$2"
+
+    python3 - "$file" "$field" <<'PY'
+import json
+import sys
+
+with open(sys.argv[1], "r", encoding="utf-8") as f:
+    data = json.load(f)
+
+cur = data
+for part in sys.argv[2].split("."):
+    if isinstance(cur, list):
+        cur = cur[int(part)]
+    elif isinstance(cur, dict):
+        cur = cur.get(part)
+    else:
+        cur = None
+        break
+
+print("" if cur is None else cur)
+PY
+}
+
+show_team_health_summary() {
+    local tmp_file
+    tmp_file="$(mktemp)"
+
+    echo ""
+    echo "Team Coordination:"
+    if curl -fsS "http://127.0.0.1:8400/agent-health" > "$tmp_file" 2>/dev/null; then
+        local online total skills live_ready
+        online="$(print_json_field "$tmp_file" "onlineCount")"
+        total="$(print_json_field "$tmp_file" "totalAgents")"
+        skills="$(print_json_field "$tmp_file" "totalSkills")"
+        live_ready="$(print_json_field "$tmp_file" "livePipelineReady")"
+
+        if [ "$online" = "$total" ] && [ -n "$total" ] && [ "$live_ready" = "True" ]; then
+            echo -e "  ${GREEN}✅ Gateway Agent Health: online=${online}/${total}, skills=${skills}, livePipelineReady=${live_ready}${NC}"
+        else
+            echo -e "  ${YELLOW}⚠ Gateway Agent Health: online=${online:-0}/${total:-0}, skills=${skills:-0}, livePipelineReady=${live_ready:-unknown}${NC}"
+        fi
+    else
+        echo -e "  ${RED}❌ Gateway Agent Health 不可访问${NC}"
+    fi
+
+    if curl -fsS "http://127.0.0.1:3000/api/health" > "$tmp_file" 2>/dev/null; then
+        local dashboard_online dashboard_total dashboard_gateway dashboard_live
+        dashboard_online="$(print_json_field "$tmp_file" "onlineCount")"
+        dashboard_total="$(print_json_field "$tmp_file" "totalAgents")"
+        dashboard_gateway="$(print_json_field "$tmp_file" "gatewayOnline")"
+        dashboard_live="$(print_json_field "$tmp_file" "livePipelineReady")"
+        echo -e "  ${GREEN}✅ Dashboard API Health: gateway=${dashboard_gateway}, online=${dashboard_online}/${dashboard_total}, livePipelineReady=${dashboard_live}${NC}"
+    else
+        echo -e "  ${RED}❌ Dashboard API Health 不可访问${NC}"
+    fi
+
+    rm -f "$tmp_file"
+}
+
 # 查看状态
 show_status() {
     echo -e "${BLUE}📊 DEV-Agent 服务状态${NC}"
@@ -122,6 +183,8 @@ show_status() {
     else
         echo -e "  ${RED}❌ 端口 3000 - 未运行${NC}"
     fi
+
+    show_team_health_summary
 }
 
 DOCTOR_FAILED=0

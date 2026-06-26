@@ -50,7 +50,9 @@ export async function GET() {
     fetchGatewayJson('/api/v2/documents?limit=50'),
   ]);
 
-  const latestGate = getCompletedDeliveryGateReports(1)[0] ?? null;
+  const gateReports = getCompletedDeliveryGateReports(20);
+  const latestGate = gateReports[0] ?? null;
+  const evidenceGate = gateReports.find((report) => report.ok) ?? latestGate;
   const latestInstance = instancesData?.instances?.[0] ?? null;
   const latestWorkflow = workflowsData?.workflows?.[0] ?? null;
   const tasks = Array.isArray(tasksData?.tasks) ? tasksData.tasks : [];
@@ -69,7 +71,7 @@ export async function GET() {
   const latestDocument = [...boundProjectDocuments].sort((a: any, b: any) => Number(b.updatedAt || 0) - Number(a.updatedAt || 0))[0] ?? null;
   const taskStatusCounts = getTaskStatusCounts(projectTasks);
   const checks = {
-    deliveryGateOk: Boolean(latestGate?.ok),
+    deliveryGateOk: Boolean(evidenceGate?.ok),
     latestPipelinePresent: Boolean(latestInstance?.id),
     projectBound: Boolean(projectId),
     surfaceTasksBound: surfaceTaskCount > 0,
@@ -88,10 +90,16 @@ export async function GET() {
     checkSummary: `${Object.values(checks).filter(Boolean).length}/${Object.keys(checks).length}`,
     deliveryGate: latestGate
       ? {
-          ok: latestGate.ok,
-          report: latestGate.report,
-          summary: latestGate.summary,
-          reportTime: latestGate.reportTime,
+          ok: Boolean(evidenceGate?.ok),
+          report: evidenceGate?.report ?? latestGate.report,
+          summary: evidenceGate?.summary ?? latestGate.summary,
+          reportTime: evidenceGate?.reportTime ?? latestGate.reportTime,
+          latestReport: {
+            ok: latestGate.ok,
+            report: latestGate.report,
+            summary: latestGate.summary,
+            reportTime: latestGate.reportTime,
+          },
         }
       : null,
     latestWorkflow: latestWorkflow
