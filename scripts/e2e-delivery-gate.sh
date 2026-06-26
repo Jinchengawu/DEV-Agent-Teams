@@ -1291,37 +1291,61 @@ const running = await runningRes.json();
 const runningSurfaces = Object.values(running.surfaceResults || {})
   .filter((result) => result?.status === 'running')
   .map((result) => result.surfaceId);
-if (!runningRes.ok || runningSurfaces.length < 1) {
+const failedSurfaces = Object.values(running.surfaceResults || {})
+  .filter((result) => result?.status === 'failed')
+  .map((result) => result.surfaceId);
+const failedFast = running.status === 'failed' && failedSurfaces.length > 0;
+if (!runningRes.ok || (runningSurfaces.length < 1 && !failedFast)) {
   throw new Error(`dashboard instance progress was not observable: ${runningRes.status} ${JSON.stringify({
+    status: running.status,
     statuses: Object.fromEntries(Object.entries(running.surfaceResults || {}).map(([key, result]) => [key, result?.status])),
   })}`);
 }
 
-const cancelRes = await fetch(`${base}/api/pipeline-instances/${encodeURIComponent(started.instanceId)}/cancel`, {
-  method: 'POST',
-  headers: { 'Content-Type': 'application/json' },
-  body: JSON.stringify({ reason: 'E2E Dashboard control smoke cancellation' }),
-});
-const cancelled = await cancelRes.json();
-const taskCount = Object.keys(cancelled.coordination?.taskIdsBySurface || {}).length;
-if (cancelRes.status !== 200 || cancelled.status !== 'cancelled' || taskCount < 1) {
-  throw new Error(`dashboard cancel proxy failed: ${cancelRes.status} ${JSON.stringify({
-    status: cancelled.status,
-    taskCount,
-    projectId: cancelled.coordination?.projectId,
-  })}`);
-}
-if (
-  cancelled.pipeline_url !== `/pipeline?instanceId=${encodeURIComponent(started.instanceId)}` ||
-  cancelled.knowledge_url !== `/knowledge?projectId=${encodeURIComponent(started.coordination.projectId)}` ||
-  cancelled.kanban_url !== '/kanban?source=coordination'
-) {
-  throw new Error(`dashboard cancel response missing navigation links: ${JSON.stringify({
-    instanceId: cancelled.id,
-    pipelineUrl: cancelled.pipeline_url,
-    knowledgeUrl: cancelled.knowledge_url,
-    kanbanUrl: cancelled.kanban_url,
-  })}`);
+let controlStatus = 'cancelled';
+let taskCount = 0;
+if (failedFast) {
+  controlStatus = 'failed-fast';
+  taskCount = Object.keys(running.coordination?.taskIdsBySurface || {}).length;
+  const failedResult = Object.values(running.surfaceResults || {}).find((result) => result?.status === 'failed');
+  const failureText = `${running.error || ''} ${failedResult?.error || ''}`;
+  if (taskCount < 1 || !/api call failed|insufficient balance|返回失败输出|http 40[123]/i.test(failureText)) {
+    throw new Error(`dashboard fast failure was not an observable provider failure: ${JSON.stringify({
+      status: running.status,
+      taskCount,
+      failureText,
+    })}`);
+  }
+  if (failedResult?.artifacts) {
+    throw new Error(`dashboard provider failure should not be accepted as artifacts: ${JSON.stringify(failedResult.artifacts)}`);
+  }
+} else {
+  const cancelRes = await fetch(`${base}/api/pipeline-instances/${encodeURIComponent(started.instanceId)}/cancel`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ reason: 'E2E Dashboard control smoke cancellation' }),
+  });
+  const cancelled = await cancelRes.json();
+  taskCount = Object.keys(cancelled.coordination?.taskIdsBySurface || {}).length;
+  if (cancelRes.status !== 200 || cancelled.status !== 'cancelled' || taskCount < 1) {
+    throw new Error(`dashboard cancel proxy failed: ${cancelRes.status} ${JSON.stringify({
+      status: cancelled.status,
+      taskCount,
+      projectId: cancelled.coordination?.projectId,
+    })}`);
+  }
+  if (
+    cancelled.pipeline_url !== `/pipeline?instanceId=${encodeURIComponent(started.instanceId)}` ||
+    cancelled.knowledge_url !== `/knowledge?projectId=${encodeURIComponent(started.coordination.projectId)}` ||
+    cancelled.kanban_url !== '/kanban?source=coordination'
+  ) {
+    throw new Error(`dashboard cancel response missing navigation links: ${JSON.stringify({
+      instanceId: cancelled.id,
+      pipelineUrl: cancelled.pipeline_url,
+      knowledgeUrl: cancelled.knowledge_url,
+      kanbanUrl: cancelled.kanban_url,
+    })}`);
+  }
 }
 
 await new Promise((resolve) => setTimeout(resolve, 500));
@@ -1348,7 +1372,7 @@ if (pauseRes.ok || pause.supported !== false || !pause.error) {
   throw new Error(`dashboard pause proxy should fail honestly: ${pauseRes.status} ${JSON.stringify(pause)}`);
 }
 
-console.log(`instance=${started.instanceId} project=${started.coordination.projectId} runningSurfaces=${runningSurfaces.join(',')} tasks=${taskCount} blocked=${blockedCount} pause=${pauseRes.status}`);
+console.log(`instance=${started.instanceId} project=${started.coordination.projectId} control=${controlStatus} runningSurfaces=${runningSurfaces.join(',') || 'none'} failedSurfaces=${failedSurfaces.join(',') || 'none'} tasks=${taskCount} blocked=${blockedCount} pause=${pauseRes.status}`);
 NODE
 )"
     dashboard_control_code=$?

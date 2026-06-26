@@ -40,6 +40,20 @@ export class Surface {
     this.sessionId = sessionId || `surface-${def.id}`;
   }
 
+  private isAgentFailureOutput(output: string): boolean {
+    const normalized = output.toLowerCase();
+    return [
+      'api call failed',
+      'insufficient balance',
+      'hermes 调用失败',
+      'http 402',
+      'http 401',
+      'http 403',
+      'rate limit',
+      'quota exceeded',
+    ].some((pattern) => normalized.includes(pattern));
+  }
+
   private sessionId: string;
 
   /**
@@ -167,6 +181,9 @@ export class Surface {
       });
       if (!agentResult.success) {
         throw new Error(`Agent ${this.agent} 执行失败: ${agentResult.output || 'unknown error'}`);
+      }
+      if (this.isAgentFailureOutput(agentResult.output || '')) {
+        throw new Error(`Agent ${this.agent} 返回失败输出: ${agentResult.output}`);
       }
 
       // 4. 提取输出产物
