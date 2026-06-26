@@ -753,8 +753,35 @@ print("online={}/{} gateway={} liveReady={}".format(data.get("onlineCount"), dat
 
   if curl -fsS "$GATEWAY_URL/agent-health" >/dev/null 2>&1 && curl -fsS "$DASHBOARD_URL/api/health" >/dev/null 2>&1; then
     run_cmd "dev-agent doctor" ./dev-agent doctor
+    if ./dev-agent doctor --json >/tmp/dev-agent-doctor.json 2>/tmp/dev-agent-doctor.err; then
+      if python3 -c 'import json, sys
+with open(sys.argv[1], "r", encoding="utf-8") as f:
+    data = json.load(f)
+ok = (
+    data.get("ok") is True
+    and data.get("agentHealth", {}).get("onlineCount") == 6
+    and data.get("agentHealth", {}).get("totalAgents") == 6
+    and data.get("agentHealth", {}).get("livePipelineReady") is True
+    and data.get("gateway", {}).get("ok") is True
+    and data.get("dashboard", {}).get("ok") is True
+)
+raise SystemExit(0 if ok else 1)' /tmp/dev-agent-doctor.json
+      then
+        doctor_json_summary="$(python3 -c 'import json, sys
+with open(sys.argv[1], "r", encoding="utf-8") as f:
+    data = json.load(f)
+agent = data.get("agentHealth", {})
+print("online={}/{} liveReady={}".format(agent.get("onlineCount"), agent.get("totalAgents"), agent.get("livePipelineReady")))' /tmp/dev-agent-doctor.json)"
+        record "dev-agent doctor json" PASS "$doctor_json_summary"
+      else
+        record "dev-agent doctor json" FAIL "JSON payload did not report ready state"
+      fi
+    else
+      record "dev-agent doctor json" FAIL "$(tail -n 3 /tmp/dev-agent-doctor.err | tr '\n' ' ' | sed 's/|/\\|/g')"
+    fi
   else
     record "dev-agent doctor" WARN "skipped; Gateway or Dashboard readiness endpoint is unavailable"
+    record "dev-agent doctor json" WARN "skipped; Gateway or Dashboard readiness endpoint is unavailable"
   fi
 
   if curl -fsS "$DASHBOARD_URL/api/v2/documents" >/tmp/dev-agent-dashboard-docs.json 2>/dev/null; then

@@ -34,6 +34,7 @@ show_help() {
     echo "  ./dev-agent start"
     echo "  ./dev-agent status"
     echo "  ./dev-agent doctor"
+    echo "  ./dev-agent doctor --json"
     echo "  ./dev-agent test"
 }
 
@@ -268,6 +269,131 @@ run_doctor() {
     fi
 }
 
+run_doctor_json() {
+    SCRIPT_DIR="$SCRIPT_DIR" python3 <<'PY'
+import json
+import os
+import socket
+import subprocess
+import sys
+import urllib.error
+import urllib.request
+
+root = os.environ["SCRIPT_DIR"]
+
+def command_check(name):
+    path = shutil_which(name)
+    if not path:
+        return {"ok": False, "path": None, "version": None}
+    try:
+        version = subprocess.check_output([name, "--version"], text=True, stderr=subprocess.STDOUT, timeout=5).splitlines()[0]
+    except Exception as exc:
+        version = f"version unavailable: {exc}"
+    return {"ok": True, "path": path, "version": version}
+
+def shutil_which(name):
+    for directory in os.environ.get("PATH", "").split(os.pathsep):
+        candidate = os.path.join(directory, name)
+        if os.path.isfile(candidate) and os.access(candidate, os.X_OK):
+            return candidate
+    return None
+
+def native_module_check(package_dir, module):
+    full_dir = os.path.join(root, package_dir)
+    if not os.path.isdir(os.path.join(full_dir, "node_modules")):
+        return {"ok": False, "module": module, "path": full_dir, "error": "node_modules missing"}
+    try:
+        subprocess.check_output(
+            ["node", "-e", "require(process.argv[1])", module],
+            cwd=full_dir,
+            stderr=subprocess.STDOUT,
+            text=True,
+            timeout=10,
+        )
+        return {"ok": True, "module": module, "path": full_dir}
+    except subprocess.CalledProcessError as exc:
+        return {"ok": False, "module": module, "path": full_dir, "error": exc.output.strip()}
+    except Exception as exc:
+        return {"ok": False, "module": module, "path": full_dir, "error": str(exc)}
+
+def port_check(port):
+    try:
+        with socket.create_connection(("127.0.0.1", port), timeout=2):
+            return {"ok": True, "port": port}
+    except OSError as exc:
+        return {"ok": False, "port": port, "error": str(exc)}
+
+def http_json(url):
+    try:
+        with urllib.request.urlopen(url, timeout=5) as response:
+            body = response.read().decode("utf-8")
+            return {"ok": 200 <= response.status < 300, "status": response.status, "data": json.loads(body)}
+    except urllib.error.HTTPError as exc:
+        return {"ok": False, "status": exc.code, "error": exc.read().decode("utf-8", "replace")}
+    except Exception as exc:
+        return {"ok": False, "status": None, "error": str(exc)}
+
+runtime = {
+    "node": command_check("node"),
+    "pnpm": command_check("pnpm"),
+    "hermes": command_check("hermes"),
+}
+native_modules = {
+    "coreBetterSqlite3": native_module_check("packages/core", "better-sqlite3"),
+    "dashboardBetterSqlite3": native_module_check("packages/dashboard", "better-sqlite3"),
+}
+ports = {str(port): port_check(port) for port in [8002, 8003, 8004, 8005, 8006, 8007]}
+gateway_health = http_json("http://127.0.0.1:8400/health")
+dashboard_health = http_json("http://127.0.0.1:3000/api/health")
+agent_health = http_json("http://127.0.0.1:8400/agent-health")
+
+agent_data = agent_health.get("data") if agent_health.get("ok") else {}
+agent_ready = (
+    isinstance(agent_data, dict)
+    and agent_data.get("livePipelineReady") is True
+    and agent_data.get("onlineCount") == agent_data.get("totalAgents") == 6
+    and isinstance(agent_data.get("agents"), list)
+    and len(agent_data.get("agents")) == 6
+    and all(agent.get("online") is True for agent in agent_data.get("agents"))
+)
+
+ok = (
+    all(item["ok"] for item in runtime.values())
+    and all(item["ok"] for item in native_modules.values())
+    and all(item["ok"] for item in ports.values())
+    and gateway_health.get("ok") is True
+    and dashboard_health.get("ok") is True
+    and agent_ready
+)
+
+payload = {
+    "ok": ok,
+    "runtime": runtime,
+    "nativeModules": native_modules,
+    "ports": ports,
+    "gateway": {
+        "ok": gateway_health.get("ok"),
+        "status": gateway_health.get("status"),
+        "agents": (gateway_health.get("data") or {}).get("agents") if isinstance(gateway_health.get("data"), dict) else None,
+    },
+    "dashboard": {
+        "ok": dashboard_health.get("ok"),
+        "status": dashboard_health.get("status"),
+        "gatewayOnline": (dashboard_health.get("data") or {}).get("gatewayOnline") if isinstance(dashboard_health.get("data"), dict) else None,
+    },
+    "agentHealth": {
+        "ok": agent_ready,
+        "onlineCount": agent_data.get("onlineCount") if isinstance(agent_data, dict) else None,
+        "totalAgents": agent_data.get("totalAgents") if isinstance(agent_data, dict) else None,
+        "livePipelineReady": agent_data.get("livePipelineReady") if isinstance(agent_data, dict) else None,
+    },
+}
+
+print(json.dumps(payload, ensure_ascii=False, indent=2))
+raise SystemExit(0 if ok else 1)
+PY
+}
+
 # 运行测试
 run_tests() {
     echo -e "${BLUE}🧪 运行测试...${NC}"
@@ -293,7 +419,11 @@ main() {
             show_status
             ;;
         doctor)
-            run_doctor
+            if [ "${2:-}" = "--json" ]; then
+                run_doctor_json
+            else
+                run_doctor
+            fi
             ;;
         test)
             run_tests
