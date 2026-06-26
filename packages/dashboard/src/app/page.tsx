@@ -1,5 +1,6 @@
 'use client'
 
+import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import useSWR from 'swr'
@@ -108,6 +109,7 @@ const jsonFetcher = <T,>(url: string): Promise<T> =>
 
 export default function Dashboard() {
   const router = useRouter()
+  const [clientTime, setClientTime] = useState('--')
   const { agents, stats, error, isLoading, mutate } = useAgentHealth()
   const {
     data: readiness,
@@ -142,42 +144,49 @@ export default function Dashboard() {
   const teamLoopLoaded = Boolean(teamLoop?.checkedAt)
   const mvpReady = readiness?.ok === true && deliveryGate?.ok === true && teamLoop?.ok === true
 
+  useEffect(() => {
+    const updateTime = () => setClientTime(new Date().toLocaleTimeString())
+    updateTime()
+    const timer = window.setInterval(updateTime, 30_000)
+    return () => window.clearInterval(timer)
+  }, [])
+
   const statCards = [
     {
       title: 'Active Agents',
       value: `${stats.onlineCount}/${stats.totalAgents}`,
-      icon: '🤖',
-      color: 'from-blue-500 to-blue-600',
+      icon: 'AG',
+      color: 'border-[#5be5ff]/35 bg-[#5be5ff]/10 text-[#8ff0ff]',
       detail: stats.onlineCount > 0 ? `${stats.onlineCount} online` : 'All offline',
     },
     {
       title: 'Total Skills',
       value: String(stats.totalSkills),
-      icon: '📚',
-      color: 'from-green-500 to-green-600',
+      icon: 'SK',
+      color: 'border-[#33ff99]/35 bg-[#33ff99]/10 text-[#63f7ae]',
       detail: 'Across all agents',
     },
     {
       title: 'Success Rate',
       value: stats.onlineCount > 0 ? `${stats.successRate}%` : '--',
-      icon: '✅',
-      color: 'from-yellow-500 to-orange-500',
+      icon: '%',
+      color: 'border-[#ffb15f]/35 bg-[#ffb15f]/10 text-[#ffca85]',
       detail: stats.onlineCount > 0 ? 'Agents reachable' : 'No agents',
     },
     {
       title: 'System',
       value: stats.onlineCount > 0 ? 'Online' : 'Offline',
-      icon: '⚡',
-      color: stats.onlineCount > 0 ? 'from-green-500 to-green-600' : 'from-red-500 to-red-600',
+      icon: 'OS',
+      color: stats.onlineCount > 0 ? 'border-[#33ff99]/35 bg-[#33ff99]/10 text-[#63f7ae]' : 'border-[#ff5252]/35 bg-[#ff5252]/10 text-[#ff9a9a]',
       detail: 'Via Hermes runtime',
     },
   ]
 
   const quickActions = [
-    { icon: '🆕', title: 'New Project', desc: 'Start a new project', path: '/chat' },
-    { icon: '📋', title: 'Templates', desc: 'Browse templates', path: '/chat' },
-    { icon: '📚', title: 'Skills', desc: 'View all skills', path: '/skills' },
-    { icon: '⚙️', title: 'Settings', desc: 'Configure system', path: '/settings' },
+    { icon: 'NEW', title: 'New Project', desc: 'Start a new project', path: '/chat' },
+    { icon: 'TPL', title: 'Templates', desc: 'Browse templates', path: '/chat' },
+    { icon: 'SKL', title: 'Skills', desc: 'View all skills', path: '/skills' },
+    { icon: 'CFG', title: 'Settings', desc: 'Configure system', path: '/settings' },
   ]
 
   if (error) {
@@ -194,18 +203,18 @@ export default function Dashboard() {
     <div className="space-y-6">
       {/* MVP Readiness */}
       <Card
-        className={mvpReady ? 'border-green-200 bg-green-50' : 'border-amber-200 bg-amber-50'}
+        className={mvpReady ? 'border-[#33ff99]/30 bg-[#0d1f18]/80' : 'border-[#ffb15f]/35 bg-[#23190d]/80'}
         data-testid="dashboard-readiness-card"
       >
         <CardContent className="p-4">
           <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
             <div className="flex flex-wrap items-center gap-3">
-              <Badge className={mvpReady ? 'bg-green-600' : 'bg-amber-600'} data-testid="dashboard-readiness-badge">
+              <Badge className={mvpReady ? 'border-[#33ff99]/35 bg-[#33ff99]/12 text-[#63f7ae]' : 'border-[#ffb15f]/35 bg-[#ffb15f]/14 text-[#ffca85]'} data-testid="dashboard-readiness-badge">
                 {readinessLoading || !deliveryGateLoaded || !teamLoopLoaded ? 'Checking' : mvpReady ? 'MVP Ready' : 'Needs Attention'}
               </Badge>
               <div>
-                <p className="text-sm font-semibold text-gray-900">Team Coordination Loop</p>
-                <p className="text-xs text-gray-600">
+                <p className="text-sm font-bold uppercase tracking-[0.16em] text-[#f4f8ff]">Team Coordination Loop</p>
+                <p className="text-xs text-[#8d9bad]">
                   {readiness?.agentHealth
                     ? `${readiness.agentHealth.onlineCount ?? 0}/${readiness.agentHealth.totalAgents ?? 0} Agents online`
                     : 'Checking local team readiness'}
@@ -213,19 +222,19 @@ export default function Dashboard() {
               </div>
             </div>
             <div className="grid grid-cols-2 gap-2 text-xs sm:grid-cols-3 lg:grid-cols-6">
-              <div className="rounded-md bg-white/80 px-3 py-2">
+              <div className="rounded-md border border-white/10 bg-black/20 px-3 py-2">
                 <p className="text-gray-500">Gateway</p>
                 <p className="font-semibold text-gray-900">{readiness?.gateway?.ok ? 'Online' : '--'}</p>
               </div>
-              <div className="rounded-md bg-white/80 px-3 py-2">
+              <div className="rounded-md border border-white/10 bg-black/20 px-3 py-2">
                 <p className="text-gray-500">Live Pipeline</p>
                 <p className="font-semibold text-gray-900">{readiness?.agentHealth?.livePipelineReady ? 'Ready' : '--'}</p>
               </div>
-              <div className="rounded-md bg-white/80 px-3 py-2">
+              <div className="rounded-md border border-white/10 bg-black/20 px-3 py-2">
                 <p className="text-gray-500">Hermes</p>
                 <p className="font-semibold text-gray-900">{readiness?.runtime?.hermes?.ok ? 'OK' : '--'}</p>
               </div>
-              <div className="rounded-md bg-white/80 px-3 py-2" data-testid="dashboard-delivery-gate-summary">
+              <div className="rounded-md border border-white/10 bg-black/20 px-3 py-2" data-testid="dashboard-delivery-gate-summary">
                 <p className="text-gray-500">E2E Gate</p>
                 <p className="font-semibold text-gray-900">
                   {deliveryGate?.total
@@ -260,7 +269,7 @@ export default function Dashboard() {
                   </div>
                 )}
               </div>
-              <div className="rounded-md bg-white/80 px-3 py-2" data-testid="dashboard-open-sync-summary">
+              <div className="rounded-md border border-white/10 bg-black/20 px-3 py-2" data-testid="dashboard-open-sync-summary">
                 <p className="text-gray-500">Open Sync</p>
                 <p className="font-semibold text-gray-900">
                   {readiness?.openFrameworkSync?.ok ? 'Synced' : '--'}
@@ -274,7 +283,7 @@ export default function Dashboard() {
                   </p>
                 )}
               </div>
-              <div className="rounded-md bg-white/80 px-3 py-2">
+              <div className="rounded-md border border-white/10 bg-black/20 px-3 py-2">
                 <p className="text-gray-500">Checked</p>
                 <p className="font-semibold text-gray-900">
                   {readiness?.checkedAt ? new Date(readiness.checkedAt).toLocaleTimeString() : '--'}
@@ -318,7 +327,7 @@ export default function Dashboard() {
         </CardHeader>
         <CardContent>
           <div className="grid grid-cols-2 gap-3 text-sm lg:grid-cols-4">
-            <div className="rounded-md border border-gray-200 px-3 py-2" data-testid="dashboard-team-loop-workflow">
+            <div className="rounded-md border border-white/10 bg-black/20 px-3 py-2" data-testid="dashboard-team-loop-workflow">
               <p className="text-xs text-gray-500">Workflow</p>
               <p className="font-semibold text-gray-900">{teamLoop?.latestInstance?.status || '--'}</p>
               {teamLoop?.latestInstance?.href && (
@@ -327,7 +336,7 @@ export default function Dashboard() {
                 </Link>
               )}
             </div>
-            <div className="rounded-md border border-gray-200 px-3 py-2" data-testid="dashboard-team-loop-kanban">
+            <div className="rounded-md border border-white/10 bg-black/20 px-3 py-2" data-testid="dashboard-team-loop-kanban">
               <p className="text-xs text-gray-500">Kanban Tasks</p>
               <p className="font-semibold text-gray-900">
                 {teamLoop?.kanban ? `${teamLoop.kanban.taskCount}/${teamLoop.kanban.surfaceTaskCount}` : '--'}
@@ -338,7 +347,7 @@ export default function Dashboard() {
                 </Link>
               )}
             </div>
-            <div className="rounded-md border border-gray-200 px-3 py-2" data-testid="dashboard-team-loop-documents">
+            <div className="rounded-md border border-white/10 bg-black/20 px-3 py-2" data-testid="dashboard-team-loop-documents">
               <p className="text-xs text-gray-500">Documents</p>
               <p className="font-semibold text-gray-900">
                 {teamLoop?.documents ? `${teamLoop.documents.boundProjectDocumentCount}/${teamLoop.documents.projectDocumentCount}` : '--'}
@@ -361,7 +370,7 @@ export default function Dashboard() {
                 )}
               </div>
             </div>
-            <div className="rounded-md border border-gray-200 px-3 py-2" data-testid="dashboard-team-loop-gate">
+            <div className="rounded-md border border-white/10 bg-black/20 px-3 py-2" data-testid="dashboard-team-loop-gate">
               <p className="text-xs text-gray-500">Gate Binding</p>
               <p className="font-semibold text-gray-900">
                 {teamLoop?.latestInstance ? `${teamLoop.latestInstance.surfaceDocumentCount} docs` : '--'}
@@ -381,7 +390,7 @@ export default function Dashboard() {
           : statCards.map((stat, i) => (
               <Card
                 key={i}
-                className="overflow-hidden hover:shadow-lg transition-shadow"
+                className="overflow-hidden transition-all hover:border-[#5be5ff]/35 hover:shadow-[0_0_34px_rgba(91,229,255,0.10)]"
               >
                 <CardContent className="p-6">
                   <div className="flex items-center justify-between">
@@ -394,10 +403,8 @@ export default function Dashboard() {
                       </p>
                       <p className="text-sm text-gray-500 mt-1">{stat.detail}</p>
                     </div>
-                    <div
-                      className={`w-14 h-14 bg-gradient-to-br ${stat.color} rounded-2xl flex items-center justify-center shadow-lg`}
-                    >
-                      <span className="text-2xl">{stat.icon}</span>
+                    <div className={`flex h-14 w-14 items-center justify-center rounded-md border text-sm font-black tracking-[0.18em] ${stat.color}`}>
+                      <span>{stat.icon}</span>
                     </div>
                   </div>
                 </CardContent>
@@ -429,12 +436,12 @@ export default function Dashboard() {
               {agents.map((agent) => (
                 <div
                   key={agent.id}
-                  className="p-4 border border-slate-200 rounded-xl hover:border-blue-300 hover:shadow-md transition-all cursor-pointer"
+                  className="cursor-pointer rounded-lg border border-white/10 bg-black/20 p-4 transition-all hover:border-[#5be5ff]/40 hover:bg-[#5be5ff]/[0.06]"
                   onClick={() => router.push(`/chat?agent=${agent.id}`)}
                 >
                   <div className="flex items-center justify-between mb-3">
                     <div className="flex items-center space-x-3">
-                      <div className="w-10 h-10 bg-gradient-to-br from-slate-100 to-slate-200 rounded-xl flex items-center justify-center">
+                      <div className="flex h-10 w-10 items-center justify-center rounded-md border border-white/10 bg-white/[0.06]">
                         <span className="text-xl">{agent.icon}</span>
                       </div>
                       <div>
@@ -463,11 +470,11 @@ export default function Dashboard() {
                   </div>
 
                   <div className="grid grid-cols-2 gap-2 text-sm">
-                    <div className="bg-slate-50 rounded-lg p-2">
+                    <div className="rounded-md border border-white/10 bg-black/20 p-2">
                       <p className="text-gray-500 text-xs">Skills</p>
                       <p className="font-semibold">{agent.skillCount}</p>
                     </div>
-                    <div className="bg-slate-50 rounded-lg p-2">
+                    <div className="rounded-md border border-white/10 bg-black/20 p-2">
                       <p className="text-gray-500 text-xs">Port</p>
                       <p className="font-semibold">{agent.port}</p>
                     </div>
@@ -498,7 +505,7 @@ export default function Dashboard() {
                   className="h-auto py-4 flex flex-col items-center justify-center space-y-2"
                   onClick={() => router.push(action.path)}
                 >
-                  <span className="text-2xl">{action.icon}</span>
+                  <span className="font-mono text-xs font-black tracking-[0.18em] text-[#ff8a56]">{action.icon}</span>
                   <span className="font-medium">{action.title}</span>
                   <span className="text-xs text-gray-500">{action.desc}</span>
                 </Button>
@@ -521,11 +528,11 @@ export default function Dashboard() {
                   value: `${stats.onlineCount}/${agents.length} online`,
                 },
                 { label: 'Skills', value: String(stats.totalSkills) },
-                { label: 'Updated', value: new Date().toLocaleTimeString() },
+                { label: 'Updated', value: clientTime },
               ].map((item, i) => (
                 <div
                   key={i}
-                  className="flex items-center justify-between p-3 bg-slate-50 rounded-xl"
+                  className="flex items-center justify-between rounded-md border border-white/10 bg-black/20 p-3"
                 >
                   <span className="text-sm text-gray-600">{item.label}</span>
                   <span className="text-sm font-medium text-gray-900">

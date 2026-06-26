@@ -9,7 +9,7 @@ const inter = Inter({ subsets: ['latin'] })
 
 export const metadata: Metadata = {
   title: 'DEV-Agent-Teams Dashboard',
-  description: 'Developer Multi-Agent System Management Dashboard',
+  description: 'Agent team coordination console',
 }
 
 export default function RootLayout({
@@ -19,19 +19,19 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en">
-      <body className={inter.className}>
+      <body className={`${inter.className} antialiased`}>
         <AuthProvider>
           <ToastProvider>
-            <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 flex flex-col">
+            <div className="dev-shell flex min-h-screen flex-col">
               <NavBar />
-              <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 flex-1 w-full">
+              <main className="mx-auto w-full max-w-[1540px] flex-1 px-4 py-6 sm:px-6 lg:px-8">
                 {children}
               </main>
-              <footer className="bg-white/50 border-t border-slate-200 mt-auto">
-                <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
-                  <div className="flex justify-between items-center text-sm text-gray-500">
+              <footer className="mt-auto border-t border-white/10 bg-[#090b10]/80 backdrop-blur-xl">
+                <div className="mx-auto max-w-[1540px] px-4 py-4 sm:px-6 lg:px-8">
+                  <div className="flex flex-col gap-2 text-xs uppercase tracking-[0.24em] text-[#78869a] sm:flex-row sm:items-center sm:justify-between">
                     <p>DEV-Agent-Teams v0.1.0</p>
-                    <p>Powered by Gateway + Hermes</p>
+                    <p>Gateway / Hermes / Coordination Layer</p>
                   </div>
                 </div>
               </footer>
