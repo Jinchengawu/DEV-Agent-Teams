@@ -1,15 +1,53 @@
 'use client'
 
 import { useRouter } from 'next/navigation'
+import useSWR from 'swr'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
+import { Badge } from '@/components/ui/badge'
 import { SkeletonCard } from '@/components/ui/skeleton'
 import { ErrorState } from '@/components/ui/error-state'
 import { useAgentHealth } from '@/hooks/useAgentHealth'
 
+interface ReadinessResponse {
+  ok: boolean
+  checkedAt: number
+  source: string
+  runtime?: {
+    node?: { ok: boolean; version?: string; path?: string }
+    pnpm?: { ok: boolean; version?: string; path?: string }
+    hermes?: { ok: boolean; version?: string; path?: string }
+  }
+  gateway?: { ok: boolean; agents?: number }
+  dashboard?: { ok: boolean; gatewayOnline?: boolean }
+  agentHealth?: {
+    ok: boolean
+    onlineCount?: number
+    totalAgents?: number
+    livePipelineReady?: boolean
+  }
+}
+
+const readinessFetcher = (url: string): Promise<ReadinessResponse> =>
+  fetch(url, { cache: 'no-store' }).then(async (response) => {
+    const data = await response.json()
+    if (!response.ok) {
+      return { ok: false, ...data }
+    }
+    return data
+  })
+
 export default function Dashboard() {
   const router = useRouter()
   const { agents, stats, error, isLoading, mutate } = useAgentHealth()
+  const {
+    data: readiness,
+    isLoading: readinessLoading,
+    mutate: refreshReadiness,
+  } = useSWR<ReadinessResponse>('/api/readiness', readinessFetcher, {
+    refreshInterval: 30000,
+    revalidateOnFocus: false,
+  })
 
   const statCards = [
     {
@@ -61,6 +99,61 @@ export default function Dashboard() {
 
   return (
     <div className="space-y-6">
+      {/* MVP Readiness */}
+      <Card
+        className={readiness?.ok ? 'border-green-200 bg-green-50' : 'border-amber-200 bg-amber-50'}
+        data-testid="dashboard-readiness-card"
+      >
+        <CardContent className="p-4">
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+            <div className="flex flex-wrap items-center gap-3">
+              <Badge className={readiness?.ok ? 'bg-green-600' : 'bg-amber-600'} data-testid="dashboard-readiness-badge">
+                {readinessLoading ? 'Checking' : readiness?.ok ? 'MVP Ready' : 'Needs Attention'}
+              </Badge>
+              <div>
+                <p className="text-sm font-semibold text-gray-900">Team Coordination Loop</p>
+                <p className="text-xs text-gray-600">
+                  {readiness?.agentHealth
+                    ? `${readiness.agentHealth.onlineCount ?? 0}/${readiness.agentHealth.totalAgents ?? 0} Agents online`
+                    : 'Checking local team readiness'}
+                </p>
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-2 text-xs sm:grid-cols-4">
+              <div className="rounded-md bg-white/80 px-3 py-2">
+                <p className="text-gray-500">Gateway</p>
+                <p className="font-semibold text-gray-900">{readiness?.gateway?.ok ? 'Online' : '--'}</p>
+              </div>
+              <div className="rounded-md bg-white/80 px-3 py-2">
+                <p className="text-gray-500">Live Pipeline</p>
+                <p className="font-semibold text-gray-900">{readiness?.agentHealth?.livePipelineReady ? 'Ready' : '--'}</p>
+              </div>
+              <div className="rounded-md bg-white/80 px-3 py-2">
+                <p className="text-gray-500">Hermes</p>
+                <p className="font-semibold text-gray-900">{readiness?.runtime?.hermes?.ok ? 'OK' : '--'}</p>
+              </div>
+              <div className="rounded-md bg-white/80 px-3 py-2">
+                <p className="text-gray-500">Checked</p>
+                <p className="font-semibold text-gray-900">
+                  {readiness?.checkedAt ? new Date(readiness.checkedAt).toLocaleTimeString() : '--'}
+                </p>
+              </div>
+            </div>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                mutate()
+                refreshReadiness()
+              }}
+              data-testid="dashboard-readiness-refresh"
+            >
+              Refresh
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+
       {/* Stats Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         {isLoading
