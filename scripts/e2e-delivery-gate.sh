@@ -894,6 +894,7 @@ with open(sys.argv[1], "r", encoding="utf-8") as f:
 latest = data.get("latestInstance") or {}
 kanban = data.get("kanban") or {}
 documents = data.get("documents") or {}
+latest_doc = documents.get("latestDocument") or {}
 gate = data.get("deliveryGate") or {}
 checks = data.get("checks") or {}
 missing = data.get("missing")
@@ -912,6 +913,10 @@ ok = (
     and latest.get("surfaceDocumentCount", 0) > 0
     and kanban.get("taskCount", 0) >= latest.get("surfaceTaskCount", 0)
     and documents.get("boundProjectDocumentCount", 0) > 0
+    and isinstance(latest_doc.get("id"), str)
+    and latest_doc.get("id", "").startswith("doc-")
+    and isinstance(latest_doc.get("href"), str)
+    and "documentId=" in latest_doc.get("href", "")
 )
 raise SystemExit(0 if ok else 1)' /tmp/dev-agent-dashboard-team-loop.json
     then
@@ -921,7 +926,8 @@ with open(sys.argv[1], "r", encoding="utf-8") as f:
 latest = data.get("latestInstance") or {}
 kanban = data.get("kanban") or {}
 documents = data.get("documents") or {}
-print("instance={} project={} checks={} tasks={}/{} docs={}/{}".format(
+latest_doc = documents.get("latestDocument") or {}
+print("instance={} project={} checks={} tasks={}/{} docs={}/{} latestDoc={}".format(
     latest.get("id"),
     latest.get("projectId"),
     data.get("checkSummary"),
@@ -929,6 +935,7 @@ print("instance={} project={} checks={} tasks={}/{} docs={}/{}".format(
     latest.get("surfaceTaskCount"),
     documents.get("boundProjectDocumentCount"),
     documents.get("projectDocumentCount"),
+    latest_doc.get("id"),
 ))' /tmp/dev-agent-dashboard-team-loop.json)"
       record "dashboard team loop status" PASS "$team_loop_summary"
     else

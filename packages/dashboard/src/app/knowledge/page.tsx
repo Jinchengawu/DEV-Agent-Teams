@@ -97,6 +97,7 @@ export default function KnowledgePage() {
   const [comments, setComments] = useState<DocumentComment[]>([]);
   const [loading, setLoading] = useState(false);
   const [urlFiltersLoaded, setUrlFiltersLoaded] = useState(false);
+  const [targetDocumentId, setTargetDocumentId] = useState('');
 
   // 过滤和排序
   const [filterProject, setFilterProject] = useState('');
@@ -116,12 +117,14 @@ export default function KnowledgePage() {
     const params = new URLSearchParams(window.location.search);
     const projectId = params.get('projectId');
     const taskId = params.get('taskId');
+    const documentId = params.get('documentId') || params.get('docId');
     const type = params.get('type');
     const authorId = params.get('authorId');
     const nextSortBy = params.get('sortBy');
     const nextSortOrder = params.get('sortOrder');
     if (projectId) setFilterProject(projectId);
     if (taskId) setFilterTask(taskId);
+    if (documentId) setTargetDocumentId(documentId);
     if (type) setFilterType(type);
     if (authorId) setFilterAuthor(authorId);
     if (nextSortBy === 'updatedAt' || nextSortBy === 'createdAt' || nextSortBy === 'title') {
@@ -148,6 +151,15 @@ export default function KnowledgePage() {
       fetchComments(selectedDoc.id);
     }
   }, [selectedDoc?.id]);
+
+  useEffect(() => {
+    if (!targetDocumentId || documents.length === 0) return;
+    const targetDoc = documents.find(doc => doc.id === targetDocumentId);
+    if (targetDoc) {
+      setSelectedDoc(targetDoc);
+      setTargetDocumentId('');
+    }
+  }, [targetDocumentId, documents]);
 
   const fetchStats = async () => {
     try {
@@ -198,6 +210,7 @@ export default function KnowledgePage() {
     update('taskId', filterTask);
     update('type', filterType);
     update('authorId', filterAuthor);
+    update('documentId', targetDocumentId);
     update('sortBy', sortBy === 'updatedAt' ? '' : sortBy);
     update('sortOrder', sortOrder === 'desc' ? '' : sortOrder);
 

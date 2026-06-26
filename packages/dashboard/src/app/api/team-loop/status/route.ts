@@ -66,6 +66,7 @@ export async function GET() {
     const relatedTasks = Array.isArray(doc.relatedTaskIds) ? doc.relatedTaskIds : [];
     return Boolean(doc.taskId) || relatedTasks.length > 0 || doc.metadata?.instanceId === latestInstance?.id;
   });
+  const latestDocument = [...boundProjectDocuments].sort((a: any, b: any) => Number(b.updatedAt || 0) - Number(a.updatedAt || 0))[0] ?? null;
   const taskStatusCounts = getTaskStatusCounts(projectTasks);
   const checks = {
     deliveryGateOk: Boolean(latestGate?.ok),
@@ -127,6 +128,17 @@ export async function GET() {
       boundProjectDocumentCount: boundProjectDocuments.length,
       total: Number(documentsData?.total || documents.length || 0),
       href: projectId ? `/knowledge?projectId=${encodeURIComponent(projectId)}` : null,
+      latestDocument: latestDocument
+        ? {
+            id: latestDocument.id,
+            title: latestDocument.title,
+            type: latestDocument.type,
+            taskId: latestDocument.taskId || null,
+            href: projectId
+              ? `/knowledge?projectId=${encodeURIComponent(projectId)}&documentId=${encodeURIComponent(latestDocument.id)}`
+              : `/knowledge?documentId=${encodeURIComponent(latestDocument.id)}`,
+          }
+        : null,
     },
   });
 }

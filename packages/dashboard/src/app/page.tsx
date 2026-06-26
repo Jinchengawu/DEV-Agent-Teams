@@ -70,6 +70,13 @@ interface TeamLoopStatusResponse {
     boundProjectDocumentCount: number
     total: number
     href?: string | null
+    latestDocument?: {
+      id: string
+      title: string
+      type: string
+      taskId?: string | null
+      href: string
+    } | null
   }
 }
 
@@ -314,11 +321,23 @@ export default function Dashboard() {
               <p className="font-semibold text-gray-900">
                 {teamLoop?.documents ? `${teamLoop.documents.boundProjectDocumentCount}/${teamLoop.documents.projectDocumentCount}` : '--'}
               </p>
-              {teamLoop?.documents?.href && (
-                <Link href={teamLoop.documents.href} className="mt-1 inline-block text-xs font-medium text-blue-700 hover:text-blue-900">
-                  Open
-                </Link>
-              )}
+              <div className="mt-1 flex flex-wrap gap-x-2 gap-y-1 text-xs font-medium">
+                {teamLoop?.documents?.href && (
+                  <Link href={teamLoop.documents.href} className="text-blue-700 hover:text-blue-900">
+                    Open
+                  </Link>
+                )}
+                {teamLoop?.documents?.latestDocument?.href && (
+                  <Link
+                    href={teamLoop.documents.latestDocument.href}
+                    className="max-w-full truncate text-blue-700 hover:text-blue-900"
+                    data-testid="dashboard-team-loop-document-link"
+                    title={teamLoop.documents.latestDocument.title}
+                  >
+                    Latest
+                  </Link>
+                )}
+              </div>
             </div>
             <div className="rounded-md border border-gray-200 px-3 py-2" data-testid="dashboard-team-loop-gate">
               <p className="text-xs text-gray-500">Gate Binding</p>
