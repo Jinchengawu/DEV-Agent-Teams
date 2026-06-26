@@ -4,6 +4,8 @@ import Link from 'next/link';
 import { NAV_ITEMS } from '@/lib/constants';
 import { useAgentHealth } from '@/hooks/useAgentHealth';
 import { useAuth } from '@/lib/auth-context';
+import { useI18n } from '@/lib/i18n';
+import { LanguageSwitcher } from '@/components/LanguageSwitcher';
 
 export function NavBar() {
   const pathname = usePathname();
@@ -11,6 +13,7 @@ export function NavBar() {
   const { stats } = useAgentHealth();
   const systemOnline = stats.onlineCount > 0;
   const { user, loading, logout } = useAuth();
+  const { t } = useI18n();
 
   const handleLogout = () => {
     logout();
@@ -31,7 +34,7 @@ export function NavBar() {
                 <h1 className="text-sm font-black uppercase tracking-[0.24em] text-[#111820] sm:text-base">
                   DEV-Agent-Teams
                 </h1>
-                <p className="text-[11px] font-bold uppercase tracking-[0.22em] text-slate-500">Team Coordination OS</p>
+                <p className="text-[11px] font-bold uppercase tracking-[0.22em] text-slate-500">{t('nav.brandSubtitle')}</p>
               </div>
             </Link>
             <div className="flex items-center space-x-4">
@@ -74,6 +77,7 @@ export function NavBar() {
                   />
                 </svg>
               </button>
+              <LanguageSwitcher />
 
               {/* User section */}
               {loading ? (
@@ -109,13 +113,13 @@ export function NavBar() {
                     href="/login"
                     className="px-3 py-1.5 text-sm font-medium text-[#007f96] transition-colors hover:text-[#111820]"
                   >
-                    登录
+                    {t('common.login')}
                   </Link>
                   <Link
                     href="/register"
                     className="rounded-md bg-[#111820] px-3 py-1.5 text-sm font-bold text-white transition-colors hover:bg-black"
                   >
-                    注册
+                    {t('common.register')}
                   </Link>
                 </div>
               )}
@@ -143,7 +147,7 @@ export function NavBar() {
                       : 'border-transparent text-slate-500 hover:bg-white/80 hover:text-[#111820]'
                   }`}
                 >
-                  {item.icon} {item.label}
+                  {item.icon} {t(item.labelKey, item.label)}
                 </Link>
               );
             })}

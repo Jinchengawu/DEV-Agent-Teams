@@ -10,6 +10,7 @@ import { Badge } from '@/components/ui/badge'
 import { SkeletonCard } from '@/components/ui/skeleton'
 import { ErrorState } from '@/components/ui/error-state'
 import { useAgentHealth } from '@/hooks/useAgentHealth'
+import { useI18n } from '@/lib/i18n'
 
 interface ReadinessResponse {
   ok: boolean
@@ -111,11 +112,17 @@ export default function Dashboard() {
   const router = useRouter()
   const [clientTime, setClientTime] = useState('--')
   const { agents, stats, error, isLoading, mutate } = useAgentHealth()
+  const { locale, t, apiHeaders } = useI18n()
   const {
     data: readiness,
     isLoading: readinessLoading,
     mutate: refreshReadiness,
-  } = useSWR<ReadinessResponse>('/api/readiness', readinessFetcher, {
+  } = useSWR<ReadinessResponse>(['/api/readiness', locale], ([url]) =>
+    fetch(String(url), { cache: 'no-store', headers: apiHeaders }).then(async (response) => {
+      const data = await response.json()
+      if (!response.ok) return { ok: false, ...data }
+      return data
+    }), {
     refreshInterval: 30000,
     revalidateOnFocus: false,
   })
@@ -153,40 +160,40 @@ export default function Dashboard() {
 
   const statCards = [
     {
-      title: 'Active Agents',
+      title: t('dashboard.activeAgents'),
       value: `${stats.onlineCount}/${stats.totalAgents}`,
       icon: 'AG',
       color: 'border-cyan-200 bg-cyan-50 text-cyan-700',
-      detail: stats.onlineCount > 0 ? `${stats.onlineCount} online` : 'All offline',
+      detail: stats.onlineCount > 0 ? `${stats.onlineCount} ${t('common.online').toLowerCase()}` : t('common.offline'),
     },
     {
-      title: 'Total Skills',
+      title: t('dashboard.totalSkills'),
       value: String(stats.totalSkills),
       icon: 'SK',
       color: 'border-emerald-200 bg-emerald-50 text-emerald-700',
-      detail: 'Across all agents',
+      detail: locale === 'zh' ? '覆盖全部 Agent' : 'Across all agents',
     },
     {
-      title: 'Success Rate',
+      title: t('dashboard.successRate'),
       value: stats.onlineCount > 0 ? `${stats.successRate}%` : '--',
       icon: '%',
       color: 'border-orange-200 bg-orange-50 text-orange-700',
-      detail: stats.onlineCount > 0 ? 'Agents reachable' : 'No agents',
+      detail: stats.onlineCount > 0 ? (locale === 'zh' ? 'Agent 可触达' : 'Agents reachable') : (locale === 'zh' ? '无在线 Agent' : 'No agents'),
     },
     {
-      title: 'System',
-      value: stats.onlineCount > 0 ? 'Online' : 'Offline',
+      title: t('dashboard.system'),
+      value: stats.onlineCount > 0 ? t('common.online') : t('common.offline'),
       icon: 'OS',
       color: stats.onlineCount > 0 ? 'border-emerald-200 bg-emerald-50 text-emerald-700' : 'border-red-200 bg-red-50 text-red-700',
-      detail: 'Via Hermes runtime',
+      detail: locale === 'zh' ? '基于 Hermes Runtime' : 'Via Hermes runtime',
     },
   ]
 
   const quickActions = [
-    { icon: 'NEW', title: 'New Project', desc: 'Start a new project', path: '/chat' },
-    { icon: 'TPL', title: 'Templates', desc: 'Browse templates', path: '/chat' },
-    { icon: 'SKL', title: 'Skills', desc: 'View all skills', path: '/skills' },
-    { icon: 'CFG', title: 'Settings', desc: 'Configure system', path: '/settings' },
+    { icon: 'NEW', title: locale === 'zh' ? '新项目' : 'New Project', desc: locale === 'zh' ? '启动一个真实交付项目' : 'Start a new project', path: '/chat' },
+    { icon: 'TPL', title: locale === 'zh' ? '模板' : 'Templates', desc: locale === 'zh' ? '浏览工作流模板' : 'Browse templates', path: '/chat' },
+    { icon: 'SKL', title: t('nav.skills'), desc: locale === 'zh' ? '查看团队技能' : 'View all skills', path: '/skills' },
+    { icon: 'CFG', title: t('nav.settings'), desc: locale === 'zh' ? '配置系统' : 'Configure system', path: '/settings' },
   ]
 
   if (error) {
@@ -205,17 +212,21 @@ export default function Dashboard() {
         <div className="grid gap-8 lg:grid-cols-[1.12fr_0.88fr] lg:items-center">
           <div className="max-w-4xl">
             <p className="text-xs font-black uppercase tracking-[0.28em] text-[#007f96]">
-              AI Software Delivery Team For Real Business Projects
+              {t('hero.eyebrow')}
             </p>
-            <h1 className="mt-5 max-w-5xl text-[clamp(3rem,8.6vw,8.2rem)] font-black leading-[0.9] tracking-normal text-[#111820]">
-              让 AI Agent 不只会回答，而是能按软件团队方式交付。
+            <h1 className={`mt-5 max-w-5xl font-black tracking-normal text-[#111820] ${
+              locale === 'zh'
+                ? 'text-[clamp(3rem,8.6vw,8.2rem)] leading-[0.9]'
+                : 'text-[clamp(3rem,7.2vw,6.7rem)] leading-[0.92]'
+            }`}>
+              {t('hero.title')}
             </h1>
             <p className="mt-8 max-w-3xl text-lg leading-8 text-slate-700 md:text-xl md:leading-9">
-              DEV-Agent-Teams 是面向软件研发组织的 AI 团队协同平台。它把 PM、研发、测试、DevOps Agent 接入同一条交付循环，用 PRD、看板、工作流、验证报告和复盘经验承载结果，帮助企业从“试用 Agent”走向“部署 AI 开发团队”。
+              {t('hero.subtitle')}
             </p>
             <div className="mt-8 flex flex-wrap gap-3">
-              <Button onClick={() => router.push('/chat')}>申请真实项目试点</Button>
-              <Button variant="outline" onClick={() => router.push('/kanban?source=coordination')}>查看交付看板</Button>
+              <Button onClick={() => router.push('/chat')}>{t('hero.primary')}</Button>
+              <Button variant="outline" onClick={() => router.push('/kanban?source=coordination')}>{t('hero.secondary')}</Button>
             </div>
           </div>
 
@@ -223,27 +234,27 @@ export default function Dashboard() {
             <div className="absolute left-[5%] top-[35%] h-px w-[72%] rotate-[26deg] bg-slate-300" />
             <div className="absolute left-[20%] top-[58%] h-px w-[70%] -rotate-[17deg] bg-slate-300" />
             <div className="absolute right-6 top-12 w-[280px] rounded-lg border border-slate-200 bg-white/82 p-5 shadow-[0_30px_90px_rgba(15,23,42,0.10)] backdrop-blur-xl">
-              <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-500">Business Object</p>
-              <p className="mt-2 text-lg font-black text-[#111820]">Delivery Loop</p>
+              <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-500">{t('hero.businessObject')}</p>
+              <p className="mt-2 text-lg font-black text-[#111820]">{t('hero.deliveryLoop')}</p>
               <p className="mt-1 text-xs font-black uppercase tracking-[0.12em] text-slate-600">PRD / Kanban / Test / Release</p>
             </div>
             <div className="absolute left-8 top-[45%] w-[280px] rounded-lg border border-slate-200 bg-white/82 p-5 shadow-[0_30px_90px_rgba(15,23,42,0.10)] backdrop-blur-xl">
-              <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-500">Agent Team</p>
+              <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-500">{t('hero.agentTeam')}</p>
               <p className="mt-2 text-xs font-black uppercase tracking-[0.12em] text-slate-600">PM Frontend Backend Testing DevOps Admin</p>
             </div>
             <div className="absolute bottom-16 right-0 w-[280px] rounded-lg border border-slate-200 bg-white/82 p-5 shadow-[0_30px_90px_rgba(15,23,42,0.10)] backdrop-blur-xl">
-              <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-500">Commercial Entry</p>
-              <p className="mt-2 text-xs font-black uppercase tracking-[0.12em] text-slate-600">Private Deploy / Audit / RAG Review</p>
+              <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-500">{t('hero.commercialEntry')}</p>
+              <p className="mt-2 text-xs font-black uppercase tracking-[0.12em] text-slate-600">{t('hero.commercialText')}</p>
             </div>
           </div>
         </div>
 
         <div className="mt-10 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           {[
-            { value: String(stats.totalAgents || 6), label: '角色 Agent: PM、Frontend、Backend、Testing、DevOps、Project Admin' },
-            { value: '7', label: '交付面: Meeting、Document、Kanban、Workflow、Artifact、Experience、Context/Event' },
-            { value: deliveryGate?.total ? `${deliveryGate.pass}/${deliveryGate.total}` : '8/8', label: '最近一次端到端回归验证达到通过状态，后续官网应挂出报告链接' },
-            { value: '3', label: '首批商业入口: 代码审计、RAG 评审、智能图片评审' },
+            { value: String(stats.totalAgents || 6), label: locale === 'zh' ? '角色 Agent: PM、Frontend、Backend、Testing、DevOps、Project Admin' : 'Role agents: PM, Frontend, Backend, Testing, DevOps, Project Admin' },
+            { value: '7', label: locale === 'zh' ? '交付面: Meeting、Document、Kanban、Workflow、Artifact、Experience、Context/Event' : 'Delivery surfaces: Meeting, Document, Kanban, Workflow, Artifact, Experience, Context/Event' },
+            { value: deliveryGate?.total ? `${deliveryGate.pass}/${deliveryGate.total}` : '8/8', label: locale === 'zh' ? '最近一次端到端回归验证达到通过状态，后续官网应挂出报告链接' : 'Latest end-to-end regression is passing and report links can be published' },
+            { value: '3', label: locale === 'zh' ? '首批商业入口: 代码审计、RAG 评审、智能图片评审' : 'Initial commercial entries: code audit, RAG review, image review' },
           ].map(item => (
             <div key={item.label} className="border-t border-[#111820] pt-4">
               <p className="text-3xl font-black text-[#111820]">{item.value}</p>
@@ -261,14 +272,14 @@ export default function Dashboard() {
           <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
             <div className="flex flex-wrap items-center gap-3">
               <Badge className={mvpReady ? 'border-emerald-200 bg-emerald-50 text-emerald-700' : 'border-orange-200 bg-orange-50 text-orange-700'} data-testid="dashboard-readiness-badge">
-                {readinessLoading || !deliveryGateLoaded || !teamLoopLoaded ? 'Checking' : mvpReady ? 'MVP Ready' : 'Needs Attention'}
+                {readinessLoading || !deliveryGateLoaded || !teamLoopLoaded ? t('dashboard.checking') : mvpReady ? t('dashboard.mvpReady') : t('dashboard.needsAttention')}
               </Badge>
               <div>
-                <p className="text-sm font-black uppercase tracking-[0.16em] text-[#111820]">Team Coordination Loop</p>
+                <p className="text-sm font-black uppercase tracking-[0.16em] text-[#111820]">{t('dashboard.readiness')}</p>
                 <p className="text-xs text-slate-500">
                   {readiness?.agentHealth
-                    ? `${readiness.agentHealth.onlineCount ?? 0}/${readiness.agentHealth.totalAgents ?? 0} Agents online`
-                    : 'Checking local team readiness'}
+                    ? `${readiness.agentHealth.onlineCount ?? 0}/${readiness.agentHealth.totalAgents ?? 0} ${locale === 'zh' ? '个 Agent 在线' : 'Agents online'}`
+                    : locale === 'zh' ? '检查本地团队就绪状态' : 'Checking local team readiness'}
                 </p>
               </div>
             </div>
@@ -326,7 +337,7 @@ export default function Dashboard() {
               }}
               data-testid="dashboard-readiness-refresh"
             >
-              Refresh
+              {t('common.refresh')}
             </Button>
           </div>
         </CardContent>
@@ -335,7 +346,7 @@ export default function Dashboard() {
       <Card data-testid="dashboard-team-loop-card">
         <CardHeader className="flex flex-row items-center justify-between">
           <div>
-            <CardTitle>Team Coordination Loop</CardTitle>
+            <CardTitle>{t('dashboard.loop')}</CardTitle>
             <p className="mt-1 text-xs text-slate-500" data-testid="dashboard-team-loop-diagnostics">
               {teamLoop?.checkSummary
                 ? teamLoop.ok
@@ -393,8 +404,8 @@ export default function Dashboard() {
 
       <Card>
         <CardHeader className="flex flex-row items-center justify-between">
-          <CardTitle>Agent Status</CardTitle>
-          <Button variant="outline" size="sm" onClick={() => router.push('/agents')}>View All</Button>
+          <CardTitle>{t('dashboard.agentStatus')}</CardTitle>
+          <Button variant="outline" size="sm" onClick={() => router.push('/agents')}>{t('dashboard.viewAll')}</Button>
         </CardHeader>
         <CardContent>
           {isLoading ? (
@@ -420,7 +431,7 @@ export default function Dashboard() {
                       </div>
                     </div>
                     <span className={`rounded border px-2 py-0.5 text-[11px] font-black uppercase ${agent.online ? 'border-emerald-200 bg-emerald-50 text-emerald-700' : 'border-red-200 bg-red-50 text-red-700'}`}>
-                      {agent.online ? 'Online' : 'Offline'}
+                      {agent.online ? t('common.online') : t('common.offline')}
                     </span>
                   </div>
                   <div className="grid grid-cols-2 gap-2 text-sm">
@@ -433,7 +444,7 @@ export default function Dashboard() {
                       <p className="font-semibold">{agent.port}</p>
                     </div>
                   </div>
-                  <Button className="mt-3 w-full" size="sm">Open Chat</Button>
+                  <Button className="mt-3 w-full" size="sm">{t('dashboard.openChat')}</Button>
                 </div>
               ))}
             </div>
@@ -444,7 +455,7 @@ export default function Dashboard() {
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
         <Card>
           <CardHeader>
-            <CardTitle>Quick Actions</CardTitle>
+            <CardTitle>{t('dashboard.quickActions')}</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="grid grid-cols-2 gap-3">
@@ -461,16 +472,16 @@ export default function Dashboard() {
 
         <Card>
           <CardHeader>
-            <CardTitle>System Info</CardTitle>
+            <CardTitle>{t('dashboard.systemInfo')}</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="space-y-3">
               {[
                 { label: 'Model Provider', value: 'DeepSeek' },
                 { label: 'Model', value: 'deepseek-v4-pro[1m]' },
-                { label: 'Agents', value: `${stats.onlineCount}/${agents.length} online` },
-                { label: 'Skills', value: String(stats.totalSkills) },
-                { label: 'Updated', value: clientTime },
+                { label: locale === 'zh' ? 'Agents' : 'Agents', value: `${stats.onlineCount}/${agents.length} ${t('common.online').toLowerCase()}` },
+                { label: t('nav.skills'), value: String(stats.totalSkills) },
+                { label: locale === 'zh' ? '更新时间' : 'Updated', value: clientTime },
               ].map((item) => (
                 <div key={item.label} className="flex items-center justify-between rounded-md border border-slate-200 bg-white/64 p-3">
                   <span className="text-sm text-slate-600">{item.label}</span>

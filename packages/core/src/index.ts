@@ -137,6 +137,17 @@ export { createAuthMiddleware } from './auth/middleware';
 export type { User, AuthTokens, RegisterInput, LoginInput } from './auth/AuthService';
 export { AppError } from './auth/AuthService';
 
+// ── 国际化（新增 — 全栈中英展示协商）──
+export {
+  normalizeLocale,
+  negotiateLocale,
+  isSupportedLocale,
+  pickText,
+  localizeAgent,
+  localizeAgents,
+} from './i18n/index.js';
+export type { Locale, LocalizedText } from './i18n/index.js';
+
 // ── 股票分析子系统（新增）──
 export { StockRepository } from './stock/StockRepository.js';
 export type { StockCacheEntry } from './stock/StockRepository.js';

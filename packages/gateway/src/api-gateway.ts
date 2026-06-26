@@ -16,7 +16,7 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { homedir } from 'node:os';
 import { config } from 'dotenv';
-import { createAgentApp, createHermesAgentClient } from '@dev-agent/core';
+import { createAgentApp, createHermesAgentClient, localizeAgents, negotiateLocale } from '@dev-agent/core';
 import type { OrchestratorEvent, MeetingProgressEvent } from '@dev-agent/core';
 import Busboy from 'busboy';
 import { randomUUID } from 'node:crypto';
@@ -175,6 +175,21 @@ async function getHermesAgentHealth(): Promise<Record<string, any>> {
   };
 }
 
+function getRequestLocale(req: { headers: Record<string, any> }, url: URL) {
+  return negotiateLocale({
+    queryLang: url.searchParams.get('lang'),
+    acceptLanguage: req.headers['accept-language'],
+  });
+}
+
+function writeJson(res: any, status: number, payload: unknown, locale?: string) {
+  res.writeHead(status, {
+    'Content-Type': 'application/json',
+    ...(locale ? { 'Content-Language': locale } : {}),
+  });
+  res.end(JSON.stringify(payload));
+}
+
 // ============================================================================
 // Main
 // ============================================================================
@@ -210,6 +225,7 @@ async function main(): Promise<void> {
     const startTime = Date.now();
     const url = new URL(req.url || '/', `http://${req.headers.host}`);
     const path = url.pathname;
+    const locale = getRequestLocale(req, url);
 
     // 文件上传 — 需要原始 req 流，必须在收集请求体之前处理
     if (path === '/upload' && req.method === 'POST') {
@@ -279,8 +295,7 @@ async function main(): Promise<void> {
           sessionCount: agentApp.sessionManager.getSessionCount(),
           uptime: process.uptime(),
         };
-        res.writeHead(200, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify(response));
+        writeJson(res, 200, { ...response, locale }, locale);
         writeAuditLog({
           timestamp: new Date().toISOString(),
           method: 'GET',
@@ -294,8 +309,7 @@ async function main(): Promise<void> {
       // Agent 列表
       if (path === '/agents' && req.method === 'GET') {
         const agents = agentApp.orchestrator.getStatus().teamAgents;
-        res.writeHead(200, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ agents }));
+        writeJson(res, 200, { locale, agents: localizeAgents(agents, locale) }, locale);
         writeAuditLog({
           timestamp: new Date().toISOString(),
           method: 'GET',
@@ -308,8 +322,7 @@ async function main(): Promise<void> {
 
       if (path === '/agent-health' && req.method === 'GET') {
         const health = await getHermesAgentHealth();
-        res.writeHead(200, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify(health));
+        writeJson(res, 200, { ...health, locale, agents: localizeAgents(health.agents || [], locale) }, locale);
         writeAuditLog({
           timestamp: new Date().toISOString(),
           method: 'GET',

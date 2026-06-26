@@ -15,13 +15,18 @@ interface HealthResult {
   error?: string;
 }
 
-async function checkGateway(): Promise<{ online: boolean; agents: HealthResult[]; livePipelineReady: boolean }> {
+async function checkGateway(request: Request): Promise<{ online: boolean; agents: HealthResult[]; livePipelineReady: boolean; locale?: string }> {
   try {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 5000);
-    const res = await fetch(`${GATEWAY_URL}/agent-health`, {
+    const requestUrl = new URL(request.url);
+    const lang = requestUrl.searchParams.get('lang');
+    const res = await fetch(`${GATEWAY_URL}/agent-health${lang ? `?lang=${encodeURIComponent(lang)}` : ''}`, {
       signal: controller.signal,
       cache: 'no-store',
+      headers: {
+        'Accept-Language': request.headers.get('accept-language') || 'zh-CN,zh;q=0.9',
+      },
     });
     clearTimeout(timeout);
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -30,6 +35,8 @@ async function checkGateway(): Promise<{ online: boolean; agents: HealthResult[]
       id: string;
       name?: string;
       label?: string;
+      displayName?: string;
+      displayLabel?: string;
       online: boolean;
       hermesPort?: number;
       skills?: number;
@@ -39,14 +46,14 @@ async function checkGateway(): Promise<{ online: boolean; agents: HealthResult[]
       online: Boolean(a.online),
       data: {
         status: a.online ? 'online' : 'offline',
-        agent: a.id || a.name || '',
-        label: a.label || a.id || a.name || '',
+        agent: a.displayName || a.id || a.name || '',
+        label: a.displayLabel || a.label || a.id || a.name || '',
         hermesPort: a.hermesPort || 0,
         skills: a.skills || 0,
       },
       error: a.error,
     }));
-    return { online: true, agents, livePipelineReady: Boolean(data.livePipelineReady) };
+    return { online: true, agents, livePipelineReady: Boolean(data.livePipelineReady), locale: data.locale };
   } catch (e) {
     return {
       online: false,
@@ -60,12 +67,13 @@ async function checkGateway(): Promise<{ online: boolean; agents: HealthResult[]
   }
 }
 
-export async function GET() {
-  const { online, agents, livePipelineReady } = await checkGateway();
+export async function GET(request: Request) {
+  const { online, agents, livePipelineReady, locale } = await checkGateway(request);
   const onlineCount = agents.filter((agent) => agent.online).length;
 
   return NextResponse.json({
     timestamp: Date.now(),
+    locale: locale || 'zh',
     gatewayOnline: online,
     livePipelineReady,
     onlineCount,

@@ -47,6 +47,7 @@ export interface AppSettings {
   temperature: number;
   autoRoute: boolean;
   logLevel: string;
+  language: 'zh' | 'en';
 }
 
 export interface DashboardStats {
