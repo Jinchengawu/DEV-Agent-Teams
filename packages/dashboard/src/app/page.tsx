@@ -27,6 +27,14 @@ interface ReadinessResponse {
     totalAgents?: number
     livePipelineReady?: boolean
   }
+  openFrameworkSync?: {
+    ok: boolean
+    head?: string
+    remote?: string
+    dirtyCount?: number
+    path?: string
+    error?: string
+  }
 }
 
 interface DeliveryGateResponse {
@@ -204,7 +212,7 @@ export default function Dashboard() {
                 </p>
               </div>
             </div>
-            <div className="grid grid-cols-2 gap-2 text-xs sm:grid-cols-5">
+            <div className="grid grid-cols-2 gap-2 text-xs sm:grid-cols-3 lg:grid-cols-6">
               <div className="rounded-md bg-white/80 px-3 py-2">
                 <p className="text-gray-500">Gateway</p>
                 <p className="font-semibold text-gray-900">{readiness?.gateway?.ok ? 'Online' : '--'}</p>
@@ -250,6 +258,20 @@ export default function Dashboard() {
                       </span>
                     ) : null}
                   </div>
+                )}
+              </div>
+              <div className="rounded-md bg-white/80 px-3 py-2" data-testid="dashboard-open-sync-summary">
+                <p className="text-gray-500">Open Sync</p>
+                <p className="font-semibold text-gray-900">
+                  {readiness?.openFrameworkSync?.ok ? 'Synced' : '--'}
+                </p>
+                {readiness?.openFrameworkSync?.head && (
+                  <p className="mt-1 truncate text-[11px] text-gray-500">
+                    {readiness.openFrameworkSync.head}
+                    {typeof readiness.openFrameworkSync.dirtyCount === 'number'
+                      ? ` · dirty ${readiness.openFrameworkSync.dirtyCount}`
+                      : ''}
+                  </p>
                 )}
               </div>
               <div className="rounded-md bg-white/80 px-3 py-2">

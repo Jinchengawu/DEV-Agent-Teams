@@ -346,6 +346,24 @@ PY
     rm -f "$tmp_file"
 }
 
+doctor_check_open_framework_sync() {
+    if [ ! -d "$OPEN_FRAMEWORK_ROOT/.git" ]; then
+        doctor_fail "Open-Agent-Teams 仓库不可访问: $OPEN_FRAMEWORK_ROOT"
+        return
+    fi
+
+    local open_head open_remote dirty_count
+    open_head="$(git -C "$OPEN_FRAMEWORK_ROOT" rev-parse --short HEAD 2>/dev/null || true)"
+    open_remote="$(git -C "$OPEN_FRAMEWORK_ROOT" rev-parse --short origin/main 2>/dev/null || true)"
+    dirty_count="$(git -C "$OPEN_FRAMEWORK_ROOT" status --porcelain 2>/dev/null | wc -l | tr -d ' ')"
+
+    if [ -n "$open_head" ] && [ "$open_head" = "$open_remote" ]; then
+        doctor_pass "Open 框架同步: HEAD=$open_head origin/main=$open_remote dirty=$dirty_count"
+    else
+        doctor_fail "Open 框架未同步: HEAD=${open_head:-unknown} origin/main=${open_remote:-unknown}"
+    fi
+}
+
 run_doctor() {
     echo -e "${BLUE}🩺 DEV-Agent MVP Doctor${NC}"
     echo ""
@@ -371,6 +389,10 @@ run_doctor() {
     doctor_check_agent_health
 
     echo ""
+    echo "Framework sync:"
+    doctor_check_open_framework_sync
+
+    echo ""
     if [ "$DOCTOR_FAILED" -eq 0 ]; then
         echo -e "${GREEN}✅ Doctor 通过：本地 Team Coordination Loop 具备 MVP 测试条件${NC}"
     else
@@ -380,7 +402,7 @@ run_doctor() {
 }
 
 run_doctor_json() {
-    SCRIPT_DIR="$SCRIPT_DIR" python3 <<'PY'
+    SCRIPT_DIR="$SCRIPT_DIR" OPEN_FRAMEWORK_ROOT="$OPEN_FRAMEWORK_ROOT" python3 <<'PY'
 import json
 import os
 import socket
@@ -390,6 +412,7 @@ import urllib.error
 import urllib.request
 
 root = os.environ["SCRIPT_DIR"]
+open_framework_root = os.environ["OPEN_FRAMEWORK_ROOT"]
 
 def command_check(name):
     path = shutil_which(name)
@@ -443,6 +466,34 @@ def http_json(url):
     except Exception as exc:
         return {"ok": False, "status": None, "error": str(exc)}
 
+def git_value(repo, *args):
+    return subprocess.check_output(
+        ["git", "-C", repo, *args],
+        text=True,
+        stderr=subprocess.STDOUT,
+        timeout=5,
+    ).strip()
+
+def open_framework_sync_check(repo):
+    if not os.path.isdir(os.path.join(repo, ".git")):
+        return {"ok": False, "path": repo, "error": "repo not found"}
+    try:
+        head = git_value(repo, "rev-parse", "--short", "HEAD")
+        remote = git_value(repo, "rev-parse", "--short", "origin/main")
+        dirty = git_value(repo, "status", "--porcelain")
+        dirty_count = 0 if not dirty else len(dirty.splitlines())
+        return {
+            "ok": bool(head) and head == remote,
+            "path": repo,
+            "head": head,
+            "remote": remote,
+            "dirtyCount": dirty_count,
+        }
+    except subprocess.CalledProcessError as exc:
+        return {"ok": False, "path": repo, "error": exc.output.strip()}
+    except Exception as exc:
+        return {"ok": False, "path": repo, "error": str(exc)}
+
 runtime = {
     "node": command_check("node"),
     "pnpm": command_check("pnpm"),
@@ -456,6 +507,7 @@ ports = {str(port): port_check(port) for port in [8002, 8003, 8004, 8005, 8006, 
 gateway_health = http_json("http://127.0.0.1:8400/health")
 dashboard_health = http_json("http://127.0.0.1:3000/api/health")
 agent_health = http_json("http://127.0.0.1:8400/agent-health")
+open_framework_sync = open_framework_sync_check(open_framework_root)
 
 agent_data = agent_health.get("data") if agent_health.get("ok") else {}
 agent_ready = (
@@ -474,6 +526,7 @@ ok = (
     and gateway_health.get("ok") is True
     and dashboard_health.get("ok") is True
     and agent_ready
+    and open_framework_sync.get("ok") is True
 )
 
 payload = {
@@ -497,6 +550,8 @@ payload = {
         "totalAgents": agent_data.get("totalAgents") if isinstance(agent_data, dict) else None,
         "livePipelineReady": agent_data.get("livePipelineReady") if isinstance(agent_data, dict) else None,
     },
+    "openFrameworkSync": open_framework_sync,
+    "checkedAt": int(__import__("time").time() * 1000),
 }
 
 print(json.dumps(payload, ensure_ascii=False, indent=2))

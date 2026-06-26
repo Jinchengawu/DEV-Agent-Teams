@@ -777,6 +777,7 @@ ok = (
     and data.get("agentHealth", {}).get("livePipelineReady") is True
     and data.get("gateway", {}).get("ok") is True
     and data.get("dashboard", {}).get("ok") is True
+    and data.get("openFrameworkSync", {}).get("ok") is True
 )
 raise SystemExit(0 if ok else 1)' /tmp/dev-agent-doctor.json
       then
@@ -784,7 +785,8 @@ raise SystemExit(0 if ok else 1)' /tmp/dev-agent-doctor.json
 with open(sys.argv[1], "r", encoding="utf-8") as f:
     data = json.load(f)
 agent = data.get("agentHealth", {})
-print("online={}/{} liveReady={}".format(agent.get("onlineCount"), agent.get("totalAgents"), agent.get("livePipelineReady")))' /tmp/dev-agent-doctor.json)"
+sync = data.get("openFrameworkSync", {})
+print("online={}/{} liveReady={} openSync={}/{}".format(agent.get("onlineCount"), agent.get("totalAgents"), agent.get("livePipelineReady"), sync.get("head"), sync.get("remote")))' /tmp/dev-agent-doctor.json)"
         record "dev-agent doctor json" PASS "$doctor_json_summary"
       else
         record "dev-agent doctor json" FAIL "JSON payload did not report ready state"
@@ -802,12 +804,16 @@ print("online={}/{} liveReady={}".format(agent.get("onlineCount"), agent.get("to
 with open(sys.argv[1], "r", encoding="utf-8") as f:
     data = json.load(f)
 agent = data.get("agentHealth", {})
+sync = data.get("openFrameworkSync", {})
 ok = (
     data.get("ok") is True
     and data.get("source") == "./dev-agent doctor --json"
     and agent.get("onlineCount") == 6
     and agent.get("totalAgents") == 6
     and agent.get("livePipelineReady") is True
+    and sync.get("ok") is True
+    and isinstance(sync.get("head"), str)
+    and sync.get("head") == sync.get("remote")
 )
 raise SystemExit(0 if ok else 1)' /tmp/dev-agent-dashboard-readiness.json
     then
@@ -815,7 +821,8 @@ raise SystemExit(0 if ok else 1)' /tmp/dev-agent-dashboard-readiness.json
 with open(sys.argv[1], "r", encoding="utf-8") as f:
     data = json.load(f)
 agent = data.get("agentHealth", {})
-print("online={}/{} liveReady={}".format(agent.get("onlineCount"), agent.get("totalAgents"), agent.get("livePipelineReady")))' /tmp/dev-agent-dashboard-readiness.json)"
+sync = data.get("openFrameworkSync", {})
+print("online={}/{} liveReady={} openSync={}/{}".format(agent.get("onlineCount"), agent.get("totalAgents"), agent.get("livePipelineReady"), sync.get("head"), sync.get("remote")))' /tmp/dev-agent-dashboard-readiness.json)"
       record "dashboard readiness endpoint" PASS "$readiness_summary"
     else
       record "dashboard readiness endpoint" FAIL "payload did not report ready state"
