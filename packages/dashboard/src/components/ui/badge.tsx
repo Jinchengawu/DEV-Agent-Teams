@@ -7,16 +7,16 @@ export interface BadgeProps extends React.HTMLAttributes<HTMLDivElement> {
 
 function Badge({ className, variant = "default", ...props }: BadgeProps) {
   const variants = {
-    default: "border-[#5be5ff]/30 bg-[#5be5ff]/14 text-[#8ff0ff] hover:bg-[#5be5ff]/20",
-    secondary: "border-white/12 bg-white/[0.07] text-[#dce7f5] hover:bg-white/[0.10]",
-    destructive: "border-[#ff5252]/35 bg-[#ff5252]/14 text-[#ff9a9a] hover:bg-[#ff5252]/20",
-    outline: "border-white/14 bg-transparent text-[#dce7f5]",
+    default: "border-[#007f96]/20 bg-[#007f96]/8 text-[#007f96] hover:bg-[#007f96]/12",
+    secondary: "border-slate-200 bg-white/72 text-slate-700 hover:bg-white",
+    destructive: "border-red-200 bg-red-50 text-red-700 hover:bg-red-100",
+    outline: "border-slate-300 bg-transparent text-slate-700",
   }
 
   return (
     <div
       className={cn(
-        "inline-flex items-center rounded-md border px-2.5 py-0.5 text-[11px] font-bold uppercase tracking-[0.12em] transition-colors focus:outline-none focus:ring-2 focus:ring-[#5be5ff] focus:ring-offset-2 focus:ring-offset-[#08090d]",
+        "inline-flex items-center rounded-md border px-2.5 py-0.5 text-[11px] font-bold uppercase tracking-[0.12em] transition-colors focus:outline-none focus:ring-2 focus:ring-[#007f96] focus:ring-offset-2 focus:ring-offset-[#f7f9fa]",
         variants[variant],
         className
       )}

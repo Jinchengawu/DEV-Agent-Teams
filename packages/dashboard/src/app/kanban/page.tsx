@@ -47,18 +47,18 @@ interface KanbanData {
 }
 
 const STATUS_COLUMNS = [
-  { key: 'todo', label: '待办', color: 'border-white/10 bg-white/[0.035]', badge: 'border-white/15 bg-white/10 text-[#dce7f5]' },
-  { key: 'in_progress', label: '进行中', color: 'border-[#5be5ff]/25 bg-[#5be5ff]/[0.055]', badge: 'border-[#5be5ff]/35 bg-[#5be5ff]/12 text-[#8ff0ff]' },
-  { key: 'review', label: '评审中', color: 'border-[#b18cff]/25 bg-[#b18cff]/[0.055]', badge: 'border-[#b18cff]/35 bg-[#b18cff]/12 text-[#d7c7ff]' },
-  { key: 'done', label: '已完成', color: 'border-[#33ff99]/25 bg-[#33ff99]/[0.055]', badge: 'border-[#33ff99]/35 bg-[#33ff99]/12 text-[#63f7ae]' },
-  { key: 'blocked', label: '阻塞', color: 'border-[#ff5252]/25 bg-[#ff5252]/[0.055]', badge: 'border-[#ff5252]/35 bg-[#ff5252]/12 text-[#ff9a9a]' },
+  { key: 'todo', label: '待办', color: 'border-slate-200 bg-white/58', badge: 'border-slate-200 bg-white text-slate-700' },
+  { key: 'in_progress', label: '进行中', color: 'border-cyan-200 bg-cyan-50/60', badge: 'border-cyan-200 bg-cyan-50 text-cyan-700' },
+  { key: 'review', label: '评审中', color: 'border-violet-200 bg-violet-50/55', badge: 'border-violet-200 bg-violet-50 text-violet-700' },
+  { key: 'done', label: '已完成', color: 'border-emerald-200 bg-emerald-50/55', badge: 'border-emerald-200 bg-emerald-50 text-emerald-700' },
+  { key: 'blocked', label: '阻塞', color: 'border-red-200 bg-red-50/55', badge: 'border-red-200 bg-red-50 text-red-700' },
 ] as const
 
 const PRIORITY_COLORS = {
-  low: 'border-white/10 bg-white/[0.06] text-[#aab6c7]',
-  medium: 'border-[#5be5ff]/30 bg-[#5be5ff]/10 text-[#8ff0ff]',
-  high: 'border-[#ffb15f]/30 bg-[#ffb15f]/12 text-[#ffca85]',
-  critical: 'border-[#ff5252]/35 bg-[#ff5252]/14 text-[#ff9a9a]',
+  low: 'border-slate-200 bg-white text-slate-600',
+  medium: 'border-cyan-200 bg-cyan-50 text-cyan-700',
+  high: 'border-orange-200 bg-orange-50 text-orange-700',
+  critical: 'border-red-200 bg-red-50 text-red-700',
 } as const
 
 const AGENT_ICONS: Record<string, string> = {
@@ -166,9 +166,9 @@ export default function KanbanPage() {
     return (
       <div className="mx-auto max-w-[1540px] py-8">
         <div className="animate-pulse space-y-4">
-          <div className="h-8 w-1/4 rounded bg-white/10"></div>
+          <div className="h-8 w-1/4 rounded bg-slate-200"></div>
           <div className="grid grid-cols-1 gap-4 md:grid-cols-5">
-            {[1,2,3,4,5].map(i => <div key={i} className="h-64 rounded-lg border border-white/10 bg-white/[0.04]"></div>)}
+            {[1,2,3,4,5].map(i => <div key={i} className="h-64 rounded-lg border border-slate-200 bg-white/70"></div>)}
           </div>
         </div>
       </div>
@@ -180,15 +180,15 @@ export default function KanbanPage() {
   return (
     <div className="mx-auto max-w-[1540px] space-y-6">
       {/* Header */}
-      <div className="flex flex-col gap-3 border-b border-white/10 pb-5 sm:flex-row sm:items-end sm:justify-between">
+      <div className="flex flex-col gap-3 border-b border-slate-300/70 pb-5 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <p className="text-xs font-bold uppercase tracking-[0.26em] text-[#ff8a56]">Task Command Board</p>
-          <h1 className="mt-2 text-3xl font-black uppercase tracking-[0.12em] text-[#f4f8ff]">项目看板</h1>
-          <p className="mt-1 text-sm text-[#8d9bad]">串联任务、文档、工作流与角色 Agent 的执行状态</p>
+          <p className="text-xs font-bold uppercase tracking-[0.26em] text-[#007f96]">Task Command Board</p>
+          <h1 className="mt-2 text-3xl font-black uppercase tracking-[0.12em] text-[#111820]">项目看板</h1>
+          <p className="mt-1 text-sm text-slate-600">串联任务、文档、工作流与角色 Agent 的执行状态</p>
         </div>
         <button
           onClick={() => setShowCreate(!showCreate)}
-          className="rounded-md border border-[#ff5c1f]/45 bg-[#ff5c1f] px-4 py-2 text-sm font-bold text-white shadow-[0_0_24px_rgba(255,92,31,0.22)] transition-colors hover:bg-[#ff713d]"
+          className="rounded-md border border-[#111820] bg-[#111820] px-4 py-2 text-sm font-bold text-white shadow-[7px_7px_0_rgba(255,92,31,0.14)] transition-colors hover:bg-black"
         >
           新建任务
         </button>
@@ -197,25 +197,25 @@ export default function KanbanPage() {
       {/* Summary Cards */}
       <div className="grid grid-cols-2 gap-4 md:grid-cols-5">
         {[
-          { label: '总任务', value: summary?.total_tasks ?? 0, tone: 'text-[#f4f8ff]' },
-          { label: '已完成', value: summary?.completed ?? 0, tone: 'text-[#63f7ae]' },
-          { label: '进行中', value: (summary?.total_tasks ?? 0) - (summary?.completed ?? 0) - (summary?.blocked ?? 0), tone: 'text-[#8ff0ff]' },
-          { label: '阻塞', value: summary?.blocked ?? 0, tone: 'text-[#ff9a9a]' },
-          { label: '逾期', value: summary?.overdue ?? 0, tone: 'text-[#ffca85]' },
+          { label: '总任务', value: summary?.total_tasks ?? 0, tone: 'text-[#111820]' },
+          { label: '已完成', value: summary?.completed ?? 0, tone: 'text-emerald-700' },
+          { label: '进行中', value: (summary?.total_tasks ?? 0) - (summary?.completed ?? 0) - (summary?.blocked ?? 0), tone: 'text-cyan-700' },
+          { label: '阻塞', value: summary?.blocked ?? 0, tone: 'text-red-700' },
+          { label: '逾期', value: summary?.overdue ?? 0, tone: 'text-orange-700' },
         ].map(item => (
-          <div key={item.label} className="rounded-lg border border-white/10 bg-[#101219]/86 p-4">
+          <div key={item.label} className="rounded-lg border border-slate-200 bg-white/76 p-4 shadow-[0_18px_60px_rgba(15,23,42,0.06)]">
             <div className={`text-2xl font-black ${item.tone}`}>{item.value}</div>
-            <div className="mt-1 text-xs font-bold uppercase tracking-[0.14em] text-[#8d9bad]">{item.label}</div>
+            <div className="mt-1 text-xs font-bold uppercase tracking-[0.14em] text-slate-500">{item.label}</div>
           </div>
         ))}
       </div>
 
-      <div className="flex flex-col gap-3 rounded-lg border border-white/10 bg-[#101219]/86 p-4 md:flex-row md:items-center md:justify-between">
+      <div className="flex flex-col gap-3 rounded-lg border border-slate-200 bg-white/76 p-4 md:flex-row md:items-center md:justify-between">
         <div className="flex flex-wrap items-center gap-2">
           <select
             value={sourceFilter}
             onChange={e => setSourceFilter(e.target.value)}
-            className="h-9 rounded-md border border-white/10 bg-black/20 px-3 text-sm text-[#dce7f5] focus:border-[#5be5ff]/45 focus:outline-none focus:ring-2 focus:ring-[#5be5ff]/15"
+            className="h-9 rounded-md border border-slate-200 bg-white/80 px-3 text-sm text-[#111820] focus:border-[#007f96]/45 focus:outline-none focus:ring-2 focus:ring-[#007f96]/15"
             aria-label="Kanban source filter"
             data-testid="kanban-source-filter"
           >
@@ -226,7 +226,7 @@ export default function KanbanPage() {
           <select
             value={assigneeFilter}
             onChange={e => setAssigneeFilter(e.target.value)}
-            className="h-9 rounded-md border border-white/10 bg-black/20 px-3 text-sm text-[#dce7f5] focus:border-[#5be5ff]/45 focus:outline-none focus:ring-2 focus:ring-[#5be5ff]/15"
+            className="h-9 rounded-md border border-slate-200 bg-white/80 px-3 text-sm text-[#111820] focus:border-[#007f96]/45 focus:outline-none focus:ring-2 focus:ring-[#007f96]/15"
             aria-label="Kanban assignee filter"
             data-testid="kanban-assignee-filter"
           >
@@ -237,7 +237,7 @@ export default function KanbanPage() {
         </div>
         <button
           onClick={fetchKanban}
-          className="h-9 rounded-md border border-white/14 bg-white/[0.04] px-3 text-sm font-bold text-[#dce7f5] transition hover:border-[#5be5ff]/45 hover:bg-[#5be5ff]/10"
+          className="h-9 rounded-md border border-slate-300 bg-white/80 px-3 text-sm font-bold text-[#111820] transition hover:border-[#007f96]/35 hover:bg-white"
         >
           刷新
         </button>
@@ -245,24 +245,24 @@ export default function KanbanPage() {
 
       {/* Create Task Form */}
       {showCreate && (
-        <div className="rounded-lg border border-[#ff5c1f]/25 bg-[#101219]/90 p-4">
+        <div className="rounded-lg border border-[#ff5c1f]/25 bg-white/82 p-4">
           <div className="grid grid-cols-1 gap-4 lg:grid-cols-4">
             <input
               placeholder="任务标题"
               value={newTask.title}
               onChange={e => setNewTask({...newTask, title: e.target.value})}
-              className="rounded-md border border-white/10 bg-black/20 px-3 py-2 text-sm"
+              className="rounded-md border border-slate-200 bg-white/80 px-3 py-2 text-sm"
             />
             <input
               placeholder="描述（可选）"
               value={newTask.description}
               onChange={e => setNewTask({...newTask, description: e.target.value})}
-              className="rounded-md border border-white/10 bg-black/20 px-3 py-2 text-sm"
+              className="rounded-md border border-slate-200 bg-white/80 px-3 py-2 text-sm"
             />
             <select
               value={newTask.assignee}
               onChange={e => setNewTask({...newTask, assignee: e.target.value})}
-              className="rounded-md border border-white/10 bg-black/20 px-3 py-2 text-sm"
+              className="rounded-md border border-slate-200 bg-white/80 px-3 py-2 text-sm"
             >
               <option value="dev-frontend">🎨 Frontend</option>
               <option value="dev-backend">⚙️ Backend</option>
@@ -275,14 +275,14 @@ export default function KanbanPage() {
               <select
                 value={newTask.priority}
                 onChange={e => setNewTask({...newTask, priority: e.target.value})}
-                className="flex-1 rounded-md border border-white/10 bg-black/20 px-3 py-2 text-sm"
+                className="flex-1 rounded-md border border-slate-200 bg-white/80 px-3 py-2 text-sm"
               >
                 <option value="low">低</option>
                 <option value="medium">中</option>
                 <option value="high">高</option>
                 <option value="critical">紧急</option>
               </select>
-              <button onClick={handleCreateTask} className="rounded-md bg-[#ff5c1f] px-4 py-2 text-sm font-bold text-white">创建</button>
+              <button onClick={handleCreateTask} className="rounded-md bg-[#111820] px-4 py-2 text-sm font-bold text-white">创建</button>
             </div>
           </div>
         </div>
@@ -298,12 +298,12 @@ export default function KanbanPage() {
             return (
               <div key={col.key} className={`${col.color} min-h-[320px] rounded-lg border p-3`}>
                 <div className="mb-3 flex items-center justify-between gap-2">
-                  <h3 className="text-sm font-bold uppercase tracking-[0.16em] text-[#dce7f5]">{col.label}</h3>
+                  <h3 className="text-sm font-bold uppercase tracking-[0.16em] text-[#111820]">{col.label}</h3>
                   <span className={`${col.badge} rounded-md border px-2 py-0.5 text-xs font-black`}>{tasks.length}</span>
                 </div>
                 <div className="min-h-[200px] space-y-2">
                   {visibleTasks.map(task => (
-                  <div key={task.id} className="rounded-lg border border-white/10 bg-black/[0.26] p-3 text-sm transition hover:border-[#5be5ff]/35 hover:bg-[#5be5ff]/[0.05]" data-testid={`kanban-task-${task.id}`}>
+                  <div key={task.id} className="rounded-lg border border-slate-200 bg-white/82 p-3 text-sm transition hover:-translate-y-0.5 hover:border-[#007f96]/30 hover:bg-white" data-testid={`kanban-task-${task.id}`}>
                     <div className="flex items-start justify-between gap-2">
                       <span className="font-medium text-gray-900 leading-tight">{task.title}</span>
                       {task.source !== 'coordination' && (
@@ -313,7 +313,7 @@ export default function KanbanPage() {
                     <p className="mt-1 font-mono text-[11px] text-gray-400">{task.id}</p>
                     {task.description && <p className="text-xs text-gray-500 mt-1 line-clamp-2">{task.description}</p>}
                     {task.source === 'coordination' && (
-                      <div className="mt-2 rounded-md border border-[#5be5ff]/20 bg-[#5be5ff]/10 px-2 py-1 text-[11px] text-[#8ff0ff]">
+                      <div className="mt-2 rounded-md border border-[#007f96]/20 bg-[#007f96]/8 px-2 py-1 text-[11px] text-[#007f96]">
                         <div className="flex flex-wrap items-center gap-1">
                           <span>Pipeline 协作任务</span>
                           <span>·</span>
@@ -349,7 +349,7 @@ export default function KanbanPage() {
                         <button
                           key={c.key}
                           onClick={() => handleStatusChange(task.id, c.key)}
-                          className="rounded border border-white/10 bg-white/[0.05] px-1.5 py-0.5 text-xs text-[#aab6c7] hover:border-[#5be5ff]/35 hover:text-[#8ff0ff]"
+                          className="rounded border border-slate-200 bg-white/70 px-1.5 py-0.5 text-xs text-slate-600 hover:border-[#007f96]/30 hover:text-[#007f96]"
                         >
                           → {c.label}
                         </button>
@@ -358,7 +358,7 @@ export default function KanbanPage() {
                   </div>
                   ))}
                   {hiddenTaskCount > 0 && (
-                    <div className="rounded-lg border border-dashed border-white/12 bg-black/20 p-3 text-center text-xs font-medium text-[#8d9bad]">
+                    <div className="rounded-lg border border-dashed border-slate-300 bg-white/60 p-3 text-center text-xs font-medium text-slate-500">
                       还有 {hiddenTaskCount} 个任务未渲染，可用筛选缩小范围
                     </div>
                   )}
@@ -372,7 +372,7 @@ export default function KanbanPage() {
 
       {/* Milestones */}
       {(data?.milestones ?? []).length > 0 && (
-        <div className="rounded-lg border border-white/10 bg-[#101219]/86 p-4">
+        <div className="rounded-lg border border-slate-200 bg-white/76 p-4">
           <h2 className="mb-3 text-sm font-bold uppercase tracking-[0.16em] text-gray-900">里程碑</h2>
           <div className="space-y-3">
             {(data?.milestones ?? []).map(ms => (
@@ -384,8 +384,8 @@ export default function KanbanPage() {
                       {ms.status}
                     </span>
                   </div>
-                  <div className="mt-1 h-2 w-full rounded-full bg-white/10">
-                    <div className="h-2 rounded-full bg-[#5be5ff]" style={{ width: `${ms.progress}%` }}></div>
+                  <div className="mt-1 h-2 w-full rounded-full bg-slate-200">
+                    <div className="h-2 rounded-full bg-[#007f96]" style={{ width: `${ms.progress}%` }}></div>
                   </div>
                 </div>
                 <span className="text-xs text-gray-500">目标: {ms.target_date}</span>
@@ -397,11 +397,11 @@ export default function KanbanPage() {
 
       {/* Agent Stats */}
       {data?.agent_stats && Object.keys(data.agent_stats).length > 0 && (
-        <div className="rounded-lg border border-white/10 bg-[#101219]/86 p-4">
+        <div className="rounded-lg border border-slate-200 bg-white/76 p-4">
           <h2 className="mb-3 text-sm font-bold uppercase tracking-[0.16em] text-gray-900">Agent 工作量</h2>
           <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
             {Object.entries(data.agent_stats).map(([agent, stats]) => (
-              <div key={agent} className="flex items-center gap-3 rounded-lg border border-white/10 bg-black/20 p-2">
+              <div key={agent} className="flex items-center gap-3 rounded-lg border border-slate-200 bg-white/70 p-2">
                 <span className="text-xl">{AGENT_ICONS[agent] ?? '🤖'}</span>
                 <div>
                   <div className="text-sm font-medium">{agent}</div>

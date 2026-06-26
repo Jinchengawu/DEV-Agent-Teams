@@ -57,14 +57,14 @@ interface DocumentStats {
 
 // ── Constants ──
 const TYPE_COLORS: Record<string, string> = {
-  prd: 'border-[#b18cff]/35 bg-[#b18cff]/12 text-[#d7c7ff]',
-  tech_spec: 'border-[#5be5ff]/35 bg-[#5be5ff]/12 text-[#8ff0ff]',
-  meeting: 'border-[#ffb15f]/35 bg-[#ffb15f]/12 text-[#ffca85]',
-  report: 'border-[#33ff99]/35 bg-[#33ff99]/12 text-[#63f7ae]',
-  task: 'border-[#ff5c1f]/35 bg-[#ff5c1f]/12 text-[#ff9b70]',
-  general: 'border-white/14 bg-white/[0.07] text-[#dce7f5]',
-  review: 'border-[#ff72c8]/35 bg-[#ff72c8]/12 text-[#ffb6e2]',
-  code_review: 'border-[#64e7ff]/35 bg-[#64e7ff]/12 text-[#9bf1ff]',
+  prd: 'border-violet-200 bg-violet-50 text-violet-700',
+  tech_spec: 'border-cyan-200 bg-cyan-50 text-cyan-700',
+  meeting: 'border-orange-200 bg-orange-50 text-orange-700',
+  report: 'border-emerald-200 bg-emerald-50 text-emerald-700',
+  task: 'border-[#ff5c1f]/25 bg-[#ff5c1f]/10 text-[#c2410c]',
+  general: 'border-slate-200 bg-white/70 text-slate-700',
+  review: 'border-pink-200 bg-pink-50 text-pink-700',
+  code_review: 'border-sky-200 bg-sky-50 text-sky-700',
 };
 
 const TYPE_LABELS: Record<string, string> = {
@@ -300,10 +300,10 @@ export default function KnowledgePage() {
     const relatedAgents = selectedDoc.relatedAgentIds.map(id => AGENT_NAMES[id] || id);
 
     return (
-      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/72 p-4 backdrop-blur-sm">
-        <div className="flex max-h-[90vh] w-full max-w-4xl flex-col overflow-hidden rounded-lg border border-white/12 bg-[#101219] shadow-2xl shadow-black/60">
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/28 p-4 backdrop-blur-sm">
+        <div className="flex max-h-[90vh] w-full max-w-4xl flex-col overflow-hidden rounded-lg border border-slate-200 bg-white shadow-2xl shadow-slate-400/30">
           {/* 头部 */}
-          <div className="flex-shrink-0 border-b border-white/10 p-6">
+          <div className="flex-shrink-0 border-b border-slate-200 p-6">
             <div className="flex justify-between items-start">
               <div className="flex-1">
                 <div className="flex items-center gap-2 mb-2">
@@ -322,7 +322,7 @@ export default function KnowledgePage() {
                   <span>📝 {formatDate(selectedDoc.updatedAt)}</span>
                 </div>
               </div>
-              <button onClick={() => setSelectedDoc(null)} className="text-2xl text-[#8d9bad] hover:text-white">×</button>
+              <button onClick={() => setSelectedDoc(null)} className="text-2xl text-slate-500 hover:text-[#111820]">×</button>
             </div>
 
             {/* 标签和关联 */}
@@ -340,7 +340,7 @@ export default function KnowledgePage() {
           <div className="flex-1 overflow-y-auto p-6">
             {/* 文档内容 */}
             <div className="prose prose-sm max-w-none mb-8">
-              <pre className="whitespace-pre-wrap rounded-lg border border-white/10 bg-black/24 p-4 text-sm text-[#dce7f5]">
+              <pre className="whitespace-pre-wrap rounded-lg border border-slate-200 bg-slate-50/80 p-4 text-sm text-slate-800">
                 {selectedDoc.content}
               </pre>
             </div>
@@ -364,7 +364,7 @@ export default function KnowledgePage() {
             )}
 
             {/* 评论区域 */}
-            <div className="border-t border-white/10 pt-6">
+            <div className="border-t border-slate-200 pt-6">
               <h3 className="text-sm font-semibold text-gray-700 mb-3">
                 💬 评论 ({comments.length})
               </h3>
@@ -375,7 +375,7 @@ export default function KnowledgePage() {
                   <p className="text-sm text-gray-400">暂无评论</p>
                 ) : (
                   comments.map(comment => (
-                    <div key={comment.id} className={`rounded-lg border border-white/10 p-3 ${comment.resolved ? 'bg-[#33ff99]/10' : 'bg-black/24'}`}>
+                    <div key={comment.id} className={`rounded-lg border border-slate-200 p-3 ${comment.resolved ? 'bg-emerald-50' : 'bg-slate-50/70'}`}>
                       <div className="flex items-center justify-between">
                         <div className="flex items-center gap-2">
                           <span className="text-sm font-medium">{comment.authorName}</span>
@@ -421,10 +421,10 @@ export default function KnowledgePage() {
   return (
     <div className="p-0">
       <div className="mx-auto max-w-[1540px]">
-        <div className="mb-6 flex flex-col gap-2 border-b border-white/10 pb-5">
-          <p className="text-xs font-bold uppercase tracking-[0.26em] text-[#ff8a56]">Knowledge Fabric</p>
-          <h1 className="text-3xl font-black uppercase tracking-[0.12em] text-[#f4f8ff]">文档中心</h1>
-          <p className="text-sm text-[#8d9bad]">跨 Agent 协作文档库 / 项目归档 / 任务关联 / 评论迭代</p>
+        <div className="mb-6 flex flex-col gap-2 border-b border-slate-300/70 pb-5">
+          <p className="text-xs font-bold uppercase tracking-[0.26em] text-[#007f96]">Knowledge Fabric</p>
+          <h1 className="text-3xl font-black uppercase tracking-[0.12em] text-[#111820]">文档中心</h1>
+          <p className="text-sm text-slate-600">跨 Agent 协作文档库 / 项目归档 / 任务关联 / 评论迭代</p>
         </div>
 
         {/* 统计卡片 */}
@@ -447,8 +447,8 @@ export default function KnowledgePage() {
                 onClick={() => setFilterType(filterType === type ? '' : type)}
                 className={`px-3 py-1.5 rounded-full text-sm transition ${
                   filterType === type
-                    ? 'border border-[#ff5c1f]/45 bg-[#ff5c1f] text-white'
-                    : 'border border-white/10 bg-white/[0.04] text-[#c7d2e1] hover:border-[#5be5ff]/35 hover:bg-[#5be5ff]/10'
+                    ? 'border border-[#111820] bg-[#111820] text-white'
+                    : 'border border-slate-200 bg-white/70 text-slate-700 hover:border-[#007f96]/25 hover:bg-white'
                 }`}
               >
                 {TYPE_LABELS[type] || type} ({count})
@@ -574,7 +574,7 @@ export default function KnowledgePage() {
               {Array.from({ length: 6 }).map((_, i) => <SkeletonCard key={i} />)}
             </div>
           ) : documents.length === 0 ? (
-            <div className="rounded-lg border border-white/10 bg-black/20 py-12 text-center text-gray-500">
+            <div className="rounded-lg border border-slate-200 bg-white/70 py-12 text-center text-slate-500">
               <p className="text-lg">暂无文档</p>
               <p className="text-sm mt-2">Agent 创建文档后将自动归档至此</p>
             </div>
@@ -583,7 +583,7 @@ export default function KnowledgePage() {
               {documents.map((doc) => (
                 <Card
                   key={doc.id}
-                  className="group cursor-pointer transition-all hover:border-[#5be5ff]/40 hover:bg-[#5be5ff]/[0.06] hover:shadow-[0_0_34px_rgba(91,229,255,0.10)]"
+                  className="group cursor-pointer transition-all hover:-translate-y-0.5 hover:border-[#007f96]/30 hover:bg-white"
                   onClick={() => setSelectedDoc(doc)}
                   data-testid={`knowledge-doc-${doc.id}`}
                 >
@@ -653,7 +653,7 @@ function StatCard({ title, value, icon }: { title: string; value: number; icon: 
             <p className="text-sm text-gray-500">{title}</p>
             <p className="text-2xl font-bold">{value}</p>
           </div>
-          <span className="flex h-10 w-10 items-center justify-center rounded-md border border-[#5be5ff]/25 bg-[#5be5ff]/10 text-lg">{icon}</span>
+          <span className="flex h-10 w-10 items-center justify-center rounded-md border border-[#007f96]/20 bg-[#007f96]/8 text-lg">{icon}</span>
         </div>
       </CardContent>
     </Card>

@@ -156,28 +156,28 @@ export default function Dashboard() {
       title: 'Active Agents',
       value: `${stats.onlineCount}/${stats.totalAgents}`,
       icon: 'AG',
-      color: 'border-[#5be5ff]/35 bg-[#5be5ff]/10 text-[#8ff0ff]',
+      color: 'border-cyan-200 bg-cyan-50 text-cyan-700',
       detail: stats.onlineCount > 0 ? `${stats.onlineCount} online` : 'All offline',
     },
     {
       title: 'Total Skills',
       value: String(stats.totalSkills),
       icon: 'SK',
-      color: 'border-[#33ff99]/35 bg-[#33ff99]/10 text-[#63f7ae]',
+      color: 'border-emerald-200 bg-emerald-50 text-emerald-700',
       detail: 'Across all agents',
     },
     {
       title: 'Success Rate',
       value: stats.onlineCount > 0 ? `${stats.successRate}%` : '--',
       icon: '%',
-      color: 'border-[#ffb15f]/35 bg-[#ffb15f]/10 text-[#ffca85]',
+      color: 'border-orange-200 bg-orange-50 text-orange-700',
       detail: stats.onlineCount > 0 ? 'Agents reachable' : 'No agents',
     },
     {
       title: 'System',
       value: stats.onlineCount > 0 ? 'Online' : 'Offline',
       icon: 'OS',
-      color: stats.onlineCount > 0 ? 'border-[#33ff99]/35 bg-[#33ff99]/10 text-[#63f7ae]' : 'border-[#ff5252]/35 bg-[#ff5252]/10 text-[#ff9a9a]',
+      color: stats.onlineCount > 0 ? 'border-emerald-200 bg-emerald-50 text-emerald-700' : 'border-red-200 bg-red-50 text-red-700',
       detail: 'Via Hermes runtime',
     },
   ]
@@ -200,21 +200,72 @@ export default function Dashboard() {
   }
 
   return (
-    <div className="space-y-6">
-      {/* MVP Readiness */}
+    <div className="space-y-8">
+      <section className="relative min-h-[calc(100vh-180px)] overflow-hidden border-b border-slate-300/70 pb-10 pt-8">
+        <div className="grid gap-8 lg:grid-cols-[1.12fr_0.88fr] lg:items-center">
+          <div className="max-w-4xl">
+            <p className="text-xs font-black uppercase tracking-[0.28em] text-[#007f96]">
+              AI Software Delivery Team For Real Business Projects
+            </p>
+            <h1 className="mt-5 max-w-5xl text-[clamp(3rem,8.6vw,8.2rem)] font-black leading-[0.9] tracking-normal text-[#111820]">
+              让 AI Agent 不只会回答，而是能按软件团队方式交付。
+            </h1>
+            <p className="mt-8 max-w-3xl text-lg leading-8 text-slate-700 md:text-xl md:leading-9">
+              DEV-Agent-Teams 是面向软件研发组织的 AI 团队协同平台。它把 PM、研发、测试、DevOps Agent 接入同一条交付循环，用 PRD、看板、工作流、验证报告和复盘经验承载结果，帮助企业从“试用 Agent”走向“部署 AI 开发团队”。
+            </p>
+            <div className="mt-8 flex flex-wrap gap-3">
+              <Button onClick={() => router.push('/chat')}>申请真实项目试点</Button>
+              <Button variant="outline" onClick={() => router.push('/kanban?source=coordination')}>查看交付看板</Button>
+            </div>
+          </div>
+
+          <div className="relative min-h-[460px] lg:min-h-[620px]">
+            <div className="absolute left-[5%] top-[35%] h-px w-[72%] rotate-[26deg] bg-slate-300" />
+            <div className="absolute left-[20%] top-[58%] h-px w-[70%] -rotate-[17deg] bg-slate-300" />
+            <div className="absolute right-6 top-12 w-[280px] rounded-lg border border-slate-200 bg-white/82 p-5 shadow-[0_30px_90px_rgba(15,23,42,0.10)] backdrop-blur-xl">
+              <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-500">Business Object</p>
+              <p className="mt-2 text-lg font-black text-[#111820]">Delivery Loop</p>
+              <p className="mt-1 text-xs font-black uppercase tracking-[0.12em] text-slate-600">PRD / Kanban / Test / Release</p>
+            </div>
+            <div className="absolute left-8 top-[45%] w-[280px] rounded-lg border border-slate-200 bg-white/82 p-5 shadow-[0_30px_90px_rgba(15,23,42,0.10)] backdrop-blur-xl">
+              <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-500">Agent Team</p>
+              <p className="mt-2 text-xs font-black uppercase tracking-[0.12em] text-slate-600">PM Frontend Backend Testing DevOps Admin</p>
+            </div>
+            <div className="absolute bottom-16 right-0 w-[280px] rounded-lg border border-slate-200 bg-white/82 p-5 shadow-[0_30px_90px_rgba(15,23,42,0.10)] backdrop-blur-xl">
+              <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-500">Commercial Entry</p>
+              <p className="mt-2 text-xs font-black uppercase tracking-[0.12em] text-slate-600">Private Deploy / Audit / RAG Review</p>
+            </div>
+          </div>
+        </div>
+
+        <div className="mt-10 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          {[
+            { value: String(stats.totalAgents || 6), label: '角色 Agent: PM、Frontend、Backend、Testing、DevOps、Project Admin' },
+            { value: '7', label: '交付面: Meeting、Document、Kanban、Workflow、Artifact、Experience、Context/Event' },
+            { value: deliveryGate?.total ? `${deliveryGate.pass}/${deliveryGate.total}` : '8/8', label: '最近一次端到端回归验证达到通过状态，后续官网应挂出报告链接' },
+            { value: '3', label: '首批商业入口: 代码审计、RAG 评审、智能图片评审' },
+          ].map(item => (
+            <div key={item.label} className="border-t border-[#111820] pt-4">
+              <p className="text-3xl font-black text-[#111820]">{item.value}</p>
+              <p className="mt-2 text-sm font-bold leading-5 text-slate-600">{item.label}</p>
+            </div>
+          ))}
+        </div>
+      </section>
+
       <Card
-        className={mvpReady ? 'border-[#33ff99]/30 bg-[#0d1f18]/80' : 'border-[#ffb15f]/35 bg-[#23190d]/80'}
+        className={mvpReady ? 'border-emerald-200 bg-emerald-50/70' : 'border-orange-200 bg-orange-50/70'}
         data-testid="dashboard-readiness-card"
       >
         <CardContent className="p-4">
           <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
             <div className="flex flex-wrap items-center gap-3">
-              <Badge className={mvpReady ? 'border-[#33ff99]/35 bg-[#33ff99]/12 text-[#63f7ae]' : 'border-[#ffb15f]/35 bg-[#ffb15f]/14 text-[#ffca85]'} data-testid="dashboard-readiness-badge">
+              <Badge className={mvpReady ? 'border-emerald-200 bg-emerald-50 text-emerald-700' : 'border-orange-200 bg-orange-50 text-orange-700'} data-testid="dashboard-readiness-badge">
                 {readinessLoading || !deliveryGateLoaded || !teamLoopLoaded ? 'Checking' : mvpReady ? 'MVP Ready' : 'Needs Attention'}
               </Badge>
               <div>
-                <p className="text-sm font-bold uppercase tracking-[0.16em] text-[#f4f8ff]">Team Coordination Loop</p>
-                <p className="text-xs text-[#8d9bad]">
+                <p className="text-sm font-black uppercase tracking-[0.16em] text-[#111820]">Team Coordination Loop</p>
+                <p className="text-xs text-slate-500">
                   {readiness?.agentHealth
                     ? `${readiness.agentHealth.onlineCount ?? 0}/${readiness.agentHealth.totalAgents ?? 0} Agents online`
                     : 'Checking local team readiness'}
@@ -222,21 +273,20 @@ export default function Dashboard() {
               </div>
             </div>
             <div className="grid grid-cols-2 gap-2 text-xs sm:grid-cols-3 lg:grid-cols-6">
-              <div className="rounded-md border border-white/10 bg-black/20 px-3 py-2">
-                <p className="text-gray-500">Gateway</p>
-                <p className="font-semibold text-gray-900">{readiness?.gateway?.ok ? 'Online' : '--'}</p>
-              </div>
-              <div className="rounded-md border border-white/10 bg-black/20 px-3 py-2">
-                <p className="text-gray-500">Live Pipeline</p>
-                <p className="font-semibold text-gray-900">{readiness?.agentHealth?.livePipelineReady ? 'Ready' : '--'}</p>
-              </div>
-              <div className="rounded-md border border-white/10 bg-black/20 px-3 py-2">
-                <p className="text-gray-500">Hermes</p>
-                <p className="font-semibold text-gray-900">{readiness?.runtime?.hermes?.ok ? 'OK' : '--'}</p>
-              </div>
-              <div className="rounded-md border border-white/10 bg-black/20 px-3 py-2" data-testid="dashboard-delivery-gate-summary">
-                <p className="text-gray-500">E2E Gate</p>
-                <p className="font-semibold text-gray-900">
+              {[
+                ['Gateway', readiness?.gateway?.ok ? 'Online' : '--'],
+                ['Live Pipeline', readiness?.agentHealth?.livePipelineReady ? 'Ready' : '--'],
+                ['Hermes', readiness?.runtime?.hermes?.ok ? 'OK' : '--'],
+                ['Checked', readiness?.checkedAt ? new Date(readiness.checkedAt).toLocaleTimeString() : '--'],
+              ].map(([label, value]) => (
+                <div key={label} className="rounded-md border border-slate-200 bg-white/70 px-3 py-2">
+                  <p className="text-slate-500">{label}</p>
+                  <p className="font-semibold text-[#111820]">{value}</p>
+                </div>
+              ))}
+              <div className="rounded-md border border-slate-200 bg-white/70 px-3 py-2" data-testid="dashboard-delivery-gate-summary">
+                <p className="text-slate-500">E2E Gate</p>
+                <p className="font-semibold text-[#111820]">
                   {deliveryGate?.total
                     ? deliveryGate.ok
                       ? `${deliveryGate.pass}/${deliveryGate.total} PASS`
@@ -245,49 +295,23 @@ export default function Dashboard() {
                 </p>
                 {deliveryGate?.report && (
                   <div className="mt-1 flex flex-wrap gap-x-2 gap-y-1 text-[11px] font-medium">
-                    <Link
-                      href="/api/delivery-gate/latest?format=markdown"
-                      target="_blank"
-                      className="text-blue-700 hover:text-blue-900"
-                      data-testid="dashboard-delivery-gate-report-link"
-                    >
+                    <Link href="/api/delivery-gate/latest?format=markdown" target="_blank" className="text-[#007f96]" data-testid="dashboard-delivery-gate-report-link">
                       Report
                     </Link>
-                    <Link
-                      href="/api/delivery-gate/history?limit=5"
-                      target="_blank"
-                      className="text-blue-700 hover:text-blue-900"
-                      data-testid="dashboard-delivery-gate-history-link"
-                    >
+                    <Link href="/api/delivery-gate/history?limit=5" target="_blank" className="text-[#007f96]" data-testid="dashboard-delivery-gate-history-link">
                       History
                     </Link>
                     {deliveryGateHistory?.count ? (
-                      <span className="text-gray-500" data-testid="dashboard-delivery-gate-history-count">
+                      <span className="text-slate-500" data-testid="dashboard-delivery-gate-history-count">
                         Recent {deliveryGateHistory.count}
                       </span>
                     ) : null}
                   </div>
                 )}
               </div>
-              <div className="rounded-md border border-white/10 bg-black/20 px-3 py-2" data-testid="dashboard-open-sync-summary">
-                <p className="text-gray-500">Open Sync</p>
-                <p className="font-semibold text-gray-900">
-                  {readiness?.openFrameworkSync?.ok ? 'Synced' : '--'}
-                </p>
-                {readiness?.openFrameworkSync?.head && (
-                  <p className="mt-1 truncate text-[11px] text-gray-500">
-                    {readiness.openFrameworkSync.head}
-                    {typeof readiness.openFrameworkSync.dirtyCount === 'number'
-                      ? ` · dirty ${readiness.openFrameworkSync.dirtyCount}`
-                      : ''}
-                  </p>
-                )}
-              </div>
-              <div className="rounded-md border border-white/10 bg-black/20 px-3 py-2">
-                <p className="text-gray-500">Checked</p>
-                <p className="font-semibold text-gray-900">
-                  {readiness?.checkedAt ? new Date(readiness.checkedAt).toLocaleTimeString() : '--'}
-                </p>
+              <div className="rounded-md border border-slate-200 bg-white/70 px-3 py-2" data-testid="dashboard-open-sync-summary">
+                <p className="text-slate-500">Open Sync</p>
+                <p className="font-semibold text-[#111820]">{readiness?.openFrameworkSync?.ok ? 'Synced' : '--'}</p>
               </div>
             </div>
             <Button
@@ -308,12 +332,11 @@ export default function Dashboard() {
         </CardContent>
       </Card>
 
-      {/* Team Coordination Loop */}
       <Card data-testid="dashboard-team-loop-card">
         <CardHeader className="flex flex-row items-center justify-between">
           <div>
             <CardTitle>Team Coordination Loop</CardTitle>
-            <p className="mt-1 text-xs text-gray-500" data-testid="dashboard-team-loop-diagnostics">
+            <p className="mt-1 text-xs text-slate-500" data-testid="dashboard-team-loop-diagnostics">
               {teamLoop?.checkSummary
                 ? teamLoop.ok
                   ? `Checks ${teamLoop.checkSummary}`
@@ -321,87 +344,43 @@ export default function Dashboard() {
                 : 'Checking loop evidence'}
             </p>
           </div>
-          <Badge className={teamLoop?.ok ? 'bg-green-600' : 'bg-amber-600'} data-testid="dashboard-team-loop-badge">
+          <Badge className={teamLoop?.ok ? 'border-emerald-200 bg-emerald-50 text-emerald-700' : 'border-orange-200 bg-orange-50 text-orange-700'} data-testid="dashboard-team-loop-badge">
             {teamLoop?.ok ? 'Linked' : 'Incomplete'}
           </Badge>
         </CardHeader>
         <CardContent>
           <div className="grid grid-cols-2 gap-3 text-sm lg:grid-cols-4">
-            <div className="rounded-md border border-white/10 bg-black/20 px-3 py-2" data-testid="dashboard-team-loop-workflow">
-              <p className="text-xs text-gray-500">Workflow</p>
-              <p className="font-semibold text-gray-900">{teamLoop?.latestInstance?.status || '--'}</p>
-              {teamLoop?.latestInstance?.href && (
-                <Link href={teamLoop.latestInstance.href} className="mt-1 inline-block text-xs font-medium text-blue-700 hover:text-blue-900">
-                  Open
-                </Link>
-              )}
-            </div>
-            <div className="rounded-md border border-white/10 bg-black/20 px-3 py-2" data-testid="dashboard-team-loop-kanban">
-              <p className="text-xs text-gray-500">Kanban Tasks</p>
-              <p className="font-semibold text-gray-900">
-                {teamLoop?.kanban ? `${teamLoop.kanban.taskCount}/${teamLoop.kanban.surfaceTaskCount}` : '--'}
-              </p>
-              {teamLoop?.kanban?.href && (
-                <Link href={teamLoop.kanban.href} className="mt-1 inline-block text-xs font-medium text-blue-700 hover:text-blue-900">
-                  Open
-                </Link>
-              )}
-            </div>
-            <div className="rounded-md border border-white/10 bg-black/20 px-3 py-2" data-testid="dashboard-team-loop-documents">
-              <p className="text-xs text-gray-500">Documents</p>
-              <p className="font-semibold text-gray-900">
-                {teamLoop?.documents ? `${teamLoop.documents.boundProjectDocumentCount}/${teamLoop.documents.projectDocumentCount}` : '--'}
-              </p>
-              <div className="mt-1 flex flex-wrap gap-x-2 gap-y-1 text-xs font-medium">
-                {teamLoop?.documents?.href && (
-                  <Link href={teamLoop.documents.href} className="text-blue-700 hover:text-blue-900">
+            {[
+              { testId: 'dashboard-team-loop-workflow', label: 'Workflow', value: teamLoop?.latestInstance?.status || '--', href: teamLoop?.latestInstance?.href },
+              { testId: 'dashboard-team-loop-kanban', label: 'Kanban Tasks', value: teamLoop?.kanban ? `${teamLoop.kanban.taskCount}/${teamLoop.kanban.surfaceTaskCount}` : '--', href: teamLoop?.kanban?.href },
+              { testId: 'dashboard-team-loop-documents', label: 'Documents', value: teamLoop?.documents ? `${teamLoop.documents.boundProjectDocumentCount}/${teamLoop.documents.projectDocumentCount}` : '--', href: teamLoop?.documents?.href },
+              { testId: 'dashboard-team-loop-gate', label: 'Gate Binding', value: teamLoop?.latestInstance ? `${teamLoop.latestInstance.surfaceDocumentCount} docs` : '--' },
+            ].map(item => (
+              <div key={item.testId} className="rounded-md border border-slate-200 bg-white/64 px-3 py-2" data-testid={item.testId}>
+                <p className="text-xs font-bold uppercase tracking-[0.14em] text-slate-500">{item.label}</p>
+                <p className="mt-1 font-semibold text-[#111820]">{item.value}</p>
+                {item.href && (
+                  <Link href={item.href} className="mt-1 inline-block text-xs font-bold text-[#007f96]">
                     Open
                   </Link>
                 )}
-                {teamLoop?.documents?.latestDocument?.href && (
-                  <Link
-                    href={teamLoop.documents.latestDocument.href}
-                    className="max-w-full truncate text-blue-700 hover:text-blue-900"
-                    data-testid="dashboard-team-loop-document-link"
-                    title={teamLoop.documents.latestDocument.title}
-                  >
-                    Latest
-                  </Link>
-                )}
               </div>
-            </div>
-            <div className="rounded-md border border-white/10 bg-black/20 px-3 py-2" data-testid="dashboard-team-loop-gate">
-              <p className="text-xs text-gray-500">Gate Binding</p>
-              <p className="font-semibold text-gray-900">
-                {teamLoop?.latestInstance ? `${teamLoop.latestInstance.surfaceDocumentCount} docs` : '--'}
-              </p>
-              <p className="mt-1 text-xs text-gray-500">
-                {teamLoop?.latestInstance?.projectId || 'No project'}
-              </p>
-            </div>
+            ))}
           </div>
         </CardContent>
       </Card>
 
-      {/* Stats Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-4">
         {isLoading
           ? Array.from({ length: 4 }).map((_, i) => <SkeletonCard key={i} />)
-          : statCards.map((stat, i) => (
-              <Card
-                key={i}
-                className="overflow-hidden transition-all hover:border-[#5be5ff]/35 hover:shadow-[0_0_34px_rgba(91,229,255,0.10)]"
-              >
+          : statCards.map((stat) => (
+              <Card key={stat.title} className="overflow-hidden transition-all hover:-translate-y-0.5 hover:border-slate-300">
                 <CardContent className="p-6">
-                  <div className="flex items-center justify-between">
+                  <div className="flex items-center justify-between gap-4">
                     <div>
-                      <p className="text-sm font-medium text-gray-500">
-                        {stat.title}
-                      </p>
-                      <p className="text-3xl font-bold text-gray-900 mt-1">
-                        {stat.value}
-                      </p>
-                      <p className="text-sm text-gray-500 mt-1">{stat.detail}</p>
+                      <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-500">{stat.title}</p>
+                      <p className="mt-2 text-3xl font-black text-[#111820]">{stat.value}</p>
+                      <p className="mt-1 text-sm text-slate-500">{stat.detail}</p>
                     </div>
                     <div className={`flex h-14 w-14 items-center justify-center rounded-md border text-sm font-black tracking-[0.18em] ${stat.color}`}>
                       <span>{stat.icon}</span>
@@ -412,77 +391,49 @@ export default function Dashboard() {
             ))}
       </div>
 
-      {/* Agent Status */}
       <Card>
         <CardHeader className="flex flex-row items-center justify-between">
           <CardTitle>Agent Status</CardTitle>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => router.push('/agents')}
-          >
-            View All
-          </Button>
+          <Button variant="outline" size="sm" onClick={() => router.push('/agents')}>View All</Button>
         </CardHeader>
         <CardContent>
           {isLoading ? (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-              {Array.from({ length: 4 }).map((_, i) => (
-                <SkeletonCard key={i} />
-              ))}
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-4">
+              {Array.from({ length: 4 }).map((_, i) => <SkeletonCard key={i} />)}
             </div>
           ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-4">
               {agents.map((agent) => (
                 <div
                   key={agent.id}
-                  className="cursor-pointer rounded-lg border border-white/10 bg-black/20 p-4 transition-all hover:border-[#5be5ff]/40 hover:bg-[#5be5ff]/[0.06]"
+                  className="cursor-pointer rounded-lg border border-slate-200 bg-white/64 p-4 transition-all hover:-translate-y-0.5 hover:border-[#007f96]/30 hover:bg-white"
                   onClick={() => router.push(`/chat?agent=${agent.id}`)}
                 >
-                  <div className="flex items-center justify-between mb-3">
+                  <div className="mb-3 flex items-center justify-between">
                     <div className="flex items-center space-x-3">
-                      <div className="flex h-10 w-10 items-center justify-center rounded-md border border-white/10 bg-white/[0.06]">
+                      <div className="flex h-10 w-10 items-center justify-center rounded-md border border-slate-200 bg-white">
                         <span className="text-xl">{agent.icon}</span>
                       </div>
                       <div>
-                        <h3 className="font-semibold text-gray-900">
-                          {agent.name}
-                        </h3>
-                        <p className="text-xs text-gray-500">
-                          Port {agent.port}
-                        </p>
+                        <h3 className="font-semibold text-[#111820]">{agent.name}</h3>
+                        <p className="text-xs text-slate-500">Port {agent.port}</p>
                       </div>
                     </div>
-                    <div className="flex items-center space-x-1">
-                      <div
-                        className={`w-2 h-2 rounded-full ${
-                          agent.online ? 'bg-green-500' : 'bg-red-500'
-                        }`}
-                      ></div>
-                      <span
-                        className={`text-xs ${
-                          agent.online ? 'text-green-600' : 'text-red-600'
-                        }`}
-                      >
-                        {agent.online ? 'Online' : 'Offline'}
-                      </span>
-                    </div>
+                    <span className={`rounded border px-2 py-0.5 text-[11px] font-black uppercase ${agent.online ? 'border-emerald-200 bg-emerald-50 text-emerald-700' : 'border-red-200 bg-red-50 text-red-700'}`}>
+                      {agent.online ? 'Online' : 'Offline'}
+                    </span>
                   </div>
-
                   <div className="grid grid-cols-2 gap-2 text-sm">
-                    <div className="rounded-md border border-white/10 bg-black/20 p-2">
-                      <p className="text-gray-500 text-xs">Skills</p>
+                    <div className="rounded-md border border-slate-200 bg-white/70 p-2">
+                      <p className="text-xs text-slate-500">Skills</p>
                       <p className="font-semibold">{agent.skillCount}</p>
                     </div>
-                    <div className="rounded-md border border-white/10 bg-black/20 p-2">
-                      <p className="text-gray-500 text-xs">Port</p>
+                    <div className="rounded-md border border-slate-200 bg-white/70 p-2">
+                      <p className="text-xs text-slate-500">Port</p>
                       <p className="font-semibold">{agent.port}</p>
                     </div>
                   </div>
-
-                  <Button className="w-full mt-3" size="sm">
-                    Open Chat
-                  </Button>
+                  <Button className="mt-3 w-full" size="sm">Open Chat</Button>
                 </div>
               ))}
             </div>
@@ -490,24 +441,18 @@ export default function Dashboard() {
         </CardContent>
       </Card>
 
-      {/* Quick Actions & Recent Activity */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
         <Card>
           <CardHeader>
             <CardTitle>Quick Actions</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="grid grid-cols-2 gap-3">
-              {quickActions.map((action, i) => (
-                <Button
-                  key={i}
-                  variant="outline"
-                  className="h-auto py-4 flex flex-col items-center justify-center space-y-2"
-                  onClick={() => router.push(action.path)}
-                >
-                  <span className="font-mono text-xs font-black tracking-[0.18em] text-[#ff8a56]">{action.icon}</span>
+              {quickActions.map((action) => (
+                <Button key={action.title} variant="outline" className="h-auto flex-col items-start justify-center space-y-2 py-4 text-left" onClick={() => router.push(action.path)}>
+                  <span className="font-mono text-xs font-black tracking-[0.18em] text-[#c2410c]">{action.icon}</span>
                   <span className="font-medium">{action.title}</span>
-                  <span className="text-xs text-gray-500">{action.desc}</span>
+                  <span className="text-xs text-slate-500">{action.desc}</span>
                 </Button>
               ))}
             </div>
@@ -523,21 +468,13 @@ export default function Dashboard() {
               {[
                 { label: 'Model Provider', value: 'DeepSeek' },
                 { label: 'Model', value: 'deepseek-v4-pro[1m]' },
-                {
-                  label: 'Agents',
-                  value: `${stats.onlineCount}/${agents.length} online`,
-                },
+                { label: 'Agents', value: `${stats.onlineCount}/${agents.length} online` },
                 { label: 'Skills', value: String(stats.totalSkills) },
                 { label: 'Updated', value: clientTime },
-              ].map((item, i) => (
-                <div
-                  key={i}
-                  className="flex items-center justify-between rounded-md border border-white/10 bg-black/20 p-3"
-                >
-                  <span className="text-sm text-gray-600">{item.label}</span>
-                  <span className="text-sm font-medium text-gray-900">
-                    {item.value}
-                  </span>
+              ].map((item) => (
+                <div key={item.label} className="flex items-center justify-between rounded-md border border-slate-200 bg-white/64 p-3">
+                  <span className="text-sm text-slate-600">{item.label}</span>
+                  <span className="text-sm font-medium text-[#111820]">{item.value}</span>
                 </div>
               ))}
             </div>

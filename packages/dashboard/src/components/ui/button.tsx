@@ -8,12 +8,12 @@ export interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElemen
 
 const buttonVariants = {
   variant: {
-    default: "border border-[#ff5c1f]/45 bg-[#ff5c1f] text-white shadow-[0_0_24px_rgba(255,92,31,0.22)] hover:bg-[#ff713d]",
-    destructive: "border border-[#ff5252]/45 bg-[#e34242] text-white hover:bg-[#ff5252]",
-    outline: "border border-white/14 bg-white/[0.04] text-[#dce7f5] hover:border-[#5be5ff]/45 hover:bg-[#5be5ff]/10 hover:text-white",
-    secondary: "border border-white/10 bg-white/[0.08] text-[#f4f8ff] hover:bg-white/[0.12]",
-    ghost: "text-[#c7d2e1] hover:bg-white/[0.08] hover:text-white",
-    link: "text-[#64e7ff] underline-offset-4 hover:underline",
+    default: "border border-[#111820] bg-[#111820] text-white shadow-[7px_7px_0_rgba(255,92,31,0.14)] hover:bg-black",
+    destructive: "border border-red-700 bg-red-600 text-white hover:bg-red-700",
+    outline: "border border-slate-300 bg-white/70 text-[#111820] hover:border-slate-400 hover:bg-white",
+    secondary: "border border-slate-200 bg-slate-100 text-[#111820] hover:bg-slate-200",
+    ghost: "text-slate-700 hover:bg-slate-100 hover:text-[#111820]",
+    link: "text-[#007f96] underline-offset-4 hover:underline",
   },
   size: {
     default: "h-10 px-4 py-2",
@@ -28,7 +28,7 @@ const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
     return (
       <button
         className={cn(
-          "inline-flex items-center justify-center rounded-md text-sm font-bold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#5be5ff] focus-visible:ring-offset-2 focus-visible:ring-offset-[#08090d] disabled:pointer-events-none disabled:opacity-50",
+          "inline-flex items-center justify-center rounded-md text-sm font-bold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#007f96] focus-visible:ring-offset-2 focus-visible:ring-offset-[#f7f9fa] disabled:pointer-events-none disabled:opacity-50",
           buttonVariants.variant[variant],
           buttonVariants.size[size],
           className
