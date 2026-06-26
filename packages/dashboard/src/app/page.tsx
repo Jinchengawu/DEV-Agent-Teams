@@ -46,6 +46,31 @@ interface DeliveryGateHistoryResponse {
   latestOk?: boolean
 }
 
+interface TeamLoopStatusResponse {
+  ok: boolean
+  checkedAt?: number
+  latestInstance?: {
+    id: string
+    status: string
+    pipelineId: string
+    projectId?: string
+    surfaceTaskCount: number
+    surfaceDocumentCount: number
+    href?: string
+  } | null
+  kanban?: {
+    taskCount: number
+    surfaceTaskCount: number
+    href?: string | null
+  }
+  documents?: {
+    projectDocumentCount: number
+    boundProjectDocumentCount: number
+    total: number
+    href?: string | null
+  }
+}
+
 const readinessFetcher = (url: string): Promise<ReadinessResponse> =>
   fetch(url, { cache: 'no-store' }).then(async (response) => {
     const data = await response.json()
@@ -89,8 +114,16 @@ export default function Dashboard() {
     refreshInterval: 30000,
     revalidateOnFocus: false,
   })
+  const {
+    data: teamLoop,
+    mutate: refreshTeamLoop,
+  } = useSWR<TeamLoopStatusResponse>('/api/team-loop/status', jsonFetcher, {
+    refreshInterval: 30000,
+    revalidateOnFocus: false,
+  })
   const deliveryGateLoaded = Boolean(deliveryGate?.total)
-  const mvpReady = readiness?.ok === true && deliveryGate?.ok === true
+  const teamLoopLoaded = Boolean(teamLoop?.checkedAt)
+  const mvpReady = readiness?.ok === true && deliveryGate?.ok === true && teamLoop?.ok === true
 
   const statCards = [
     {
@@ -151,7 +184,7 @@ export default function Dashboard() {
           <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
             <div className="flex flex-wrap items-center gap-3">
               <Badge className={mvpReady ? 'bg-green-600' : 'bg-amber-600'} data-testid="dashboard-readiness-badge">
-                {readinessLoading || !deliveryGateLoaded ? 'Checking' : mvpReady ? 'MVP Ready' : 'Needs Attention'}
+                {readinessLoading || !deliveryGateLoaded || !teamLoopLoaded ? 'Checking' : mvpReady ? 'MVP Ready' : 'Needs Attention'}
               </Badge>
               <div>
                 <p className="text-sm font-semibold text-gray-900">Team Coordination Loop</p>
@@ -225,11 +258,66 @@ export default function Dashboard() {
                 refreshReadiness()
                 refreshDeliveryGate()
                 refreshDeliveryGateHistory()
+                refreshTeamLoop()
               }}
               data-testid="dashboard-readiness-refresh"
             >
               Refresh
             </Button>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Team Coordination Loop */}
+      <Card data-testid="dashboard-team-loop-card">
+        <CardHeader className="flex flex-row items-center justify-between">
+          <CardTitle>Team Coordination Loop</CardTitle>
+          <Badge className={teamLoop?.ok ? 'bg-green-600' : 'bg-amber-600'} data-testid="dashboard-team-loop-badge">
+            {teamLoop?.ok ? 'Linked' : 'Incomplete'}
+          </Badge>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-2 gap-3 text-sm lg:grid-cols-4">
+            <div className="rounded-md border border-gray-200 px-3 py-2" data-testid="dashboard-team-loop-workflow">
+              <p className="text-xs text-gray-500">Workflow</p>
+              <p className="font-semibold text-gray-900">{teamLoop?.latestInstance?.status || '--'}</p>
+              {teamLoop?.latestInstance?.href && (
+                <Link href={teamLoop.latestInstance.href} className="mt-1 inline-block text-xs font-medium text-blue-700 hover:text-blue-900">
+                  Open
+                </Link>
+              )}
+            </div>
+            <div className="rounded-md border border-gray-200 px-3 py-2" data-testid="dashboard-team-loop-kanban">
+              <p className="text-xs text-gray-500">Kanban Tasks</p>
+              <p className="font-semibold text-gray-900">
+                {teamLoop?.kanban ? `${teamLoop.kanban.taskCount}/${teamLoop.kanban.surfaceTaskCount}` : '--'}
+              </p>
+              {teamLoop?.kanban?.href && (
+                <Link href={teamLoop.kanban.href} className="mt-1 inline-block text-xs font-medium text-blue-700 hover:text-blue-900">
+                  Open
+                </Link>
+              )}
+            </div>
+            <div className="rounded-md border border-gray-200 px-3 py-2" data-testid="dashboard-team-loop-documents">
+              <p className="text-xs text-gray-500">Documents</p>
+              <p className="font-semibold text-gray-900">
+                {teamLoop?.documents ? `${teamLoop.documents.boundProjectDocumentCount}/${teamLoop.documents.projectDocumentCount}` : '--'}
+              </p>
+              {teamLoop?.documents?.href && (
+                <Link href={teamLoop.documents.href} className="mt-1 inline-block text-xs font-medium text-blue-700 hover:text-blue-900">
+                  Open
+                </Link>
+              )}
+            </div>
+            <div className="rounded-md border border-gray-200 px-3 py-2" data-testid="dashboard-team-loop-gate">
+              <p className="text-xs text-gray-500">Gate Binding</p>
+              <p className="font-semibold text-gray-900">
+                {teamLoop?.latestInstance ? `${teamLoop.latestInstance.surfaceDocumentCount} docs` : '--'}
+              </p>
+              <p className="mt-1 text-xs text-gray-500">
+                {teamLoop?.latestInstance?.projectId || 'No project'}
+              </p>
+            </div>
           </div>
         </CardContent>
       </Card>

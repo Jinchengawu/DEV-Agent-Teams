@@ -887,6 +887,49 @@ print("count={} latest={} {}".format(data.get("count"), latest.get("report"), la
     record "dashboard delivery gate history" FAIL "$(tail -n 3 /tmp/dev-agent-dashboard-delivery-gate-history.err | tr '\n' ' ' | sed 's/|/\\|/g')"
   fi
 
+  if curl -fsS "$DASHBOARD_URL/api/team-loop/status" >/tmp/dev-agent-dashboard-team-loop.json 2>/tmp/dev-agent-dashboard-team-loop.err; then
+    if python3 -c 'import json, sys
+with open(sys.argv[1], "r", encoding="utf-8") as f:
+    data = json.load(f)
+latest = data.get("latestInstance") or {}
+kanban = data.get("kanban") or {}
+documents = data.get("documents") or {}
+gate = data.get("deliveryGate") or {}
+ok = (
+    data.get("ok") is True
+    and gate.get("ok") is True
+    and isinstance(latest.get("id"), str)
+    and latest.get("id", "").startswith("pipeline-")
+    and isinstance(latest.get("projectId"), str)
+    and latest.get("surfaceTaskCount", 0) > 0
+    and latest.get("surfaceDocumentCount", 0) > 0
+    and kanban.get("taskCount", 0) >= latest.get("surfaceTaskCount", 0)
+    and documents.get("boundProjectDocumentCount", 0) > 0
+)
+raise SystemExit(0 if ok else 1)' /tmp/dev-agent-dashboard-team-loop.json
+    then
+      team_loop_summary="$(python3 -c 'import json, sys
+with open(sys.argv[1], "r", encoding="utf-8") as f:
+    data = json.load(f)
+latest = data.get("latestInstance") or {}
+kanban = data.get("kanban") or {}
+documents = data.get("documents") or {}
+print("instance={} project={} tasks={}/{} docs={}/{}".format(
+    latest.get("id"),
+    latest.get("projectId"),
+    kanban.get("taskCount"),
+    latest.get("surfaceTaskCount"),
+    documents.get("boundProjectDocumentCount"),
+    documents.get("projectDocumentCount"),
+))' /tmp/dev-agent-dashboard-team-loop.json)"
+      record "dashboard team loop status" PASS "$team_loop_summary"
+    else
+      record "dashboard team loop status" FAIL "payload did not report a linked Team Coordination Loop"
+    fi
+  else
+    record "dashboard team loop status" FAIL "$(tail -n 3 /tmp/dev-agent-dashboard-team-loop.err | tr '\n' ' ' | sed 's/|/\\|/g')"
+  fi
+
   if curl -fsS "$DASHBOARD_URL/api/v2/documents" >/tmp/dev-agent-dashboard-docs.json 2>/dev/null; then
     if python3 -c 'import json, sys
 with open(sys.argv[1], "r", encoding="utf-8") as f:
