@@ -685,7 +685,7 @@ async function main(): Promise<void> {
       // Chat Completions
       if (path === '/v1/chat/completions' && req.method === 'POST') {
         const request = body ? JSON.parse(body) : {};
-        const { messages, sessionId, mode, agentId: requestedAgentId } = request;
+        const { messages, sessionId, mode, agentId: requestedAgentId, agents: requestedAgents } = request;
 
         if (!messages || !Array.isArray(messages) || messages.length === 0) {
           res.writeHead(400, { 'Content-Type': 'application/json' });
@@ -740,6 +740,7 @@ async function main(): Promise<void> {
         const result = await executeRoute({
           mode,
           agentId: requestedAgentId,
+          agents: Array.isArray(requestedAgents) ? requestedAgents : undefined,
           userText,
           sessionId: sid,
           agentApp,
@@ -805,7 +806,7 @@ async function main(): Promise<void> {
       // Meeting SSE Stream — 流式会议进度
       if (path === '/v1/meeting/stream' && req.method === 'POST') {
         const request = body ? JSON.parse(body) : {};
-        const { message, sessionId, topicId } = request;
+        const { message, sessionId, topicId, agents: requestedAgents } = request;
 
         if (!message) {
           res.writeHead(400, { 'Content-Type': 'application/json' });
@@ -844,6 +845,7 @@ async function main(): Promise<void> {
             (event: MeetingProgressEvent) => {
               sendEvent(event);
             },
+            { participantAgentIds: Array.isArray(requestedAgents) ? requestedAgents : undefined },
           );
 
           // 组装最终输出
