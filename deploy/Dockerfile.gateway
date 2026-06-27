@@ -1,0 +1,24 @@
+FROM node:22-slim AS base
+WORKDIR /app
+
+ENV NODE_ENV=production
+ENV MODEL_SPEND_GUARD=1
+ENV GATEWAY_HOST=0.0.0.0
+ENV GATEWAY_PORT=8400
+ENV AGENT_DB_PATH=/data
+
+COPY package.json pnpm-workspace.yaml ./
+COPY packages/core/package.json packages/core/package.json
+COPY packages/gateway/package.json packages/gateway/package.json
+COPY packages/glue-service/package.json packages/glue-service/package.json
+
+RUN corepack enable && pnpm install --frozen-lockfile --filter @dev-agent/gateway... --prod=false
+
+COPY packages/core packages/core
+COPY packages/gateway packages/gateway
+COPY packages/glue-service packages/glue-service
+
+RUN pnpm --filter @dev-agent/core run build && pnpm --filter @dev-agent/gateway run build
+
+EXPOSE 8400
+CMD ["node", "packages/gateway/dist/api-gateway.js"]

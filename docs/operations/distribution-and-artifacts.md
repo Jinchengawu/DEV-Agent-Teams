@@ -61,6 +61,24 @@ Containerization should treat Gateway and Dashboard as separate processes:
 - Production deployments should move shared state to a managed database before
   horizontal scaling
 
+Reference local compose deployment:
+
+```bash
+cd deploy
+docker compose up --build
+```
+
+Reference files:
+
+- `deploy/Dockerfile.gateway`
+- `deploy/Dockerfile.dashboard`
+- `deploy/docker-compose.yml`
+
+The compose profile defaults to `MODEL_SPEND_GUARD=1`, stores runtime data in
+the `dev-agent-data` volume, and stores audit logs in `dev-agent-logs`. Live
+model execution should only be enabled by explicitly overriding the environment
+after a budget is approved.
+
 ## Artifact Classes
 
 | Artifact | Owner | Storage | Rule |
@@ -92,6 +110,14 @@ The script writes `release-manifests/release-manifest-*.json` with:
 
 Commit only release manifests that correspond to an actual reviewed release
 candidate. Local exploratory manifests can be deleted.
+
+Recommended release checklist:
+
+```bash
+node scripts/release-manifest.mjs
+RUN_PIPELINE_CONTROL_SMOKE=1 RUN_PIPELINE_RECOVERY_SMOKE=1 zsh scripts/e2e-delivery-gate.sh
+cd deploy && docker compose config
+```
 
 ## Derivative Product Rule
 
