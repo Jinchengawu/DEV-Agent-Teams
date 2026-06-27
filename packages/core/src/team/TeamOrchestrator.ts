@@ -45,6 +45,9 @@ export class TeamOrchestrator implements IOrchestrator {
   private maxConcurrency: number;
   private maxDelegationDepth: number;
   private onProgress?: (event: OrchestratorEvent) => void;
+  private defaultModel: string;
+  private apiKey: string;
+  private baseUrl: string;
 
   constructor(config: TeamOrchestratorConfig) {
     this.agentConfigs = new Map();
@@ -58,27 +61,13 @@ export class TeamOrchestrator implements IOrchestrator {
     this.maxDelegationDepth = config.maxDelegationDepth ?? 3;
     this.onProgress = config.onProgress as ((event: OrchestratorEvent) => void) | undefined;
     this.extraCustomTools = config.extraCustomTools || [];
+    this.defaultModel = config.defaultModel;
+    this.apiKey = config.apiKey;
+    this.baseUrl = config.baseUrl;
 
     // 初始化 Hermes Agent Client
     this.hermesClient = new HermesAgentClient();
-    for (const instance of this.hermesClient.getInstances()) {
-      if (this.agentConfigs.has(instance.id)) continue;
-      this.agentConfigs.set(instance.id, {
-        id: instance.id,
-        name: instance.label,
-        role: instance.role || instance.description || `${instance.label} — Dashboard 创建的 Hermes Agent`,
-        systemPrompt:
-          instance.system_prompt ||
-          `你是 ${instance.label}。你的职责是：${instance.role || instance.description || '根据用户目标完成专业交付'}。请保持边界清晰、输出可执行结果。`,
-        model: config.defaultModel,
-        apiKey: config.apiKey,
-        baseUrl: config.baseUrl,
-        expertise: instance.tags.length > 0 ? instance.tags : instance.skills,
-        tools: instance.skills,
-        typicalTasks: [instance.description || instance.role || `${instance.label} 专业任务`],
-      });
-    }
-    const activeAgents = Array.from(this.agentConfigs.values());
+    const activeAgents = this.syncHermesAgentRegistry();
 
     // 初始化 IntentRouter（用于路由决策）
     this.intentRouter = new IntentRouter(
@@ -90,20 +79,54 @@ export class TeamOrchestrator implements IOrchestrator {
       activeAgents,
     );
 
-    // 初始化 MessageBus
-    const messageBus = getGlobalMessageBus({ verbose: true });
+    console.log(`[TeamOrchestrator] 已注册 ${activeAgents.length} 个 Agent 到 MessageBus`);
+    console.log(`[TeamOrchestrator] 使用 Hermes Agent Client (端口 8201-8205)`);
+    console.log(`[TeamOrchestrator] customTools 数量: ${this.extraCustomTools.length}`);
+    console.log(`[TeamOrchestrator] customTools 名称: ${this.extraCustomTools.map((t: any) => t.name || t.toolName || 'unknown').join(', ')}`);
+  }
 
-    // 注册所有 Agent 到 MessageBus
+  private syncHermesAgentRegistry(): TeamAgentConfig[] {
+    this.hermesClient = new HermesAgentClient();
+    let changed = false;
+    for (const instance of this.hermesClient.getInstances()) {
+      if (this.agentConfigs.has(instance.id)) continue;
+      changed = true;
+      this.agentConfigs.set(instance.id, {
+        id: instance.id,
+        name: instance.label,
+        role: instance.role || instance.description || `${instance.label} — Dashboard 创建的 Hermes Agent`,
+        systemPrompt:
+          instance.system_prompt ||
+          `你是 ${instance.label}。你的职责是：${instance.role || instance.description || '根据用户目标完成专业交付'}。请保持边界清晰、输出可执行结果。`,
+        model: this.defaultModel,
+        apiKey: this.apiKey,
+        baseUrl: this.baseUrl,
+        expertise: instance.tags.length > 0 ? instance.tags : instance.skills,
+        tools: instance.skills,
+        typicalTasks: [instance.description || instance.role || `${instance.label} 专业任务`],
+      });
+    }
+    const activeAgents = Array.from(this.agentConfigs.values());
+
+    if (changed) {
+      this.intentRouter = new IntentRouter(
+        {
+          model: this.defaultModel,
+          baseURL: this.baseUrl,
+          apiKey: this.apiKey,
+        },
+        activeAgents,
+      );
+    }
+
+    const messageBus = getGlobalMessageBus({ verbose: true });
     for (const agent of activeAgents) {
       messageBus.registerAgent(agent.id, async (msg) => {
         console.log(`[MessageBus] ${msg.from} → ${msg.to}: ${msg.content.substring(0, 50)}...`);
       });
     }
 
-    console.log(`[TeamOrchestrator] 已注册 ${activeAgents.length} 个 Agent 到 MessageBus`);
-    console.log(`[TeamOrchestrator] 使用 Hermes Agent Client (端口 8201-8205)`);
-    console.log(`[TeamOrchestrator] customTools 数量: ${this.extraCustomTools.length}`);
-    console.log(`[TeamOrchestrator] customTools 名称: ${this.extraCustomTools.map((t: any) => t.name || t.toolName || 'unknown').join(', ')}`);
+    return activeAgents;
   }
 
   // ============================================================================
@@ -119,6 +142,7 @@ export class TeamOrchestrator implements IOrchestrator {
     timeoutMs?: number;
     maxTokens?: number;
   }): Promise<AgentRunResult> {
+    this.syncHermesAgentRegistry();
     const config = this.agentConfigs.get(agentId);
     if (!config) throw new Error(`Agent "${agentId}" not found`);
 
@@ -171,6 +195,7 @@ export class TeamOrchestrator implements IOrchestrator {
    * 由 IntentRouter 分析目标，决定哪些 Agent 参与，然后并行/串行调用 Hermes
    */
   async runTeam(goal: string, options?: { maxRounds?: number; sessionId?: string }): Promise<TeamRunResult> {
+    this.syncHermesAgentRegistry();
     console.log(`[TeamOrchestrator] runTeam: "${goal.substring(0, 60)}..." | sessionId: ${options?.sessionId || 'none'}`);
     const workflowId = `team-${Date.now()}`;
     const sessionId = options?.sessionId;
@@ -301,6 +326,7 @@ export class TeamOrchestrator implements IOrchestrator {
    * 所有 Agent 顺序执行，共享上下文，每人从自己的专业角度发表意见
    */
   async runMeeting(goal: string, sessionId?: string, options: { participantAgentIds?: string[] } = {}): Promise<TeamRunResult> {
+    this.syncHermesAgentRegistry();
     console.log(`[TeamOrchestrator] runMeeting: "${goal.substring(0, 60)}..." | sessionId: ${sessionId || 'none'}`);
 
     const agentIds = this.resolveMeetingAgentIds(options.participantAgentIds);
@@ -361,6 +387,7 @@ export class TeamOrchestrator implements IOrchestrator {
     onProgress: (event: MeetingProgressEvent) => void,
     options: { participantAgentIds?: string[] } = {},
   ): Promise<TeamRunResult> {
+    this.syncHermesAgentRegistry();
     const MAX_CONCURRENT = 2;
     const MAX_RETRIES = 3;
     const BASE_DELAY = 2000;
@@ -664,6 +691,7 @@ export class TeamOrchestrator implements IOrchestrator {
   // ============================================================================
 
   getStatus(): OrchestratorStatus {
+    this.syncHermesAgentRegistry();
     return {
       teamAgents: Array.from(this.agentConfigs.values()).map((a) => ({
         name: a.id,

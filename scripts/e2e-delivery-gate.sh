@@ -780,8 +780,8 @@ with open(sys.argv[1], "r", encoding="utf-8") as f:
     data = json.load(f)
 ok = (
     data.get("ok") is True
-    and data.get("agentHealth", {}).get("onlineCount") == 6
-    and data.get("agentHealth", {}).get("totalAgents") == 6
+    and data.get("agentHealth", {}).get("onlineCount") == data.get("agentHealth", {}).get("totalAgents")
+    and (data.get("agentHealth", {}).get("totalAgents") or 0) >= 6
     and (
         data.get("agentHealth", {}).get("livePipelineReady") is True
         or (
@@ -822,8 +822,8 @@ sync = data.get("openFrameworkSync", {})
 ok = (
     data.get("ok") is True
     and data.get("source") == "./dev-agent doctor --json"
-    and agent.get("onlineCount") == 6
-    and agent.get("totalAgents") == 6
+    and agent.get("onlineCount") == agent.get("totalAgents")
+    and (agent.get("totalAgents") or 0) >= 6
     and (
         agent.get("livePipelineReady") is True
         or (

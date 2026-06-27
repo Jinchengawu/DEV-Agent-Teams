@@ -319,13 +319,16 @@ with open(sys.argv[1], "r", encoding="utf-8") as f:
     data = json.load(f)
 
 agents = data.get("agents", [])
+required = {"dev-frontend", "dev-backend", "dev-testing", "dev-devops", "dev-pm", "project-admin"}
+ids = {agent.get("id") for agent in agents}
 mode_ok = data.get("livePipelineReady") is True or (
     data.get("modelSpendGuard") is True and data.get("codexBackfillReady") is True
 )
 ok = (
     mode_ok
-    and data.get("onlineCount") == data.get("totalAgents") == 6
-    and len(agents) == 6
+    and data.get("onlineCount") == data.get("totalAgents")
+    and len(agents) >= 6
+    and required.issubset(ids)
     and all(agent.get("online") is True for agent in agents)
 )
 
@@ -515,6 +518,9 @@ agent_health = http_json("http://127.0.0.1:8400/agent-health")
 open_framework_sync = open_framework_sync_check(open_framework_root)
 
 agent_data = agent_health.get("data") if agent_health.get("ok") else {}
+agents = agent_data.get("agents") if isinstance(agent_data, dict) else []
+required = {"dev-frontend", "dev-backend", "dev-testing", "dev-devops", "dev-pm", "project-admin"}
+ids = {agent.get("id") for agent in agents} if isinstance(agents, list) else set()
 agent_mode_ready = (
     isinstance(agent_data, dict)
     and (
@@ -525,10 +531,11 @@ agent_mode_ready = (
 agent_ready = (
     isinstance(agent_data, dict)
     and agent_mode_ready
-    and agent_data.get("onlineCount") == agent_data.get("totalAgents") == 6
-    and isinstance(agent_data.get("agents"), list)
-    and len(agent_data.get("agents")) == 6
-    and all(agent.get("online") is True for agent in agent_data.get("agents"))
+    and agent_data.get("onlineCount") == agent_data.get("totalAgents")
+    and isinstance(agents, list)
+    and len(agents) >= 6
+    and required.issubset(ids)
+    and all(agent.get("online") is True for agent in agents)
 )
 
 ok = (
