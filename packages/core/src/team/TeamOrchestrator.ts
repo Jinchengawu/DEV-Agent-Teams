@@ -12,6 +12,7 @@ import { IntentRouter } from '../intent/IntentRouter.js';
 import { eventBus } from '../event/EventBus.js';
 import { getGlobalMessageBus } from '../event/MessageBus.js';
 import { createGuardedAgentResult, isModelSpendGuardEnabled } from '../runtime/model-spend-guard.js';
+import { applyRuntimeModelSettings } from '../runtime/model-settings.js';
 import type { IOrchestrator } from '../orchestrator/IOrchestrator.js';
 import type {
   TeamAgentConfig,
@@ -105,6 +106,9 @@ export class TeamOrchestrator implements IOrchestrator {
         tools: instance.skills,
         typicalTasks: [instance.description || instance.role || `${instance.label} 专业任务`],
       });
+    }
+    for (const [agentId, agent] of this.agentConfigs.entries()) {
+      this.agentConfigs.set(agentId, applyRuntimeModelSettings(agent));
     }
     const activeAgents = Array.from(this.agentConfigs.values());
 

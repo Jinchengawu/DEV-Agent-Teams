@@ -11,6 +11,8 @@ export interface CustomAgent {
   role: string;
   description: string;
   endpoint?: string;
+  modelId?: string;
+  modelConfig?: AgentModelConfig;
   skills: string[];
   tags: string[];
   systemPrompt?: string;
@@ -39,9 +41,18 @@ export interface CustomAgentInput {
   role?: string;
   description?: string;
   endpoint?: string;
+  modelId?: string;
+  modelConfig?: Partial<AgentModelConfig> & { apiEndpoint?: string };
   skills?: string[] | string;
   tags?: string[] | string;
   systemPrompt?: string;
+}
+
+export interface AgentModelConfig {
+  provider: string;
+  model: string;
+  baseUrl: string;
+  apiKey?: string;
 }
 
 interface CustomAgentStore {
@@ -102,7 +113,15 @@ function escapeYamlString(value: string): string {
   return JSON.stringify(value);
 }
 
-function resolveModelConfig() {
+function resolveModelConfig(agent?: Pick<CustomAgent, 'modelConfig'>): AgentModelConfig {
+  if (agent?.modelConfig?.model && agent.modelConfig.baseUrl) {
+    return {
+      provider: agent.modelConfig.provider || 'custom',
+      model: agent.modelConfig.model,
+      baseUrl: agent.modelConfig.baseUrl,
+      apiKey: agent.modelConfig.apiKey || process.env.API_KEY || '',
+    };
+  }
   return {
     provider: process.env.MODEL_PROVIDER || 'deepseek',
     model: process.env.MODEL_NAME || 'deepseek-v4-pro',
@@ -112,7 +131,7 @@ function resolveModelConfig() {
 }
 
 async function writeHermesProfile(agent: CustomAgent, port: number): Promise<void> {
-  const model = resolveModelConfig();
+  const model = resolveModelConfig(agent);
   await mkdir(agent.hermes.homeDir, { recursive: true });
   const config = `model:
   default: ${escapeYamlString(model.model)}
@@ -141,7 +160,7 @@ delegation:
   model: ${escapeYamlString(model.model)}
   provider: ${escapeYamlString(model.provider)}
   base_url: ${escapeYamlString(model.baseUrl)}
-  api_key: ${escapeYamlString(model.apiKey)}
+  api_key: ${escapeYamlString(model.apiKey || '')}
   orchestrator_enabled: true
   max_concurrent_children: 3
   max_spawn_depth: 1
@@ -232,6 +251,16 @@ export async function createCustomAgent(input: CustomAgentInput): Promise<Custom
   const role = normalizeText(input.role);
   const description = normalizeText(input.description);
   const endpoint = normalizeText(input.endpoint);
+  const modelId = normalizeText(input.modelId);
+  const inputModel = input.modelConfig || {};
+  const modelConfig: AgentModelConfig | undefined = normalizeText(inputModel.model)
+    ? {
+        provider: normalizeText(inputModel.provider) || 'custom',
+        model: normalizeText(inputModel.model),
+        baseUrl: normalizeText(inputModel.baseUrl) || normalizeText(inputModel.apiEndpoint) || '',
+        apiKey: normalizeText(inputModel.apiKey),
+      }
+    : undefined;
   const skills = parseSkills(input.skills);
   const tags = parseList(input.tags).length > 0 ? parseList(input.tags) : skills;
   const systemPrompt = normalizeText(input.systemPrompt);
@@ -256,6 +285,8 @@ export async function createCustomAgent(input: CustomAgentInput): Promise<Custom
     role,
     description: description || role,
     endpoint: endpoint || `http://127.0.0.1:${port}`,
+    modelId: modelId || undefined,
+    modelConfig,
     skills,
     tags,
     systemPrompt: systemPrompt || defaultSystemPrompt({ name, role, description: description || role, skills }),
@@ -291,6 +322,31 @@ export async function deleteCustomAgent(id: string): Promise<boolean> {
   if (nextAgents.length === store.agents.length) return false;
   await writeStore({ agents: nextAgents });
   return true;
+}
+
+export async function updateCustomAgentModel(
+  id: string,
+  modelId: string,
+  modelConfig: AgentModelConfig,
+): Promise<CustomAgent> {
+  const updated = await updateCustomAgent(id, (agent) => ({
+    ...agent,
+    modelId: normalizeText(modelId),
+    modelConfig: {
+      provider: normalizeText(modelConfig.provider) || 'custom',
+      model: normalizeText(modelConfig.model),
+      baseUrl: normalizeText(modelConfig.baseUrl),
+      apiKey: normalizeText(modelConfig.apiKey),
+    },
+    runtime: agent.runtime?.status === 'running'
+      ? {
+          ...agent.runtime,
+          error: 'Model profile changed; restart Agent to apply.',
+        }
+      : agent.runtime,
+  }));
+  await writeHermesProfile(updated, updated.hermes.port || updated.runtime?.port || 8600);
+  return updated;
 }
 
 export async function startCustomAgent(id: string): Promise<CustomAgent> {

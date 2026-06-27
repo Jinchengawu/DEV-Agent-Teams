@@ -9,7 +9,8 @@ import { SkeletonCard } from '@/components/ui/skeleton'
 import { ErrorState } from '@/components/ui/error-state'
 import { useToast } from '@/components/ui/toast'
 import { useAgentHealth } from '@/hooks/useAgentHealth'
-import type { AgentStatus } from '@/lib/types'
+import { useSettings } from '@/hooks/useSettings'
+import type { AgentStatus, ModelProfile } from '@/lib/types'
 
 // ============================================================================
 // Agent 个性配置（拟人化数据）
@@ -32,6 +33,13 @@ interface CustomAgentView {
   role: string
   description: string
   endpoint?: string
+  modelId?: string
+  modelConfig?: {
+    provider: string
+    model: string
+    baseUrl: string
+    apiKey?: string
+  }
   skills: string[]
   tags: string[]
   systemPrompt?: string
@@ -61,6 +69,7 @@ interface CustomAgentForm {
   description: string
   skills: string
   systemPrompt: string
+  modelId: string
 }
 
 const EMPTY_CUSTOM_AGENT_FORM: CustomAgentForm = {
@@ -69,6 +78,7 @@ const EMPTY_CUSTOM_AGENT_FORM: CustomAgentForm = {
   description: '',
   skills: '',
   systemPrompt: '',
+  modelId: '',
 }
 
 const AGENT_PERSONALITIES: Record<string, AgentPersonality> = {
@@ -425,10 +435,16 @@ function AgentCharacterCard({
   agent,
   isSelected,
   onClick,
+  modelProfiles,
+  selectedModelId,
+  onModelChange,
 }: {
   agent: AgentStatus
   isSelected: boolean
   onClick: () => void
+  modelProfiles: ModelProfile[]
+  selectedModelId: string
+  onModelChange: (modelId: string) => void
 }) {
   const personality = AGENT_PERSONALITIES[agent.id] || {
     avatar: '🤖',
@@ -499,7 +515,24 @@ function AgentCharacterCard({
             </div>
 
             {/* 底部状态栏 */}
-            <div className="mt-4 pt-3 border-t border-gray-100 flex items-center justify-between">
+            <div className="mt-4 pt-3 border-t border-gray-100 space-y-3">
+              <label className="block" onClick={(event) => event.stopPropagation()}>
+                <span className="mb-1 block text-[11px] font-semibold uppercase tracking-[0.14em] text-gray-400">
+                  模型
+                </span>
+                <select
+                  value={selectedModelId}
+                  onChange={(event) => onModelChange(event.target.value)}
+                  className="h-8 w-full rounded-md border border-gray-200 bg-white px-2 text-xs text-gray-700 outline-none focus:border-cyan-500"
+                >
+                  {modelProfiles.map((profile) => (
+                    <option key={profile.id} value={profile.id}>
+                      {profile.name || profile.modelName || profile.id}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <div className="flex items-center justify-between">
               <div className="flex items-center gap-4 text-xs text-gray-400">
                 <span>📊 {agent.skillCount} 技能</span>
                 <span>🔌 Port {agent.port}</span>
@@ -509,6 +542,7 @@ function AgentCharacterCard({
                 <span className="text-xs text-gray-400">
                   {agent.online ? '在线' : '离线'}
                 </span>
+              </div>
               </div>
             </div>
           </div>
@@ -520,11 +554,17 @@ function AgentCharacterCard({
 
 function CustomAgentCard({
   agent,
+  modelProfiles,
+  selectedModelId,
+  onModelChange,
   onStart,
   onStop,
   onDelete,
 }: {
   agent: CustomAgentView
+  modelProfiles: ModelProfile[]
+  selectedModelId: string
+  onModelChange: (modelId: string) => void
   onStart: () => void
   onStop: () => void
   onDelete: () => void
@@ -584,6 +624,28 @@ function CustomAgentCard({
             </span>
           </div>
 
+          <label className="mt-3 block">
+            <span className="mb-1 block text-[11px] font-semibold uppercase tracking-[0.14em] text-gray-400">
+              运行模型
+            </span>
+            <select
+              value={selectedModelId}
+              onChange={(event) => onModelChange(event.target.value)}
+              className="h-9 w-full rounded-md border border-gray-200 bg-white px-3 text-xs text-gray-700 outline-none focus:border-cyan-500"
+            >
+              {modelProfiles.map((profile) => (
+                <option key={profile.id} value={profile.id}>
+                  {profile.name || profile.modelName || profile.id}
+                </option>
+              ))}
+            </select>
+            {isRunning && (
+              <span className="mt-1 block text-[11px] text-amber-600">
+                切换后需要重启实例才会应用到 Hermes。
+              </span>
+            )}
+          </label>
+
           <div className="mt-4 flex justify-end gap-2">
             {isRunning ? (
               <Button variant="outline" size="sm" onClick={onStop}>
@@ -609,12 +671,71 @@ export default function AgentsPage() {
   const router = useRouter()
   const { showToast } = useToast()
   const { agents, isLoading, error, mutate } = useAgentHealth()
+  const { settings, updateSettings, isLoaded: settingsLoaded } = useSettings()
   const [selectedAgent, setSelectedAgent] = useState<AgentStatus | null>(null)
   const [customAgents, setCustomAgents] = useState<CustomAgentView[]>([])
   const [customAgentsLoading, setCustomAgentsLoading] = useState(true)
   const [showCreateForm, setShowCreateForm] = useState(false)
   const [customAgentForm, setCustomAgentForm] = useState<CustomAgentForm>(EMPTY_CUSTOM_AGENT_FORM)
   const [isSavingCustomAgent, setIsSavingCustomAgent] = useState(false)
+
+  const modelProfiles = settings.modelProfiles.length > 0 ? settings.modelProfiles : []
+  const defaultModelId = settings.defaultModelProfileId || modelProfiles[0]?.id || ''
+  const getAgentModelId = (agentId: string, fallback?: string) =>
+    settings.agentModelAssignments?.[agentId] || fallback || defaultModelId
+  const modelPayloadById = (modelId: string) => {
+    const profile = modelProfiles.find((item) => item.id === modelId) || modelProfiles[0]
+    if (!profile) return null
+    return {
+      provider: profile.provider,
+      model: profile.modelName,
+      baseUrl: profile.apiEndpoint,
+      apiKey: profile.apiKey || '',
+    }
+  }
+
+  function assignBuiltinAgentModel(agentId: string, modelId: string) {
+    updateSettings({
+      ...settings,
+      agentModelAssignments: {
+        ...(settings.agentModelAssignments || {}),
+        [agentId]: modelId,
+      },
+    })
+    showToast('Agent 模型配置已保存', 'success')
+  }
+
+  async function assignCustomAgentModel(agent: CustomAgentView, modelId: string) {
+    const modelConfig = modelPayloadById(modelId)
+    if (!modelConfig) {
+      showToast('请先在 Settings 中配置模型', 'error')
+      return
+    }
+    try {
+      const res = await fetch(`/api/agents/custom/${encodeURIComponent(agent.id)}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'set-model',
+          modelId,
+          modelConfig,
+        }),
+      })
+      const data = await res.json() as { agent?: CustomAgentView; error?: string }
+      if (!res.ok || !data.agent) throw new Error(data.error || '模型切换失败')
+      setCustomAgents((current) => current.map((item) => item.id === agent.id ? data.agent! : item))
+      updateSettings({
+        ...settings,
+        agentModelAssignments: {
+          ...(settings.agentModelAssignments || {}),
+          [agent.id]: modelId,
+        },
+      })
+      showToast(agent.runtime?.status === 'running' ? '模型已保存，重启 Agent 后生效' : 'Agent 模型已切换', 'success')
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : '模型切换失败', 'error')
+    }
+  }
 
   // 欢迎语动画
   const [greeting, setGreeting] = useState('')
@@ -641,13 +762,19 @@ export default function AgentsPage() {
       showToast('请填写 Agent 名称和角色', 'info')
       return
     }
+    const modelId = customAgentForm.modelId || defaultModelId
+    const modelConfig = modelPayloadById(modelId)
 
     setIsSavingCustomAgent(true)
     try {
       const res = await fetch('/api/agents/custom', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(customAgentForm),
+        body: JSON.stringify({
+          ...customAgentForm,
+          modelId,
+          modelConfig,
+        }),
       })
       const data = await res.json() as { agent?: CustomAgentView; error?: string }
       if (!res.ok || !data.agent) throw new Error(data.error || '创建失败')
@@ -764,8 +891,19 @@ export default function AgentsPage() {
                 value={customAgentForm.skills}
                 onChange={(event) => setCustomAgentForm((form) => ({ ...form, skills: event.target.value }))}
               />
-              <input
+              <select
                 className="h-10 rounded-lg border border-gray-200 bg-white px-3 text-sm outline-none focus:border-gray-900"
+                value={customAgentForm.modelId || defaultModelId}
+                onChange={(event) => setCustomAgentForm((form) => ({ ...form, modelId: event.target.value }))}
+              >
+                {modelProfiles.map((profile) => (
+                  <option key={profile.id} value={profile.id}>
+                    {profile.name || profile.modelName || profile.id}
+                  </option>
+                ))}
+              </select>
+              <input
+                className="md:col-span-2 h-10 rounded-lg border border-gray-200 bg-white px-3 text-sm outline-none focus:border-gray-900"
                 placeholder="System Prompt，可选；不填则按角色自动生成"
                 value={customAgentForm.systemPrompt}
                 onChange={(event) => setCustomAgentForm((form) => ({ ...form, systemPrompt: event.target.value }))}
@@ -812,6 +950,9 @@ export default function AgentsPage() {
               agent={agent}
               isSelected={selectedAgent?.id === agent.id}
               onClick={() => setSelectedAgent(agent)}
+              modelProfiles={modelProfiles}
+              selectedModelId={getAgentModelId(agent.id)}
+              onModelChange={(modelId) => assignBuiltinAgentModel(agent.id, modelId)}
             />
           ))
         )}
@@ -844,6 +985,9 @@ export default function AgentsPage() {
               <CustomAgentCard
                 key={agent.id}
                 agent={agent}
+                modelProfiles={modelProfiles}
+                selectedModelId={getAgentModelId(agent.id, agent.modelId)}
+                onModelChange={(modelId) => assignCustomAgentModel(agent, modelId)}
                 onStart={() => handleStartCustomAgent(agent)}
                 onStop={() => handleStopCustomAgent(agent)}
                 onDelete={() => handleDeleteCustomAgent(agent)}
