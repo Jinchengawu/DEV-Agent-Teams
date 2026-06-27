@@ -7,6 +7,7 @@
  */
 
 import { readFileSync, existsSync } from 'node:fs';
+import { homedir } from 'node:os';
 import { join } from 'node:path';
 
 // yaml 包类型声明（避免安装 @types/yaml）
@@ -27,6 +28,11 @@ export interface HermesInstance {
   tags: string[];
   skills: string[];
   timeout_ms: number;
+  role?: string;
+  description?: string;
+  system_prompt?: string;
+  source?: 'config' | 'dashboard';
+  home_dir?: string;
 }
 
 export interface HermesConfig {
@@ -55,12 +61,75 @@ const CONFIG_PATHS = [
   join(process.cwd(), '../../config/oma/instances.yaml'),
 ];
 
+const CUSTOM_AGENT_STORE_PATH =
+  process.env.DEV_AGENT_CUSTOM_AGENTS_FILE ||
+  join(process.env.DEV_AGENT_DATA_DIR || join(homedir(), '.dev-agent/data'), 'custom-agents.json');
+
+function loadDashboardHermesInstances(): HermesInstance[] {
+  if (!existsSync(CUSTOM_AGENT_STORE_PATH)) return [];
+
+  try {
+    const raw = readFileSync(CUSTOM_AGENT_STORE_PATH, 'utf8');
+    const parsed = JSON.parse(raw) as { agents?: any[] };
+    if (!Array.isArray(parsed.agents)) return [];
+
+    return parsed.agents
+      .filter((agent) => agent && typeof agent.id === 'string' && typeof agent.name === 'string')
+      .map((agent) => {
+        const port = Number(agent.hermes?.port || agent.runtime?.port || agent.port || 0);
+        return {
+          id: agent.id,
+          label: agent.name,
+          port,
+          hermes_port: port,
+          tags: Array.isArray(agent.tags) ? agent.tags : Array.isArray(agent.skills) ? agent.skills : [],
+          skills: Array.isArray(agent.skills) ? agent.skills : [],
+          timeout_ms: Number(agent.hermes?.timeoutMs || agent.timeout_ms || 120000),
+          role: agent.role,
+          description: agent.description,
+          system_prompt: agent.hermes?.systemPrompt || agent.systemPrompt,
+          source: 'dashboard' as const,
+          home_dir: agent.hermes?.homeDir,
+        };
+      })
+      .filter((instance) => Number.isInteger(instance.port) && instance.port > 0);
+  } catch (error) {
+    console.warn(`[HermesClient] Dashboard Agent registry 加载失败: ${CUSTOM_AGENT_STORE_PATH}`, error);
+    return [];
+  }
+}
+
+function mergeDashboardInstances(config: HermesConfig): HermesConfig {
+  const dashboardInstances = loadDashboardHermesInstances();
+  if (dashboardInstances.length === 0) return config;
+
+  const instanceMap = new Map(config.instances.map((instance) => [instance.id, instance]));
+  for (const instance of dashboardInstances) {
+    instanceMap.set(instance.id, instance);
+  }
+
+  const existingRules = Array.isArray(config.routing?.rules) ? config.routing.rules : [];
+  const customRules = dashboardInstances.map((instance) => ({
+    tags: instance.tags.length > 0 ? instance.tags : [instance.id],
+    instance: instance.id,
+  }));
+
+  return {
+    ...config,
+    instances: Array.from(instanceMap.values()),
+    routing: {
+      default: config.routing?.default || dashboardInstances[0]?.id || 'dev-backend',
+      rules: [...existingRules, ...customRules],
+    },
+  };
+}
+
 function loadConfig(): HermesConfig {
   for (const path of CONFIG_PATHS) {
     if (existsSync(path)) {
       try {
         const content = readFileSync(path, 'utf-8');
-        return parseYaml(content) as HermesConfig;
+        return mergeDashboardInstances(parseYaml(content) as HermesConfig);
       } catch (error) {
         console.warn(`[HermesClient] 加载配置失败: ${path}`, error);
       }
@@ -68,7 +137,7 @@ function loadConfig(): HermesConfig {
   }
 
   // 默认配置（fallback）— 调用真正的 Hermes 实例（API Server 端口）
-  return {
+  return mergeDashboardInstances({
     instances: [
       { id: 'dev-frontend', label: '前端开发 Agent', port: 8002, hermes_port: 8002, tags: ['frontend'], skills: [], timeout_ms: 120000 },
       { id: 'dev-backend', label: '后端开发 Agent', port: 8003, hermes_port: 8003, tags: ['backend'], skills: [], timeout_ms: 120000 },
@@ -78,7 +147,7 @@ function loadConfig(): HermesConfig {
       { id: 'project-admin', label: '项目管理员 Agent', port: 8007, hermes_port: 8007, tags: ['project-admin'], skills: [], timeout_ms: 120000 },
     ],
     routing: { rules: [], default: 'dev-backend' },
-  };
+  });
 }
 
 // ============================================================================

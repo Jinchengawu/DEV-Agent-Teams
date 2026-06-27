@@ -61,6 +61,24 @@ export class TeamOrchestrator implements IOrchestrator {
 
     // 初始化 Hermes Agent Client
     this.hermesClient = new HermesAgentClient();
+    for (const instance of this.hermesClient.getInstances()) {
+      if (this.agentConfigs.has(instance.id)) continue;
+      this.agentConfigs.set(instance.id, {
+        id: instance.id,
+        name: instance.label,
+        role: instance.role || instance.description || `${instance.label} — Dashboard 创建的 Hermes Agent`,
+        systemPrompt:
+          instance.system_prompt ||
+          `你是 ${instance.label}。你的职责是：${instance.role || instance.description || '根据用户目标完成专业交付'}。请保持边界清晰、输出可执行结果。`,
+        model: config.defaultModel,
+        apiKey: config.apiKey,
+        baseUrl: config.baseUrl,
+        expertise: instance.tags.length > 0 ? instance.tags : instance.skills,
+        tools: instance.skills,
+        typicalTasks: [instance.description || instance.role || `${instance.label} 专业任务`],
+      });
+    }
+    const activeAgents = Array.from(this.agentConfigs.values());
 
     // 初始化 IntentRouter（用于路由决策）
     this.intentRouter = new IntentRouter(
@@ -69,20 +87,20 @@ export class TeamOrchestrator implements IOrchestrator {
         baseURL: config.baseUrl,
         apiKey: config.apiKey,
       },
-      config.agents,
+      activeAgents,
     );
 
     // 初始化 MessageBus
     const messageBus = getGlobalMessageBus({ verbose: true });
 
     // 注册所有 Agent 到 MessageBus
-    for (const agent of config.agents) {
+    for (const agent of activeAgents) {
       messageBus.registerAgent(agent.id, async (msg) => {
         console.log(`[MessageBus] ${msg.from} → ${msg.to}: ${msg.content.substring(0, 50)}...`);
       });
     }
 
-    console.log(`[TeamOrchestrator] 已注册 ${config.agents.length} 个 Agent 到 MessageBus`);
+    console.log(`[TeamOrchestrator] 已注册 ${activeAgents.length} 个 Agent 到 MessageBus`);
     console.log(`[TeamOrchestrator] 使用 Hermes Agent Client (端口 8201-8205)`);
     console.log(`[TeamOrchestrator] customTools 数量: ${this.extraCustomTools.length}`);
     console.log(`[TeamOrchestrator] customTools 名称: ${this.extraCustomTools.map((t: any) => t.name || t.toolName || 'unknown').join(', ')}`);
