@@ -73,11 +73,25 @@ Reference files:
 - `deploy/Dockerfile.gateway`
 - `deploy/Dockerfile.dashboard`
 - `deploy/docker-compose.yml`
+- `deploy/.env.production.example`
 
 The compose profile defaults to `MODEL_SPEND_GUARD=1`, stores runtime data in
 the `dev-agent-data` volume, and stores audit logs in `dev-agent-logs`. Live
 model execution should only be enabled by explicitly overriding the environment
 after a budget is approved.
+
+Production env setup:
+
+```bash
+cp deploy/.env.production.example deploy/.env.production
+# edit deploy/.env.production
+cd deploy
+docker compose --env-file .env.production up --build
+```
+
+`deploy/.env.production.example` keeps `MODEL_SPEND_GUARD=1` and
+`ALLOW_LIVE_MODEL=0` by default. Production live model execution requires an
+explicit budget decision and environment override.
 
 ## Artifact Classes
 
@@ -118,6 +132,50 @@ node scripts/release-manifest.mjs
 RUN_PIPELINE_CONTROL_SMOKE=1 RUN_PIPELINE_RECOVERY_SMOKE=1 zsh scripts/e2e-delivery-gate.sh
 cd deploy && docker compose config
 ```
+
+## Backup And Restore
+
+Create an auditable dry-run backup plan:
+
+```bash
+node scripts/runtime-backup.mjs --dry-run
+```
+
+Create a local runtime backup:
+
+```bash
+node scripts/runtime-backup.mjs
+```
+
+By default backups are written under `runtime-backups/`, which is ignored by
+Git. The backup captures:
+
+- `~/.dev-agent/data`
+- `~/.dev-agent/logs`
+- `backup-manifest.json`
+
+Use environment overrides when runtime paths differ:
+
+```bash
+DEV_AGENT_DATA_DIR=/data DEV_AGENT_LOG_DIR=/logs DEV_AGENT_BACKUP_DIR=/backup \
+  node scripts/runtime-backup.mjs
+```
+
+Inspect a restore plan:
+
+```bash
+node scripts/runtime-restore.mjs runtime-backups/<backup-dir> --dry-run
+```
+
+Restore only with explicit confirmation:
+
+```bash
+node scripts/runtime-restore.mjs runtime-backups/<backup-dir> --confirm
+```
+
+Restore copies backup data into the configured runtime paths. It does not drop
+database tables or run schema migrations; migrations remain part of the normal
+application startup path.
 
 ## Derivative Product Rule
 

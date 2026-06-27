@@ -4,11 +4,18 @@ services:
       context: ..
       dockerfile: deploy/Dockerfile.gateway
     environment:
-      MODEL_SPEND_GUARD: "1"
-      GATEWAY_HOST: "0.0.0.0"
-      GATEWAY_PORT: "8400"
-      AGENT_DB_PATH: "/data"
-      AUDIT_FILE: "/logs/audit.log"
+      MODEL_SPEND_GUARD: "${MODEL_SPEND_GUARD:-1}"
+      ALLOW_LIVE_MODEL: "${ALLOW_LIVE_MODEL:-0}"
+      GATEWAY_HOST: "${GATEWAY_HOST:-0.0.0.0}"
+      GATEWAY_PORT: "${GATEWAY_PORT:-8400}"
+      AGENT_DB_PATH: "${AGENT_DB_PATH:-/data}"
+      AUDIT_FILE: "${AUDIT_FILE:-/logs/audit.log}"
+      MODEL_PROVIDER: "${MODEL_PROVIDER:-deepseek}"
+      MODEL_NAME: "${MODEL_NAME:-deepseek-v4-pro}"
+      MODEL_BASE_URL: "${MODEL_BASE_URL:-https://api.deepseek.com/v1}"
+      API_KEY: "${API_KEY:-}"
+      OMA_AUTH_ENABLED: "${OMA_AUTH_ENABLED:-false}"
+      JWT_SECRET: "${JWT_SECRET:-change-me}"
     ports:
       - "8400:8400"
     volumes:
@@ -25,9 +32,9 @@ services:
       context: ..
       dockerfile: deploy/Dockerfile.dashboard
     environment:
-      PORT: "3000"
-      NEXT_PUBLIC_GATEWAY_URL: "http://gateway:8400"
-      GATEWAY_URL: "http://gateway:8400"
+      PORT: "${PORT:-3000}"
+      NEXT_PUBLIC_GATEWAY_URL: "${NEXT_PUBLIC_GATEWAY_URL:-http://gateway:8400}"
+      GATEWAY_URL: "${GATEWAY_URL:-http://gateway:8400}"
     ports:
       - "3000:3000"
     depends_on:

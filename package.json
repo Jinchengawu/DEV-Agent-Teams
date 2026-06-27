@@ -4,7 +4,9 @@
   "private": true,
   "description": "基于 @open-multi-agent/core 的多 Agent 协同开发系统",
   "scripts": {
-    "release:manifest": "node scripts/release-manifest.mjs"
+    "release:manifest": "node scripts/release-manifest.mjs",
+    "runtime:backup": "node scripts/runtime-backup.mjs",
+    "runtime:restore": "node scripts/runtime-restore.mjs"
   },
   "workspaces": [
     "packages/core",
